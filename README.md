@@ -219,3 +219,7 @@ Install and enable the **Pyrefly** extension (`meta.pyrefly`). Point it at the T
 Save this as `.vscode/settings.json`, replace both absolute paths, and reload the VS Code window. If another type-checking extension is enabled, disable its diagnostics for the workspace to avoid duplicate or conflicting results.
 
 Typeforge proxies Pyrefly's diagnostics, hover, completion, navigation, rename, references, code actions, and semantic tokens while keeping all generated code in memory.
+
+
+## Important
+This is not released. There are at least 15 different things I need to complete before I'd consider actually releasing this like changing the name, a pydantic integration, cleaning uo the LLM slop code, etc. 
