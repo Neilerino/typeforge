@@ -31,6 +31,7 @@ from typeforge.analysis.model import (
     VirtualDocument,
 )
 from typeforge.analysis.positions import source_position_from_utf16, utf16_character
+from typeforge.diagnostics.pyrefly import present_pyrefly_message
 
 PYREFLY_COMMAND = (str(Path(executable).with_name("pyrefly")), "lsp")
 
@@ -152,7 +153,11 @@ def normalize_diagnostic(
         path=document.path,
         span=generated_span_to_authored(document, generated_span),
         severity=normalize_severity(diagnostic.severity),
-        message=diagnostic.message,
+        message=present_pyrefly_message(
+            document.authored_text,
+            str(diagnostic.code) if diagnostic.code is not None else None,
+            diagnostic.message,
+        ),
         code=str(diagnostic.code) if diagnostic.code is not None else None,
     )
 

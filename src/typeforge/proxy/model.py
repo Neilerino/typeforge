@@ -26,6 +26,15 @@ class DiagnosticSuppressor(Protocol):
     ) -> bool: ...
 
 
+class DiagnosticPresenter(Protocol):
+    def __call__(
+        self,
+        diagnostic: JsonObject,
+        document: VirtualDocument,
+        span: SourceSpan,
+    ) -> JsonObject: ...
+
+
 def forward_initialize(message: JsonObject) -> JsonObject:
     return message
 
@@ -37,6 +46,15 @@ def preserve_diagnostic(
 ) -> bool:
     del diagnostic, document, span
     return False
+
+
+def preserve_diagnostic_presentation(
+    diagnostic: JsonObject,
+    document: VirtualDocument,
+    span: SourceSpan,
+) -> JsonObject:
+    del document, span
+    return diagnostic
 
 
 class ProxyErrorCode(StrEnum):
@@ -61,6 +79,7 @@ class ProxyConfiguration:
     maximum_arity: int = 8
     initialize: InitializeTransform = forward_initialize
     suppress_diagnostic: DiagnosticSuppressor = preserve_diagnostic
+    present_diagnostic: DiagnosticPresenter = preserve_diagnostic_presentation
     documentation: DocumentationProvider = static_documentation
     source_roots: tuple[Path, ...] = ()
 

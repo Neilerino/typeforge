@@ -465,8 +465,9 @@ def _map_diagnostic_values(
         authored = generated_span_to_authored(document, generated)
         if configuration.suppress_diagnostic(diagnostic, document, authored):
             continue
+        presented = configuration.present_diagnostic(diagnostic, document, authored)
         normalized = map_message_payload(
-            diagnostic,
+            presented,
             {document.uri: DocumentState(document)},
             MappingDirection.GENERATED_TO_AUTHORED,
             document.uri,

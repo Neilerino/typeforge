@@ -85,8 +85,14 @@ write_message({
         "diagnostics": [{
             "range": {"start": result_position, "end": result_end},
             "severity": 1,
-            "code": "fake-error",
-            "message": "fake diagnostic",
+            "code": "no-matching-overload",
+            "message": (
+                "No matching overload found for function `collect` called with "
+                "arguments: (dict[str, int])\n"
+                "  Possible overloads:\n"
+                "    () -> tuple[()]\n"
+                "    (values_1: int, /) -> tuple[int]"
+            ),
         }, {
             "range": {"start": marker_position, "end": marker_end},
             "severity": 4,
@@ -293,6 +299,12 @@ def test_proxy_forwards_lifecycle_and_maps_documents(tmp_path: Path) -> None:
         "start": {"line": 3, "character": 14},
         "end": {"line": 3, "character": 20},
     }
+    assert diagnostic["message"] == (
+        "Invalid call to `collect`\n\n"
+        "Received: `dict[str, int]`\n"
+        "Expected: `*values: Each[T]`\n\n"
+        "The supplied arguments do not match this authored signature."
+    )
     send(
         editor_output,
         {

@@ -54,6 +54,8 @@ typeforge --config pyproject.toml lsp --checker pyrefly
 
 The proxy keeps authored and transformed documents in memory, forwards the transformed text to Pyrefly under the original URI, and maps language-server results back to authored source. While a document is incomplete or otherwise cannot be transformed, the proxy forwards its authored text unchanged and restores the overlay automatically once it becomes valid. Mypy has no LSP server; its default adapter passes transformed text directly to mypy's build API with cache writes disabled. Configuring an external mypy command selects the official shadow-file compatibility path.
 
+Typeforge also translates diagnostics caused by generated code back to the authored Typeforge contract. For example, an invalid call to an `Each` parameter shows the original variadic parameter and a focused explanation instead of every generated overload. Diagnostic parsing, explanation rules, and rendering are separate extension points; uncertain or unrelated diagnostics remain exactly as the checker reported them.
+
 ### VS Code
 
 Install the `meta.pyrefly` extension and point its language-server hook at the Typeforge executable installed in the project environment:

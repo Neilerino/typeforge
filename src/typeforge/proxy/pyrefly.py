@@ -4,6 +4,7 @@ from sys import executable
 from typing import cast
 
 from typeforge.analysis.model import SourceSpan, VirtualDocument
+from typeforge.diagnostics.pyrefly import present_pyrefly_message
 from typeforge.proxy.model import JsonObject, ProxyConfiguration
 
 
@@ -23,6 +24,7 @@ def pyrefly_proxy_configuration(
         maximum_arity=maximum_arity,
         initialize=configure_pyrefly_initialize,
         suppress_diagnostic=suppress_pyrefly_artifact,
+        present_diagnostic=present_pyrefly_diagnostic,
     )
 
 
@@ -75,6 +77,22 @@ def suppress_pyrefly_artifact(
         and node.id == imported
         for node in ast.walk(tree)
     )
+
+
+def present_pyrefly_diagnostic(
+    diagnostic: JsonObject,
+    document: VirtualDocument,
+    span: SourceSpan,
+) -> JsonObject:
+    del span
+    message = diagnostic.get("message")
+    code = diagnostic.get("code")
+    if not isinstance(message, str) or not isinstance(code, str):
+        return diagnostic
+    presented = present_pyrefly_message(document.authored_text, code, message)
+    if presented == message:
+        return diagnostic
+    return {**diagnostic, "message": presented}
 
 
 def object_value(value: object) -> JsonObject | None:
