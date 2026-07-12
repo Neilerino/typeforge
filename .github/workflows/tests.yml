@@ -17,12 +17,12 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Install uv and Python
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.14"
 
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync --locked --all-extras --dev
 
       - name: Run tests
-        run: uv run --frozen pytest
+        run: uv run pytest tests
