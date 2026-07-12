@@ -1,0 +1,20 @@
+[project]
+name = "typeforge-prototype"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = ["typeforge"]
+
+[tool.typeforge]
+source-roots = ["src"]
+output-dir = ".typeforge/stubs"
+max-arity = 3
+
+[tool.mypy]
+mypy_path = ".typeforge/stubs"
+python_version = "3.14"
+strict = true
+
+[tool.pyright]
+extraPaths = [".typeforge/stubs", "src"]
+pythonVersion = "3.14"
+typeCheckingMode = "strict"
