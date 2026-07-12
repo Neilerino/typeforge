@@ -1,35 +1,177 @@
 # Typeforge
 
-Typeforge compiles richer type relationships from normal Python source into portable `.pyi` files or ephemeral checker overlays.
+Typeforge lets Python developers write type relationships that Python cannot express out of the box. It compiles those relationships into standard typing constructs understood by existing type checkers.
+
+## Why
+
+Python can preserve a generic type, but it struggles to transform one.
+
+A variadic function can retain its input types, but cannot easily transform each one or extract a type from a wrapper:
 
 ```python
-from typeforge import Case, Collect, Default, Each, Map
+rows = database.select(
+    User.id,       # Column[int]
+    User.email,    # Column[str]
+    Profile.bio,   # Column[str | None]
+)
+# Wanted: list[tuple[int, str, str | None]]
+# Typical annotation: list[tuple[object, ...]]
+```
+
+Input-dependent return types require an overload for every case. For small use-cases this is fine. But it can very quickly add a lot of unnecessary boilerplate to your code.ß
+
+```python
+@overload
+def serialize(value: int) -> float: ...
+
+@overload
+def serialize(value: bytes) -> str: ...
+
+@overload
+def serialize[T](value: T) -> T: ...
+```
+
+With python's current typing constraints boilerplate grows with every type, field, and supported argument count. Typeforge provides a small DSL to dynamically generate this boilerplate (behind the scenes) instead.
+
+Libraries can publish Typeforge-generated .pyi files, giving consumers more precise types without requiring them to install or configure Typeforge. Library authors describe each type relationship once instead of maintaining large @overload blocks, while consumers get accurate inference for each concrete call without needing to understand the generated machinery.
+
+Typeforge isn't a typechecker. That isn't what I wanted to build. `mypy`, `pyrefly`, `ty`, etc. are all doing a great job in that space already. Instead Typeforge works with your existing typechecker. That way you don't need to worry about migrating off your existing technology.
+
+## How it works
+
+Typeforge markers are inert at runtime. The compiler parses source without importing or executing it, then lowers enriched annotations into standard `.pyi` declarations or an in-memory source overlay.
+
+```text
+Python source
+    -> Typeforge compiler
+    -> standard typing constructs
+    -> mypy or Pyrefly
+```
+
+`typeforge generate` writes complete `.pyi` interfaces. `typeforge check` and the language-server proxy keep transformed source in memory, map results back to the authored file, and never rewrite application code.
+
+## Examples
+
+Capture every argument type and collect them into a heterogeneous tuple:
+
+```python
+from typeforge import Collect, Each
 
 
-def collect[T](*values: Each[T]) -> Collect[T]: ...
+def collect[T](*values: Each[T]) -> tuple[*Collect[T]]:
+    return values
+
+
+result = collect(1, "two", True)
+# tuple[int, str, bool]
+```
+
+Map input types to output types:
+
+```python
+from typeforge import Case, Default, Map
 
 
 def serialize[T](value: T) -> Map[
     T,
     Case[int, float],
-    Case[bytes, str],
+    Case[str, bytes],
     Default[T],
-]: ...
+]:
+    ...
+
+result_1 = serialize(5) # float
+result_2 = serialize("test") # bytes
+result_3 = serialize([123]) # list[int]
 ```
 
-## Try the prototype
+Choose a return type from a boolean flag:
+
+```python
+from typing import Literal
+
+from typeforge import Equal, If
+
+
+type FetchResult[T: bool] = If[
+    Equal[T, Literal[True]],
+    dict[str, object],
+    bytes,
+]
+
+def fetch[T: bool](
+    url: str,
+    *,
+    parse_json: T,
+) -> FetchResult[T]:
+    ...
+
+
+data = fetch("/users", parse_json=True)   # dict[str, object]
+raw = fetch("/users", parse_json=False)   # bytes
+```
+
+Capture and reuse the inner type of a generic wrapper:
+
+```python
+from typeforge import Case, Default, Map, Value
+
+
+class Option[T]:
+    value: T
+
+
+type QueryResult[T] = Map[
+    T,
+    Case[Option[Value], Value | None],
+    Default[T],
+]
+
+
+def unwrap[T](value: T) -> QueryResult[T]:
+    ...
+
+
+option: Option[int]
+result = unwrap(option)  # int | None
+```
+
+Map a `TypedDict` and attach Markdown documentation to the resulting type:
+
+```python
+from typing import Annotated, TypedDict
+
+from typeforge import Doc, Key, MapFields, OptionalField, Value
+
+
+class User(TypedDict):
+    name: str
+    age: int
+
+
+type Patch[T] = Annotated[
+    MapFields[T, OptionalField[Key, Value]],
+    Doc("Fields that should be updated."),
+]
+
+
+def update_user(changes: Patch[User]) -> None:
+    ...
+
+# `changes` has optional `name: str` and `age: int` fields.
+# Hovering over `Patch` shows its documentation.
+```
+
+## Setup
+
+While developing Typeforge locally, add it to another uv project as an editable dependency and install a checker:
 
 ```console
-uv sync --all-extras
-uv run typeforge --config examples/prototype/pyproject.toml generate
-uv run typeforge --config examples/prototype/pyproject.toml show examples/prototype/src/api.py
-uv run typeforge --config examples/prototype/pyproject.toml check --checker mypy
-uv run typeforge --config examples/prototype/pyproject.toml check --checker pyrefly
+uv add --editable ../typeforge
+uv add --dev pyrefly
 ```
 
-Generated stubs are written to `examples/prototype/.typeforge/stubs`.
-
-## Configuration
+Add the project configuration to `pyproject.toml`:
 
 ```toml
 [tool.typeforge]
@@ -38,31 +180,28 @@ output-dir = ".typeforge/stubs"
 max-arity = 5
 
 [tool.typeforge.analysis]
-checker = "mypy"
-# command = ["mypy"]
+checker = "pyrefly"
 ```
 
-Run `typeforge generate` to compile configured source roots or `typeforge generate PATH` for selected files. `typeforge show PATH` prints a generated stub without writing it.
-
-`typeforge check [PATH ...]` transforms each selected source file ephemerally and runs the configured checker. This gives mypy and Pyrefly precise Typeforge types inside the implementation file itself without changing it or writing a project stub. Install the matching `typeforge[mypy]` or `typeforge[pyrefly]` extra.
-
-For editor integration, configure an LSP client to launch:
+Then run Typeforge directly:
 
 ```console
-typeforge --config pyproject.toml lsp --checker pyrefly
+uv run typeforge generate
+uv run typeforge check
+uv run typeforge show src/example.py
 ```
 
-The proxy keeps authored and transformed documents in memory, forwards the transformed text to Pyrefly under the original URI, and maps language-server results back to authored source. While a document is incomplete or otherwise cannot be transformed, the proxy forwards its authored text unchanged and restores the overlay automatically once it becomes valid. Mypy has no LSP server; its default adapter passes transformed text directly to mypy's build API with cache writes disabled. Configuring an external mypy command selects the official shadow-file compatibility path.
+Use the module path relative to `source-roots` when importing generated modules. If generated stubs are consumed directly by another checker, add `.typeforge/stubs` to that checker's import path.
 
-Typeforge also translates diagnostics caused by generated code back to the authored Typeforge contract. For example, an invalid call to an `Each` parameter shows the original variadic parameter and a focused explanation instead of every generated overload. Diagnostic parsing, explanation rules, and rendering are separate extension points; uncertain or unrelated diagnostics remain exactly as the checker reported them.
 
-### VS Code
+## VS Code 
 
-Install the `meta.pyrefly` extension and point its language-server hook at the Typeforge executable installed in the project environment:
+**Note**: I only have an adapter for Pyrefly/mypy atm. The plan is adding one for each of the major type chcekers, so that you can use the tool you prefer.
+
+Install and enable the **Pyrefly** extension (`meta.pyrefly`). Point it at the Typeforge executable inside the project environment:
 
 ```json
 {
-  "mypy-type-checker.ignorePatterns": ["**"],
   "python.languageServer": "None",
   "pyrefly.lspPath": "/absolute/path/to/project/.venv/bin/typeforge",
   "pyrefly.lspArguments": [
@@ -75,87 +214,6 @@ Install the `meta.pyrefly` extension and point its language-server hook at the T
 }
 ```
 
-Reload the VS Code window after changing the workspace settings. Disabling the Python extension's language server prevents Pylance diagnostics from competing with Typeforge without changing standalone Pyright configuration. The mypy extension's workspace ignore prevents duplicate mypy diagnostics without disabling that extension globally. Python's normal grammar continues to provide syntax colors, while Typeforge maps Pyrefly diagnostics, hover, completion, navigation, symbols, inlay hints, references, rename edits, code actions, folding ranges, hierarchies, and semantic tokens back to authored source.
+Save this as `.vscode/settings.json`, replace both absolute paths, and reload the VS Code window. If another type-checking extension is enabled, disable its diagnostics for the workspace to avoid duplicate or conflicting results.
 
-The generated directory must also be on each checker's import path:
-
-```toml
-[tool.mypy]
-mypy_path = ".typeforge/stubs"
-
-[tool.pyright]
-extraPaths = [".typeforge/stubs", "src"]
-```
-
-Imports must use the module path relative to `source-roots`. With `source-roots = ["src"]`, import `api`, not `src.api`; the generated stub shadows `api.py`.
-
-## Implemented syntax
-
-* `Each` and `Collect` for heterogeneous variadic capture;
-* `If` with `Equal`, `Assignable`, `All`, `Any`, and `Not`;
-* finite `Map` expressions with `Case` and `Default`;
-* structural `Map` cases where `Value` captures a nested generic argument;
-* `MapFields` over named `TypedDict`s with `Field`, `OptionalField`, `ReadonlyField`, `Drop`, `Key`, and `Value`.
-
-```python
-type QueryResult[T] = Map[
-    T,
-    Case[Option[Value], Value | None],
-    Default[T],
-]
-
-
-def query[T](
-    *components: Each[type[T]],
-) -> tuple[*Collect[QueryResult[T]]]: ...
-```
-
-## Documenting types
-
-`Doc` attaches Markdown documentation to a type expression without changing its static or runtime meaning. The Typeforge language-server proxy includes that documentation in hover results.
-
-````python
-from typing import Annotated
-
-from typeforge import Doc, Field, Key, MapFields, Value
-
-
-type PublicRecord[T] = Annotated[
-    MapFields[T, Field[Key, Value]],
-    Doc(
-        """
-        Copies every field without changing its type.
-
-        ```python
-        type PublicUser = PublicRecord[User]
-        ```
-        """
-    ),
-]
-````
-
-The same helper documents parameters, fields, and variables that cannot carry ordinary docstrings:
-
-```python
-def report(
-    months: Annotated[
-        bool,
-        Doc("Whether to express fuzzy years as a number of months."),
-    ],
-) -> None: ...
-```
-
-The last `Doc` directly attached to an `Annotated` expression wins. Documentation on a named alias describes that alias; it does not replace documentation on every field that uses the alias. Typeforge also recognizes `typing_extensions.Doc`, so existing documented annotations work without conversion.
-
-The runtime helpers are inert aliases. Functions, classes, and values are never wrapped.
-Library consumers do not run the compiler; they may receive the lightweight marker package as a transitive dependency.
-
-## Prototype boundaries
-
-The prototype targets Python 3.14. It preserves ordinary classes, bounded generics, decorators, fields, methods, public variables, and runtime-only main guards. Enriched methods are lowered inside their owning class.
-
-`MapFields` specializes named `TypedDict`s visible during generation; unknown downstream records receive an `object` fallback. Structural `Map` cases and heterogeneous variadics use a configured finite arity frontier followed by a less precise portable fallback.
-
-Typeforge refuses to generate a shadow stub when a module contains a public declaration it cannot preserve. Plain imports are not yet supported; use `from` imports while prototyping.
-
-See [PROJECT_GOAL.md](PROJECT_GOAL.md) for the project direction.
+Typeforge proxies Pyrefly's diagnostics, hover, completion, navigation, rename, references, code actions, and semantic tokens while keeping all generated code in memory.
