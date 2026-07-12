@@ -114,6 +114,47 @@ def test_read_failures_are_typed() -> None:
     assert result.error.path == path
 
 
+def test_annotated_metadata_is_transparent_to_the_compiler_frontend() -> None:
+    sources = (
+        "from typing import Annotated\n"
+        "from typeforge import Doc, Field, Key, MapFields, Value\n"
+        "type Copy[T] = Annotated[\n"
+        "    MapFields[T, Field[Key, Value]],\n"
+        '    "custom metadata",\n'
+        '    Doc("Copies every field."),\n'
+        "]\n",
+        "import typing_extensions as te\n"
+        "from typeforge import Field, Key, MapFields, Value\n"
+        "type Copy[T] = te.Annotated[\n"
+        "    MapFields[T, Field[Key, Value]],\n"
+        '    "custom metadata",\n'
+        "]\n",
+    )
+
+    for source in sources:
+        result = parse_source(source)
+
+        assert isinstance(result, Ok)
+        alias = result.value.aliases[0]
+        assert isinstance(alias.value, MarkerTypeExpression)
+        assert alias.value.marker is MarkerKind.MAP_FIELDS
+
+
+def test_annotated_typed_dict_field_preserves_field_qualifiers() -> None:
+    result = parse_source(
+        "from typing import Annotated, NotRequired, ReadOnly, TypedDict\n"
+        "from typeforge import Doc\n"
+        "class Record(TypedDict):\n"
+        '    value: Annotated[ReadOnly[NotRequired[int]], Doc("A value.")]\n'
+    )
+
+    assert isinstance(result, Ok)
+    field = result.value.typed_dicts[0].fields[0]
+    assert not field.required
+    assert field.readonly
+    assert field.annotation.source == "int"
+
+
 def test_full_typeforge_syntax_is_recognized_in_type_aliases() -> None:
     result = parse_module(FIXTURES / "full_syntax.py")
 

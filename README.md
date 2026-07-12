@@ -52,7 +52,7 @@ For editor integration, configure an LSP client to launch:
 typeforge --config pyproject.toml lsp --checker pyrefly
 ```
 
-The proxy keeps authored and transformed documents in memory, forwards the transformed text to Pyrefly under the original URI, and maps diagnostics and hover ranges back to authored source. It advertises only synchronized documents, diagnostics, and hover until more position-sensitive LSP features are mapped. Mypy has no LSP server; its default adapter passes transformed text directly to mypy's build API with cache writes disabled. Configuring an external mypy command selects the official shadow-file compatibility path.
+The proxy keeps authored and transformed documents in memory, forwards the transformed text to Pyrefly under the original URI, and maps language-server results back to authored source. Mypy has no LSP server; its default adapter passes transformed text directly to mypy's build API with cache writes disabled. Configuring an external mypy command selects the official shadow-file compatibility path.
 
 ### VS Code
 
@@ -107,6 +107,43 @@ def query[T](
     *components: Each[type[T]],
 ) -> tuple[*Collect[QueryResult[T]]]: ...
 ```
+
+## Documenting types
+
+`Doc` attaches Markdown documentation to a type expression without changing its static or runtime meaning. The Typeforge language-server proxy includes that documentation in hover results.
+
+````python
+from typing import Annotated
+
+from typeforge import Doc, Field, Key, MapFields, Value
+
+
+type PublicRecord[T] = Annotated[
+    MapFields[T, Field[Key, Value]],
+    Doc(
+        """
+        Copies every field without changing its type.
+
+        ```python
+        type PublicUser = PublicRecord[User]
+        ```
+        """
+    ),
+]
+````
+
+The same helper documents parameters, fields, and variables that cannot carry ordinary docstrings:
+
+```python
+def report(
+    months: Annotated[
+        bool,
+        Doc("Whether to express fuzzy years as a number of months."),
+    ],
+) -> None: ...
+```
+
+The last `Doc` directly attached to an `Annotated` expression wins. Documentation on a named alias describes that alias; it does not replace documentation on every field that uses the alias. Typeforge also recognizes `typing_extensions.Doc`, so existing documented annotations work without conversion.
 
 The runtime helpers are inert aliases. Functions, classes, and values are never wrapped.
 Library consumers do not run the compiler; they may receive the lightweight marker package as a transitive dependency.

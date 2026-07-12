@@ -383,9 +383,17 @@ def test_proxy_forwards_lifecycle_and_maps_documents(tmp_path: Path) -> None:
 
 
 def test_real_pyrefly_proxy_hovers_same_file_ecs_result(tmp_path: Path) -> None:
+    documented_types = tmp_path / "documented_types.py"
+    documented_types.write_text(
+        "from typing import Annotated\n"
+        "from typeforge import Doc\n"
+        'type EntityId = Annotated[int, Doc("An entity identifier.")]\n',
+        encoding="utf-8",
+    )
     source = """
 from typing import Protocol, assert_type
 
+from documented_types import EntityId
 from typeforge import Case, Collect, Default, Each, Map, Value
 
 
@@ -421,6 +429,7 @@ class Velocity:
 
 
 world = World[int]()
+entity_id: EntityId = 1
 result_1 = world.query(Position, Velocity)
 assert_type(result_1, tuple[int, Position, Velocity] | None)
 result_2 = world.query(Position, Option[Velocity])
@@ -586,8 +595,48 @@ assert_type(result_2, tuple[int, Position, Velocity | None] | None)
     assert isinstance(start, dict)
     assert start.get("line") == source[: source.index("def query")].count("\n")
 
-    send(editor_output, {"jsonrpc": "2.0", "id": 13, "method": "shutdown"})
-    assert response_for(editor_input, editor_output, 13)["id"] == 13
+    each_offset = source.index("Each")
+    each_prefix = source[:each_offset]
+    send(
+        editor_output,
+        {
+            "jsonrpc": "2.0",
+            "id": 13,
+            "method": "textDocument/hover",
+            "params": {
+                "textDocument": {"uri": path.as_uri()},
+                "position": {
+                    "line": each_prefix.count("\n"),
+                    "character": each_offset - each_prefix.rfind("\n") - 1,
+                },
+            },
+        },
+    )
+    marker_hover = response_for(editor_input, editor_output, 13)
+    assert "heterogeneous variadic parameter" in str(marker_hover.get("result"))
+
+    entity_offset = source.rindex("EntityId")
+    entity_prefix = source[:entity_offset]
+    send(
+        editor_output,
+        {
+            "jsonrpc": "2.0",
+            "id": 14,
+            "method": "textDocument/hover",
+            "params": {
+                "textDocument": {"uri": path.as_uri()},
+                "position": {
+                    "line": entity_prefix.count("\n"),
+                    "character": entity_offset - entity_prefix.rfind("\n") - 1,
+                },
+            },
+        },
+    )
+    custom_hover = response_for(editor_input, editor_output, 14)
+    assert "An entity identifier." in str(custom_hover.get("result"))
+
+    send(editor_output, {"jsonrpc": "2.0", "id": 15, "method": "shutdown"})
+    assert response_for(editor_input, editor_output, 15)["id"] == 15
     send(editor_output, {"jsonrpc": "2.0", "method": "exit"})
     proxy_thread.join(timeout=5.0)
     assert completed == [Ok(None)]

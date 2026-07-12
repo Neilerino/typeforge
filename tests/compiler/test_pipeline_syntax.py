@@ -95,3 +95,35 @@ def publicize[T](value: T) -> Public[T]:
     )
     assert "    token: ReadOnly[str]" in generated.value.content
     assert "    attempts: NotRequired[int]" in generated.value.content
+
+
+def test_documented_record_map_compiles_like_its_underlying_expression(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "documented_records.py"
+    source.write_text(
+        """
+from typing import Annotated, TypedDict
+from typeforge import Doc, Field, Key, MapFields, Value
+
+class User(TypedDict):
+    name: str
+
+type Copy[T] = Annotated[
+    MapFields[T, Field[Key, Value]],
+    Doc("Copies every field without changing its type."),
+]
+
+def copy[T](value: T) -> Copy[T]:
+    raise NotImplementedError
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    generated = generate_module(source, maximum_arity=2)
+
+    assert isinstance(generated, Ok)
+    assert "class Copy_User(TypedDict):" in generated.value.content
+    assert "    name: str" in generated.value.content
+    assert "def copy(value: User) -> Copy_User: ..." in generated.value.content
+    assert "type Copy[T] = object" in generated.value.content

@@ -14,10 +14,12 @@ def pyrefly_proxy_configuration(
         "lsp",
     ),
     maximum_arity: int = 8,
+    source_roots: tuple[Path, ...] = (),
 ) -> ProxyConfiguration:
     return ProxyConfiguration(
         project_root=project_root,
         backend_command=backend_command,
+        source_roots=source_roots,
         maximum_arity=maximum_arity,
         initialize=configure_pyrefly_initialize,
         suppress_diagnostic=suppress_pyrefly_artifact,

@@ -3,7 +3,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import BinaryIO, Protocol
 
-from typeforge.analysis.model import SourceSpan, VirtualDocument
+from typeforge.analysis.model import SourcePosition, SourceSpan, VirtualDocument
+from typeforge.documentation import DocumentationProvider, static_documentation
 
 type JsonValue = (
     None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
@@ -60,6 +61,8 @@ class ProxyConfiguration:
     maximum_arity: int = 8
     initialize: InitializeTransform = forward_initialize
     suppress_diagnostic: DiagnosticSuppressor = preserve_diagnostic
+    documentation: DocumentationProvider = static_documentation
+    source_roots: tuple[Path, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,3 +80,4 @@ class DocumentState:
 class PendingRequest:
     method: str
     uri: str | None
+    position: SourcePosition | None = None

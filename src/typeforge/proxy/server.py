@@ -17,8 +17,10 @@ from typeforge.analysis.model import (
     VirtualDocument,
 )
 from typeforge.analysis.positions import source_position_from_utf16
+from typeforge.documentation import DocumentationQuery
 from typeforge.overlay import transform_source
 from typeforge.proxy.framing import read_message, write_message
+from typeforge.proxy.hover import append_hover_documentation
 from typeforge.proxy.mapping import MappingDirection, map_message_payload
 from typeforge.proxy.model import (
     DocumentState,
@@ -173,7 +175,12 @@ def _handle_editor_message(
 
     request_id = _request_id(message)
     if request_id is not None and isinstance(method, str):
-        pending[request_id] = PendingRequest(method, _text_document_uri(message))
+        request_uri = _text_document_uri(message)
+        pending[request_id] = PendingRequest(
+            method,
+            request_uri,
+            _authored_request_position(message, request_uri, documents),
+        )
     return write_message(backend_output, transformed)
 
 
@@ -219,7 +226,38 @@ def _handle_backend_message(
             )
             if isinstance(mapped, dict):
                 transformed = mapped
+            if request.method == "textDocument/hover":
+                transformed = _add_hover_documentation(
+                    transformed,
+                    request,
+                    configuration,
+                    documents,
+                )
     return write_message(editor_output, transformed)
+
+
+def _add_hover_documentation(
+    message: JsonObject,
+    request: PendingRequest,
+    configuration: ProxyConfiguration,
+    documents: dict[str, DocumentState],
+) -> JsonObject:
+    state = documents.get(request.uri) if request.uri is not None else None
+    if state is None or request.position is None:
+        return message
+    query = DocumentationQuery(
+        document=state.document,
+        position=request.position,
+        project_root=configuration.project_root,
+        source_roots=configuration.source_roots,
+        workspace_documents=tuple(
+            documents[uri].document for uri in sorted(documents) if uri != request.uri
+        ),
+    )
+    documentation = configuration.documentation(query)
+    if isinstance(documentation, Err) or documentation.value is None:
+        return message
+    return append_hover_documentation(message, documentation.value.markdown)
 
 
 def _map_capabilities(message: JsonObject) -> JsonObject:
@@ -337,9 +375,11 @@ def _apply_changes(source: str, changes: list[JsonValue]) -> Result[str, ProxyEr
     current = source
     for change_value in changes:
         change = _object(change_value)
-        if change is None or not isinstance(change.get("text"), str):
+        if change is None:
             return Err(_protocol_error("invalid content change"))
-        replacement = cast(str, change["text"])
+        replacement = change.get("text")
+        if not isinstance(replacement, str):
+            return Err(_protocol_error("invalid content change"))
         range_value = _object(change.get("range"))
         if range_value is None:
             current = replacement
@@ -481,6 +521,19 @@ def _text_document_uri(message: JsonObject) -> str | None:
     text_document = _object(parameters.get("textDocument")) if parameters else None
     uri = text_document.get("uri") if text_document else None
     return uri if isinstance(uri, str) else None
+
+
+def _authored_request_position(
+    message: JsonObject,
+    uri: str | None,
+    documents: dict[str, DocumentState],
+) -> SourcePosition | None:
+    state = documents.get(uri) if uri is not None else None
+    parameters = _object(message.get("params"))
+    position = _object(parameters.get("position")) if parameters is not None else None
+    if state is None or position is None:
+        return None
+    return _source_position(state.document.authored_text, position)
 
 
 def _request_id(message: JsonObject) -> RequestId | None:

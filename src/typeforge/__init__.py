@@ -1,3 +1,4 @@
+from typeforge._documentation import Doc
 from typeforge._markers import (
     All,
     Any,
@@ -26,6 +27,7 @@ __all__ = [
     "Case",
     "Collect",
     "Default",
+    "Doc",
     "Drop",
     "Each",
     "Equal",

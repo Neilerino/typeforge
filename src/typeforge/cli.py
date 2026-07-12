@@ -329,6 +329,7 @@ def _lsp(project: Project, command: LspCommand) -> int:
         pyrefly_proxy_configuration(
             project_root=project.root,
             backend_command=backend_command,
+            source_roots=project.source_roots,
             maximum_arity=project.maximum_arity,
         ),
     )

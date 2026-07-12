@@ -451,6 +451,14 @@ def _typed_dict_field_attributes(
     readonly: bool,
     bindings: _ImportBindings,
 ) -> tuple[bool, bool, ast.expr]:
+    annotated_value = _annotated_value(node, bindings)
+    if annotated_value is not None:
+        return _typed_dict_field_attributes(
+            annotated_value,
+            required,
+            readonly,
+            bindings,
+        )
     if not isinstance(node, ast.Subscript):
         return required, readonly, node
     qualified_name = _resolve_ast_name(node.value, bindings)
@@ -603,6 +611,9 @@ def _parse_annotation(
         return None
     rendered = ast.get_source_segment(source, node) or ast.unparse(node)
     span = _span(path, node)
+    annotated_value = _annotated_value(node, bindings)
+    if annotated_value is not None:
+        return _parse_annotation(path, source, annotated_value, bindings)
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
         members = tuple(
             expression
@@ -661,6 +672,20 @@ def _parse_annotation(
             arguments=arguments,
         )
     return RawTypeExpression(source=rendered, span=span)
+
+
+def _annotated_value(node: ast.expr, bindings: _ImportBindings) -> ast.expr | None:
+    if not isinstance(node, ast.Subscript):
+        return None
+    if _resolve_ast_name(node.value, bindings) not in {
+        ("typing", "Annotated"),
+        ("typing_extensions", "Annotated"),
+    }:
+        return None
+    arguments = node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
+    if len(arguments) < 2:
+        return None
+    return arguments[0]
 
 
 def _flatten_union_nodes(node: ast.expr) -> tuple[ast.expr, ...]:
