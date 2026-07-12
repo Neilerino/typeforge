@@ -222,4 +222,6 @@ Typeforge proxies Pyrefly's diagnostics, hover, completion, navigation, rename, 
 
 
 ## Important
-This is not released. There are at least 15 different things I need to complete before I'd consider actually releasing this like changing the name, a pydantic integration, cleaning uo the LLM slop code, etc. 
+This is not released. There are at least 15 different things I need to complete before I'd consider actually releasing this like changing the name, a pydantic integration, cleaning uo the LLM slop code, etc.
+
+See [DESIGN.md](DESIGN.md) for the project's durable design constraints.
