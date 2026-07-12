@@ -144,9 +144,16 @@ write_message({
     ]},
 })
 
-changed = read_message()
-assert changed["method"] == "textDocument/didChange"
-changes = changed["params"]["contentChanges"]
+invalid = read_message()
+assert invalid["method"] == "textDocument/didChange"
+changes = invalid["params"]["contentChanges"]
+assert len(changes) == 1 and "range" not in changes[0]
+assert 'result = collect(' in changes[0]["text"]
+assert "# typeforge: overlay" not in changes[0]["text"]
+
+recovered = read_message()
+assert recovered["method"] == "textDocument/didChange"
+changes = recovered["params"]["contentChanges"]
 assert len(changes) == 1 and "range" not in changes[0]
 assert 'collect("two")' in changes[0]["text"]
 assert "# typeforge: overlay" in changes[0]["text"]
@@ -343,9 +350,7 @@ def test_proxy_forwards_lifecycle_and_maps_documents(tmp_path: Path) -> None:
     semantic_result = semantic["result"]
     assert isinstance(semantic_result, dict)
     assert semantic_result["data"] == [3, 14, 6, 0, 0]
-    value_offset = source.index("1)")
-    line_start = source.rfind("\n", 0, value_offset) + 1
-    value_column = len(source[line_start:value_offset].encode("utf-16-le")) // 2
+    invalid_source = source.replace("collect(1)", "collect(")
     send(
         editor_output,
         {
@@ -353,15 +358,19 @@ def test_proxy_forwards_lifecycle_and_maps_documents(tmp_path: Path) -> None:
             "method": "textDocument/didChange",
             "params": {
                 "textDocument": {"uri": uri, "version": 2},
-                "contentChanges": [
-                    {
-                        "range": {
-                            "start": {"line": 3, "character": value_column},
-                            "end": {"line": 3, "character": value_column + 1},
-                        },
-                        "text": '"two"',
-                    }
-                ],
+                "contentChanges": [{"text": invalid_source}],
+            },
+        },
+    )
+    recovered_source = source.replace("collect(1)", 'collect("two")')
+    send(
+        editor_output,
+        {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didChange",
+            "params": {
+                "textDocument": {"uri": uri, "version": 3},
+                "contentChanges": [{"text": recovered_source}],
             },
         },
     )

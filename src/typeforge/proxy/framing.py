@@ -25,7 +25,7 @@ def read_message(stream: BinaryIO) -> Result[JsonObject | None, ProxyError]:
         length = int(length_text)
     except ValueError:
         return Err(ProxyError(ProxyErrorCode.PROTOCOL, "invalid Content-Length header"))
-    payload = stream.read(length)
+    payload = _read_exactly(stream, length)
     if len(payload) != length:
         return Err(ProxyError(ProxyErrorCode.PROTOCOL, "truncated LSP message"))
     try:
@@ -40,6 +40,18 @@ def read_message(stream: BinaryIO) -> Result[JsonObject | None, ProxyError]:
     if any(not isinstance(key, str) for key in untyped):
         return Err(ProxyError(ProxyErrorCode.PROTOCOL, "JSON-RPC keys must be strings"))
     return Ok(cast(JsonObject, decoded))
+
+
+def _read_exactly(stream: BinaryIO, length: int) -> bytes:
+    chunks: list[bytes] = []
+    remaining = length
+    while remaining:
+        chunk = stream.read(remaining)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return b"".join(chunks)
 
 
 def write_message(

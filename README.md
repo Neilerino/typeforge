@@ -52,7 +52,7 @@ For editor integration, configure an LSP client to launch:
 typeforge --config pyproject.toml lsp --checker pyrefly
 ```
 
-The proxy keeps authored and transformed documents in memory, forwards the transformed text to Pyrefly under the original URI, and maps language-server results back to authored source. Mypy has no LSP server; its default adapter passes transformed text directly to mypy's build API with cache writes disabled. Configuring an external mypy command selects the official shadow-file compatibility path.
+The proxy keeps authored and transformed documents in memory, forwards the transformed text to Pyrefly under the original URI, and maps language-server results back to authored source. While a document is incomplete or otherwise cannot be transformed, the proxy forwards its authored text unchanged and restores the overlay automatically once it becomes valid. Mypy has no LSP server; its default adapter passes transformed text directly to mypy's build API with cache writes disabled. Configuring an external mypy command selects the official shadow-file compatibility path.
 
 ### VS Code
 

@@ -3,8 +3,9 @@ import subprocess
 import threading
 from dataclasses import dataclass
 from enum import Enum
+from io import BufferedReader
 from pathlib import Path
-from typing import BinaryIO, cast
+from typing import BinaryIO, Protocol, cast
 from urllib.parse import unquote, urlparse
 
 from typeforge._result import Err, Ok, Result
@@ -41,6 +42,11 @@ class _Peer(Enum):
     BACKEND = "backend"
 
 
+class _BufferedBinaryReader(Protocol):
+    @property
+    def raw(self) -> BinaryIO: ...
+
+
 @dataclass(frozen=True, slots=True)
 class _Envelope:
     peer: _Peer
@@ -58,6 +64,7 @@ def run_proxy(
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
+            bufsize=0,
         )
     except OSError as error:
         return Err(ProxyError(ProxyErrorCode.SPAWN, str(error)))
@@ -67,8 +74,10 @@ def run_proxy(
     backend_input = cast(BinaryIO, backend.stdout)
     backend_output = cast(BinaryIO, backend.stdin)
     incoming: queue.Queue[_Envelope] = queue.Queue()
-    _start_reader(streams.editor_input, _Peer.EDITOR, incoming)
-    _start_reader(backend_input, _Peer.BACKEND, incoming)
+    readers = (
+        _start_reader(streams.editor_input, _Peer.EDITOR, incoming),
+        _start_reader(backend_input, _Peer.BACKEND, incoming),
+    )
     documents: dict[str, DocumentState] = {}
     pending: dict[RequestId, PendingRequest] = {}
     editor_exited = False
@@ -113,16 +122,23 @@ def run_proxy(
                     return handled
     finally:
         _stop_backend(backend, backend_output)
+        for reader in readers:
+            reader.join(timeout=0.1)
 
 
 def _start_reader(
     stream: BinaryIO, peer: _Peer, incoming: queue.Queue[_Envelope]
-) -> None:
-    threading.Thread(
+) -> threading.Thread:
+    reader = stream
+    if isinstance(stream, BufferedReader):
+        reader = cast(_BufferedBinaryReader, stream).raw
+    thread = threading.Thread(
         target=_read_loop,
-        args=(stream, peer, incoming),
+        args=(reader, peer, incoming),
         daemon=True,
-    ).start()
+    )
+    thread.start()
+    return thread
 
 
 def _read_loop(stream: BinaryIO, peer: _Peer, incoming: queue.Queue[_Envelope]) -> None:
@@ -467,19 +483,7 @@ def _transform(
 ) -> Result[VirtualDocument, ProxyError]:
     path = _uri_path(uri)
     if path is None:
-        start = position_from_offset(source, 0)
-        end = position_from_offset(source, len(source))
-        span = SourceSpan(start, end)
-        return Ok(
-            VirtualDocument(
-                uri=uri,
-                path=Path(uri),
-                version=version,
-                authored_text=source,
-                generated_text=source,
-                mappings=(SourceMapping(span, span, MappingKind.AUTHORED),),
-            )
-        )
+        return Ok(_identity_document(uri, Path(uri), source, version))
     transformed = transform_source(
         source,
         path,
@@ -487,13 +491,27 @@ def _transform(
         version=version,
     )
     if isinstance(transformed, Err):
-        return Err(
-            ProxyError(
-                ProxyErrorCode.TRANSFORM,
-                f"{transformed.error.path}: {transformed.error.message}",
-            )
-        )
+        return Ok(_identity_document(uri, path, source, version))
     return transformed
+
+
+def _identity_document(
+    uri: str,
+    path: Path,
+    source: str,
+    version: int,
+) -> VirtualDocument:
+    start = position_from_offset(source, 0)
+    end = position_from_offset(source, len(source))
+    span = SourceSpan(start, end)
+    return VirtualDocument(
+        uri=uri,
+        path=path,
+        version=version,
+        authored_text=source,
+        generated_text=source,
+        mappings=(SourceMapping(span, span, MappingKind.AUTHORED),),
+    )
 
 
 def _source_span(source: str, value: JsonObject) -> SourceSpan | None:
