@@ -164,6 +164,8 @@ def update_user(changes: Patch[User]) -> None:
 
 ## Setup
 
+**Note:** This package isn't published on pypi (it's not ready yet). There's already a project on pypi called `typeforge`. It is NOT this one. I might need to pick a new name before I release this
+
 While developing Typeforge locally, add it to another uv project as an editable dependency and install a checker:
 
 ```console
