@@ -3,7 +3,7 @@ from pathlib import Path
 from sys import executable
 from typing import cast
 
-from typeforge.analysis.model import SourceSpan, VirtualDocument
+from typeforge.analysis.model import MappingKind, SourceSpan, VirtualDocument
 from typeforge.diagnostics.pyrefly import present_pyrefly_message
 from typeforge.proxy.model import JsonObject, ProxyConfiguration
 
@@ -56,6 +56,12 @@ def suppress_pyrefly_artifact(
     document: VirtualDocument,
     span: SourceSpan,
 ) -> bool:
+    if diagnostic.get("code") == "unused-variable" and any(
+        mapping.origin is MappingKind.GENERATED
+        and mapping.authored.start.offset == span.start.offset
+        for mapping in document.mappings
+    ):
+        return True
     if diagnostic.get("code") != "unused-import":
         return False
     lines = document.authored_text.splitlines()

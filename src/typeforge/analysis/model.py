@@ -25,10 +25,20 @@ class MappingKind(Enum):
 
 
 @dataclass(frozen=True, slots=True)
+class ReturnCheckProvenance:
+    callable_name: tuple[str, ...]
+    return_annotation: str
+    controller_parameter: str
+    narrowed_inputs: tuple[str, ...]
+    expected_types: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class SourceMapping:
     authored: SourceSpan
     generated: SourceSpan
     origin: MappingKind
+    provenance: ReturnCheckProvenance | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +79,7 @@ class Diagnostic:
     severity: DiagnosticSeverity
     message: str
     code: str | None
+    provenance: ReturnCheckProvenance | None = None
 
 
 @dataclass(frozen=True, slots=True)

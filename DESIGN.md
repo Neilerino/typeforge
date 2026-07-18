@@ -26,6 +26,12 @@ Published library stubs must be deterministic from library source and configurat
 
 Project integrations may use local context to improve precision. These transformations remain in memory, never rewrite authored files, and are not publishable by default.
 
+## Implementation verification
+
+Implementation verification produces checker-neutral obligations from Typeforge relationships and authored control flow. Existing type checkers validate the expressions; Typeforge does not infer ordinary Python expression types itself.
+
+Precise obligations are emitted only for recognized flow. Unknown predicates, ambiguous controllers, generators, and declaration-only bodies must degrade to an aggregate check or remain with the underlying checker rather than inventing a narrowing.
+
 ## Explicit record semantics
 
 `TypedDict`, dataclasses, protocols, ordinary classes, attrs classes, and validation models have different construction, inheritance, and mutation semantics. Typeforge must support each family through an explicit adapter rather than treating every annotated object as the same kind of record.

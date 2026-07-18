@@ -395,7 +395,7 @@ def _lower_each_function(
 
 
 @dataclass(frozen=True, slots=True)
-class _PredicateMatch:
+class PredicateMatch:
     input_type: TypeExpression
     result: bool
 
@@ -403,7 +403,7 @@ class _PredicateMatch:
 def _lower_if_function(
     declaration: FunctionDeclaration, conditional: IfType
 ) -> Result[Declaration, LoweringError]:
-    controller = _predicate_controller(conditional.condition)
+    controller = predicate_controller(conditional.condition)
     if isinstance(controller, Err):
         return Err(
             LoweringError(
@@ -421,7 +421,7 @@ def _lower_if_function(
                 f"no parameter is controlled by {controller.value}",
             )
         )
-    if not _predicate_is_supported(conditional.condition, controller.value):
+    if not predicate_is_supported(conditional.condition, controller.value):
         return Err(
             LoweringError(
                 LoweringErrorCode.UNSUPPORTED_PREDICATE,
@@ -429,7 +429,7 @@ def _lower_if_function(
                 "predicate cannot be represented at a callable boundary",
             )
         )
-    matches = _predicate_matches(conditional.condition, controller.value)
+    matches = predicate_matches(conditional.condition, controller.value)
     signatures = tuple(
         _specialized_signature(
             declaration,
@@ -538,7 +538,7 @@ def _replace_return(
     )
 
 
-def _predicate_controller(
+def predicate_controller(
     predicate: Predicate,
 ) -> Result[str, LoweringErrorCode]:
     names = _predicate_variable_names(predicate)
@@ -572,33 +572,33 @@ def _predicate_variable_names(predicate: Predicate) -> tuple[str, ...]:
     return tuple(names)
 
 
-def _predicate_matches(
+def predicate_matches(
     predicate: Predicate, controller: str
-) -> tuple[_PredicateMatch, ...]:
+) -> tuple[PredicateMatch, ...]:
     if isinstance(predicate, EqualPredicate):
         if predicate.left == TypeVariable(controller) and not _has_variable(
             predicate.right, controller
         ):
-            return (_PredicateMatch(predicate.right, True),)
+            return (PredicateMatch(predicate.right, True),)
         if predicate.right == TypeVariable(controller) and not _has_variable(
             predicate.left, controller
         ):
-            return (_PredicateMatch(predicate.left, True),)
+            return (PredicateMatch(predicate.left, True),)
         return ()
     if isinstance(predicate, AssignablePredicate):
         if predicate.source == TypeVariable(controller) and not _has_variable(
             predicate.target, controller
         ):
-            return (_PredicateMatch(predicate.target, True),)
+            return (PredicateMatch(predicate.target, True),)
         return ()
     if isinstance(predicate, NotPredicate):
         return tuple(
-            _PredicateMatch(match.input_type, not match.result)
-            for match in _predicate_matches(predicate.predicate, controller)
+            PredicateMatch(match.input_type, not match.result)
+            for match in predicate_matches(predicate.predicate, controller)
         )
 
     child_matches = tuple(
-        _predicate_matches(child, controller) for child in predicate.predicates
+        predicate_matches(child, controller) for child in predicate.predicates
     )
     if isinstance(predicate, AllPredicate):
         true_matches = _common_matches(child_matches, True)
@@ -609,7 +609,7 @@ def _predicate_matches(
     return _unique_matches((*true_matches, *false_matches))
 
 
-def _predicate_is_supported(predicate: Predicate, controller: str) -> bool:
+def predicate_is_supported(predicate: Predicate, controller: str) -> bool:
     variable = TypeVariable(controller)
     if isinstance(predicate, EqualPredicate):
         return (
@@ -624,21 +624,21 @@ def _predicate_is_supported(predicate: Predicate, controller: str) -> bool:
             predicate.target, controller
         )
     if isinstance(predicate, NotPredicate):
-        return _predicate_is_supported(predicate.predicate, controller)
+        return predicate_is_supported(predicate.predicate, controller)
     return all(
-        _predicate_is_supported(child, controller) for child in predicate.predicates
+        predicate_is_supported(child, controller) for child in predicate.predicates
     )
 
 
 def _matching_results(
-    groups: tuple[tuple[_PredicateMatch, ...], ...], result: bool
-) -> tuple[_PredicateMatch, ...]:
+    groups: tuple[tuple[PredicateMatch, ...], ...], result: bool
+) -> tuple[PredicateMatch, ...]:
     return tuple(match for group in groups for match in group if match.result is result)
 
 
 def _common_matches(
-    groups: tuple[tuple[_PredicateMatch, ...], ...], result: bool
-) -> tuple[_PredicateMatch, ...]:
+    groups: tuple[tuple[PredicateMatch, ...], ...], result: bool
+) -> tuple[PredicateMatch, ...]:
     if not groups:
         return ()
     first = tuple(match for match in groups[0] if match.result is result)
@@ -656,9 +656,9 @@ def _common_matches(
 
 
 def _unique_matches(
-    matches: tuple[_PredicateMatch, ...],
-) -> tuple[_PredicateMatch, ...]:
-    unique: list[_PredicateMatch] = []
+    matches: tuple[PredicateMatch, ...],
+) -> tuple[PredicateMatch, ...]:
+    unique: list[PredicateMatch] = []
     for match in matches:
         if match not in unique:
             unique.append(match)

@@ -9,7 +9,11 @@ from typing import BinaryIO, Protocol, cast
 from urllib.parse import unquote, urlparse
 
 from typeforge._result import Err, Ok, Result
-from typeforge.analysis.mapping import generated_span_to_authored, position_from_offset
+from typeforge.analysis.mapping import (
+    generated_span_to_authored,
+    mapping_for_generated_offset,
+    position_from_offset,
+)
 from typeforge.analysis.model import (
     MappingKind,
     SourceMapping,
@@ -18,6 +22,7 @@ from typeforge.analysis.model import (
     VirtualDocument,
 )
 from typeforge.analysis.positions import source_position_from_utf16
+from typeforge.diagnostics.render import render_return_check
 from typeforge.documentation import DocumentationQuery
 from typeforge.overlay import transform_source
 from typeforge.proxy.framing import read_message, write_message
@@ -452,6 +457,7 @@ def _map_diagnostic_values(
     configuration: ProxyConfiguration,
 ) -> list[JsonValue]:
     mapped: list[JsonValue] = []
+    verified_offsets = _verification_diagnostic_offsets(values, document)
     for value in values:
         diagnostic = _object(value)
         range_value = _object(diagnostic.get("range")) if diagnostic else None
@@ -463,9 +469,25 @@ def _map_diagnostic_values(
             mapped.append(value)
             continue
         authored = generated_span_to_authored(document, generated)
+        mapping = mapping_for_generated_offset(
+            document.mappings, generated.start.offset
+        )
+        provenance = mapping.provenance if mapping is not None else None
+        if (
+            provenance is None
+            and diagnostic.get("code") == "bad-return"
+            and authored.start.offset in verified_offsets
+        ):
+            continue
         if configuration.suppress_diagnostic(diagnostic, document, authored):
             continue
         presented = configuration.present_diagnostic(diagnostic, document, authored)
+        message = presented.get("message")
+        if provenance is not None and isinstance(message, str):
+            presented = {
+                **presented,
+                "message": render_return_check(provenance, message),
+            }
         normalized = map_message_payload(
             presented,
             {document.uri: DocumentState(document)},
@@ -474,6 +496,26 @@ def _map_diagnostic_values(
         )
         mapped.append(normalized)
     return mapped
+
+
+def _verification_diagnostic_offsets(
+    values: list[JsonValue], document: VirtualDocument
+) -> frozenset[int]:
+    offsets: set[int] = set()
+    for value in values:
+        diagnostic = _object(value)
+        range_value = _object(diagnostic.get("range")) if diagnostic else None
+        if range_value is None:
+            continue
+        generated = _source_span(document.generated_text, range_value)
+        if generated is None:
+            continue
+        mapping = mapping_for_generated_offset(
+            document.mappings, generated.start.offset
+        )
+        if mapping is not None and mapping.provenance is not None:
+            offsets.add(mapping.authored.start.offset)
+    return frozenset(offsets)
 
 
 def _transform(

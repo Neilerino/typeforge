@@ -40,6 +40,10 @@ def emit_stub_module(module: StubModule) -> Result[str, str]:
     return Ok("\n\n".join(sections) + "\n")
 
 
+def emit_type_expression(expression: TypeExpression) -> Result[str, str]:
+    return _emit_type(expression)
+
+
 def _emit_declaration(declaration: Declaration) -> Result[str, str]:
     if isinstance(declaration, FunctionDeclaration):
         return _emit_function(declaration)

@@ -89,7 +89,7 @@ def test_map_aliases_are_expanded_before_overlay_lowering() -> None:
     transformed = transform_source(source, Path("encoding.py"), maximum_arity=1)
 
     assert isinstance(transformed, Ok)
-    assert "type Encoded[T] = object" in transformed.value.generated_text
+    assert "type Encoded[T] = bytes | str" in transformed.value.generated_text
     assert "def encode(value: int) -> bytes: ..." in (transformed.value.generated_text)
     assert "def encode[T](value: T) -> bytes | str: ..." in (
         transformed.value.generated_text

@@ -17,6 +17,7 @@ from typeforge.adapters.lsp import (
 from typeforge.analysis.mapping import (
     authored_to_generated,
     generated_span_to_authored,
+    mapping_for_generated_offset,
 )
 from typeforge.analysis.model import (
     AnalysisRequest,
@@ -26,12 +27,15 @@ from typeforge.analysis.model import (
     Diagnostic,
     DiagnosticSeverity,
     HoverResult,
+    MappingKind,
     SourcePosition,
     SourceSpan,
     VirtualDocument,
 )
 from typeforge.analysis.positions import source_position_from_utf16, utf16_character
+from typeforge.diagnostics.filter import deduplicate_return_diagnostics
 from typeforge.diagnostics.pyrefly import present_pyrefly_message
+from typeforge.diagnostics.render import render_return_check
 
 PYREFLY_COMMAND = (str(Path(executable).with_name("pyrefly")), "lsp")
 
@@ -102,13 +106,14 @@ class PyreflyAdapter:
                     detail=f"{lsp_result.error.code.value}: {lsp_result.error.message}",
                 )
             )
+        diagnostics = tuple(
+            normalize_diagnostic(document, item)
+            for item in lsp_result.value.diagnostics
+            if not is_overlay_artifact(document, item)
+        )
         return Ok(
             AnalysisResult(
-                diagnostics=tuple(
-                    normalize_diagnostic(document, item)
-                    for item in lsp_result.value.diagnostics
-                    if not is_overlay_artifact(document, item)
-                ),
+                diagnostics=deduplicate_return_diagnostics(diagnostics),
                 hovers=tuple(
                     normalized
                     for item in lsp_result.value.hovers
@@ -119,6 +124,13 @@ class PyreflyAdapter:
 
 
 def is_overlay_artifact(document: VirtualDocument, diagnostic: LspDiagnostic) -> bool:
+    if diagnostic.code == "unused-variable":
+        generated = lsp_range_to_source_span(document.generated_text, diagnostic.range)
+        mapping = mapping_for_generated_offset(
+            document.mappings, generated.start.offset
+        )
+        if mapping is not None and mapping.origin is MappingKind.GENERATED:
+            return True
     if diagnostic.code != "unused-import":
         return False
     match = re.fullmatch(r"Import `([^`]+)` is unused", diagnostic.message)
@@ -148,17 +160,27 @@ def normalize_diagnostic(
     document: VirtualDocument, diagnostic: LspDiagnostic
 ) -> Diagnostic:
     generated_span = lsp_range_to_source_span(document.generated_text, diagnostic.range)
+    mapping = mapping_for_generated_offset(
+        document.mappings, generated_span.start.offset
+    )
+    provenance = mapping.provenance if mapping is not None else None
+    message = (
+        render_return_check(provenance, diagnostic.message)
+        if provenance is not None
+        else present_pyrefly_message(
+            document.authored_text,
+            str(diagnostic.code) if diagnostic.code is not None else None,
+            diagnostic.message,
+        )
+    )
     return Diagnostic(
         checker="pyrefly",
         path=document.path,
         span=generated_span_to_authored(document, generated_span),
         severity=normalize_severity(diagnostic.severity),
-        message=present_pyrefly_message(
-            document.authored_text,
-            str(diagnostic.code) if diagnostic.code is not None else None,
-            diagnostic.message,
-        ),
+        message=message,
         code=str(diagnostic.code) if diagnostic.code is not None else None,
+        provenance=provenance,
     )
 
 

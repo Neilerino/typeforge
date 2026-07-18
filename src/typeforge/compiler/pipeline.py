@@ -135,10 +135,10 @@ class _ModuleVariables:
 
 
 @dataclass(frozen=True, slots=True)
-class _SemanticMapAlias:
+class SemanticRelationshipAlias:
     name: str
     parameter: str
-    mapping: MapType
+    relationship: MapType | IfType
 
 
 def generate_module(
@@ -580,7 +580,45 @@ def substitute_type(
             ),
             substitute_type(expression.default, variable, replacement),
         )
+    if isinstance(expression, IfType):
+        return IfType(
+            substitute_predicate(expression.condition, variable, replacement),
+            substitute_type(expression.when_true, variable, replacement),
+            substitute_type(expression.when_false, variable, replacement),
+        )
     return expression
+
+
+def substitute_predicate(
+    predicate: Predicate, variable: str, replacement: TypeExpression
+) -> Predicate:
+    if isinstance(predicate, EqualPredicate):
+        return EqualPredicate(
+            substitute_type(predicate.left, variable, replacement),
+            substitute_type(predicate.right, variable, replacement),
+        )
+    if isinstance(predicate, AssignablePredicate):
+        return AssignablePredicate(
+            substitute_type(predicate.source, variable, replacement),
+            substitute_type(predicate.target, variable, replacement),
+        )
+    if isinstance(predicate, AllPredicate):
+        return AllPredicate(
+            tuple(
+                substitute_predicate(item, variable, replacement)
+                for item in predicate.predicates
+            )
+        )
+    if isinstance(predicate, AnyPredicate):
+        return AnyPredicate(
+            tuple(
+                substitute_predicate(item, variable, replacement)
+                for item in predicate.predicates
+            )
+        )
+    return NotPredicate(
+        substitute_predicate(predicate.predicate, variable, replacement)
+    )
 
 
 def render_typed_dict(shape: TypedDictShape) -> str:
@@ -675,7 +713,7 @@ def adapt_source_module(
     module: SourceModule,
 ) -> Result[StubModule, AdaptationError]:
     imports = collect_imports(module.path)
-    semantic_aliases_result = collect_semantic_map_aliases(module.aliases)
+    semantic_aliases_result = collect_semantic_relationship_aliases(module.aliases)
     if isinstance(semantic_aliases_result, Err):
         return semantic_aliases_result
     semantic_aliases = semantic_aliases_result.value
@@ -734,14 +772,14 @@ def adapt_source_module(
     return Ok(StubModule(module.path.stem, ordered, imports))
 
 
-def collect_semantic_map_aliases(
+def collect_semantic_relationship_aliases(
     aliases: tuple[SourceTypeAlias, ...],
-) -> Result[tuple[_SemanticMapAlias, ...], AdaptationError]:
-    semantic: list[_SemanticMapAlias] = []
+) -> Result[tuple[SemanticRelationshipAlias, ...], AdaptationError]:
+    semantic: list[SemanticRelationshipAlias] = []
     for alias in aliases:
         if not (
             isinstance(alias.value, MarkerTypeExpression)
-            and alias.value.marker is MarkerKind.MAP
+            and alias.value.marker in {MarkerKind.MAP, MarkerKind.IF}
         ):
             continue
         if len(alias.type_parameters) != 1:
@@ -749,22 +787,28 @@ def collect_semantic_map_aliases(
                 AdaptationError(
                     alias.name,
                     alias.value.source,
-                    "Map aliases require exactly one type parameter",
+                    "relationship aliases require exactly one type parameter",
                 )
             )
         parameter = alias.type_parameters[0].name
-        adapted = adapt_map_expression(alias.name, alias.value, (parameter,))
+        adapted = adapt_type_expression(alias.name, alias.value, (parameter,))
         if isinstance(adapted, Err):
             return adapted
-        if not isinstance(adapted.value, MapType):
-            raise AssertionError("Map adaptation produced a non-Map expression")
-        semantic.append(_SemanticMapAlias(alias.name, parameter, adapted.value))
+        if not isinstance(adapted.value, MapType | IfType):
+            raise AssertionError("relationship adaptation produced a plain type")
+        semantic.append(SemanticRelationshipAlias(alias.name, parameter, adapted.value))
     return Ok(tuple(semantic))
+
+
+def collect_semantic_map_aliases(
+    aliases: tuple[SourceTypeAlias, ...],
+) -> Result[tuple[SemanticRelationshipAlias, ...], AdaptationError]:
+    return collect_semantic_relationship_aliases(aliases)
 
 
 def expand_class_map_aliases(
     declaration: ClassDeclaration,
-    aliases: tuple[_SemanticMapAlias, ...],
+    aliases: tuple[SemanticRelationshipAlias, ...],
 ) -> ClassDeclaration:
     return ClassDeclaration(
         name=declaration.name,
@@ -791,7 +835,7 @@ def expand_class_map_aliases(
 
 def expand_function_map_aliases(
     declaration: FunctionDeclaration,
-    aliases: tuple[_SemanticMapAlias, ...],
+    aliases: tuple[SemanticRelationshipAlias, ...],
 ) -> FunctionDeclaration:
     return FunctionDeclaration(
         name=declaration.name,
@@ -813,7 +857,7 @@ def expand_function_map_aliases(
 
 def expand_map_aliases(
     expression: TypeExpression,
-    aliases: tuple[_SemanticMapAlias, ...],
+    aliases: tuple[SemanticRelationshipAlias, ...],
 ) -> TypeExpression:
     if (
         isinstance(expression, TypeApplication)
@@ -826,7 +870,7 @@ def expand_map_aliases(
         )
         if alias is not None:
             argument = expand_map_aliases(expression.arguments[0], aliases)
-            return substitute_type(alias.mapping, alias.parameter, argument)
+            return substitute_type(alias.relationship, alias.parameter, argument)
     if isinstance(expression, TypeApplication):
         return TypeApplication(
             expand_map_aliases(expression.constructor, aliases),

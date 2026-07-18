@@ -12,7 +12,10 @@ from pathlib import Path
 from typing import Protocol, cast
 
 from typeforge._result import Err, Ok, Result
-from typeforge.analysis.mapping import generated_span_to_authored
+from typeforge.analysis.mapping import (
+    generated_span_to_authored,
+    mapping_for_generated_offset,
+)
 from typeforge.analysis.model import (
     AnalysisRequest,
     AnalysisResult,
@@ -25,6 +28,8 @@ from typeforge.analysis.model import (
     VirtualDocument,
 )
 from typeforge.analysis.positions import source_position_from_utf8
+from typeforge.diagnostics.filter import deduplicate_return_diagnostics
+from typeforge.diagnostics.render import render_return_check
 
 
 @dataclass(frozen=True, slots=True)
@@ -333,7 +338,7 @@ def parse_mypy_diagnostics(
         if isinstance(parsed, Err):
             return parsed
         diagnostics.append(parsed.value)
-    return Ok(tuple(diagnostics))
+    return Ok(deduplicate_return_diagnostics(tuple(diagnostics)))
 
 
 def parse_mypy_diagnostic(
@@ -378,6 +383,12 @@ def parse_mypy_diagnostic(
     start = source_position(document.generated_text, line_number - 1, column)
     end = source_position(document.generated_text, end_line - 1, end_column)
     generated_span = SourceSpan(start=start, end=end)
+    mapping = (
+        mapping_for_generated_offset(document.mappings, generated_span.start.offset)
+        if path.resolve() == document_path.resolve()
+        else None
+    )
+    provenance = mapping.provenance if mapping is not None else None
     span = (
         generated_span_to_authored(document, generated_span)
         if path.resolve() == document_path.resolve()
@@ -389,8 +400,13 @@ def parse_mypy_diagnostic(
             path=path.resolve(),
             span=span,
             severity=mypy_severity(severity),
-            message=message,
+            message=(
+                render_return_check(provenance, message)
+                if provenance is not None
+                else message
+            ),
             code=code,
+            provenance=provenance,
         )
     )
 

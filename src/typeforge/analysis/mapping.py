@@ -24,6 +24,13 @@ def authored_to_generated(
 def generated_span_to_authored(
     document: VirtualDocument, span: SourceSpan
 ) -> SourceSpan:
+    mapping = mapping_for_generated_offset(document.mappings, span.start.offset)
+    if (
+        mapping is not None
+        and mapping.origin is MappingKind.GENERATED
+        and mapping.provenance is not None
+    ):
+        return mapping.authored
     return SourceSpan(
         generated_to_authored(document, span.start),
         generated_to_authored(document, span.end),

@@ -18,7 +18,7 @@ rows = database.select(
 # Typical annotation: list[tuple[object, ...]]
 ```
 
-Input-dependent return types require an overload for every case. For small use-cases this is fine. But it can very quickly add a lot of unnecessary boilerplate to your code.ß
+Input-dependent return types require an overload for every case. For small use-cases this is fine. But it can very quickly add a lot of unnecessary boilerplate to your code.
 
 ```python
 @overload
@@ -31,7 +31,7 @@ def serialize(value: bytes) -> str: ...
 def serialize[T](value: T) -> T: ...
 ```
 
-With python's current typing constraints boilerplate grows with every type, field, and supported argument count. Typeforge provides a small DSL to dynamically generate this boilerplate (behind the scenes) instead.
+With Python's current typing constraints boilerplate grows with every type, field, and supported argument count. Typeforge provides a small DSL to dynamically generate this boilerplate (behind the scenes) instead.
 
 Libraries can publish Typeforge-generated .pyi files, giving consumers more precise types without requiring them to install or configure Typeforge. Library authors describe each type relationship once instead of maintaining large @overload blocks, while consumers get accurate inference for each concrete call without needing to understand the generated machinery.
 
@@ -49,6 +49,8 @@ Python source
 ```
 
 `typeforge generate` writes complete `.pyi` interfaces. `typeforge check` and the language-server proxy keep transformed source in memory, map results back to the authored file, and never rewrite application code.
+
+For local `Map` and `If` implementations, Typeforge also verifies return expressions after recognizable `type`, `isinstance`, literal, `None`, boolean, and `match` guards. It emits ordinary typed assignments in memory and lets the configured checker infer the expression type. Unrecognized flow falls back to the safe aggregate return type.
 
 ## Examples
 
@@ -164,7 +166,7 @@ def update_user(changes: Patch[User]) -> None:
 
 ## Setup
 
-**Note:** This package isn't published on pypi (it's not ready yet). There's already a project on pypi called `typeforge`. It is NOT this one. I might need to pick a new name before I release this
+**Note:** This package isn't published on PyPI (it's not ready yet). There's already a project on PyPI called `typeforge`. It is NOT this one. I might need to pick a new name before I release this
 
 While developing Typeforge locally, add it to another uv project as an editable dependency and install a checker:
 
@@ -198,7 +200,7 @@ Use the module path relative to `source-roots` when importing generated modules.
 
 ## VS Code 
 
-**Note**: I only have an adapter for Pyrefly/mypy atm. The plan is adding one for each of the major type chcekers, so that you can use the tool you prefer.
+**Note**: I only have an adapter for Pyrefly/mypy atm. The plan is adding one for each of the major type checkers, so that you can use the tool you prefer.
 
 Install and enable the **Pyrefly** extension (`meta.pyrefly`). Point it at the Typeforge executable inside the project environment:
 

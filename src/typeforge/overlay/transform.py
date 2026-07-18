@@ -7,12 +7,13 @@ from pathlib import Path
 from typeforge._result import Err, Ok, Result
 from typeforge.analysis.model import (
     MappingKind,
+    ReturnCheckProvenance,
     SourceMapping,
     SourcePosition,
     SourceSpan,
     VirtualDocument,
 )
-from typeforge.compiler.emitter import emit_stub_module
+from typeforge.compiler.emitter import emit_stub_module, emit_type_expression
 from typeforge.compiler.frontend import SourceSyntaxError, parse_source
 from typeforge.compiler.lowering import (
     ArityFrontier,
@@ -20,11 +21,15 @@ from typeforge.compiler.lowering import (
     FixedTuple,
     FunctionDeclaration,
     HomogeneousTuple,
+    IfType,
     LoweringError,
+    MapType,
+    MapValueType,
     OverloadDeclaration,
     Parameter,
     ParameterKind,
     StubModule,
+    TypeAliasDeclaration,
     TypeApplication,
     TypeExpression,
     TypeName,
@@ -42,11 +47,15 @@ from typeforge.compiler.model import (
 )
 from typeforge.compiler.pipeline import (
     AdaptationError,
+    SemanticRelationshipAlias,
     adapt_alias,
     adapt_function,
-    collect_semantic_map_aliases,
+    collect_semantic_relationship_aliases,
     expand_function_map_aliases,
 )
+from typeforge.verification.contracts import union_types
+from typeforge.verification.model import ReturnObligation, VerificationPlan
+from typeforge.verification.planner import plan_implementation_verification
 
 _IMPORT_MARKER = "# typeforge: overlay-import"
 _START_MARKER = "# typeforge: overlay"
@@ -81,6 +90,7 @@ class _Edit:
     end: int
     text: str
     authored_span: SourceSpan
+    provenance: ReturnCheckProvenance | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,32 +118,66 @@ def transform_source(
     parsed = parse_source(source, path)
     if isinstance(parsed, Err):
         return Err(_frontend_error(parsed.error))
-    generated = _generate_overloads(source, parsed.value, maximum_arity)
+    aliases = collect_semantic_relationship_aliases(parsed.value.aliases)
+    if isinstance(aliases, Err):
+        return Err(_adaptation_error(parsed.value.path, aliases.error))
+    generated = _generate_overloads(source, parsed.value, maximum_arity, aliases.value)
     if isinstance(generated, Err):
         return generated
-    if not generated.value:
-        return Ok(_identity_document(source, path, version))
     try:
         tree = ast.parse(source, filename=str(path), type_comments=True)
     except SyntaxError as error:
         return Err(OverlayError(OverlayErrorCode.SYNTAX, path, error.msg))
     nodes = _function_nodes(tree)
     blocks = tuple(
-        _overload_insertion(source, item, nodes[item.qualified_name])
+        _overload_insertion(
+            source,
+            item,
+            nodes[(item.qualified_name, item.source_span.start.line + 1)],
+        )
         for item in generated.value
-        if item.qualified_name in nodes
+        if (item.qualified_name, item.source_span.start.line + 1) in nodes
     )
-    import_text = _typing_import(tuple(item.text for item in generated.value))
+    alias_edits = _alias_edits(source, parsed.value, aliases.value)
+    if isinstance(alias_edits, Err):
+        return alias_edits
+    verification = plan_implementation_verification(
+        source,
+        path,
+        parsed.value,
+        tree,
+        aliases.value,
+    )
+    if isinstance(verification, Err):
+        return Err(_adaptation_error(parsed.value.path, verification.error))
+    verification_edits = _verification_edits(verification.value)
+    if isinstance(verification_edits, Err):
+        return Err(
+            OverlayError(
+                OverlayErrorCode.EMISSION,
+                path,
+                verification_edits.error,
+            )
+        )
+    content = tuple(item.text for item in generated.value) + tuple(
+        item.text for item in (*alias_edits.value, *verification_edits.value)
+    )
+    import_text = _typing_import(content, has_overloads=bool(generated.value))
     import_offset = _import_offset(source, tree)
     import_anchor = _offset_span(path, source, import_offset, import_offset)
-    aliases = _alias_edits(source, parsed.value)
-    if isinstance(aliases, Err):
-        return aliases
-    edits = (
-        _Edit(import_offset, import_offset, import_text, import_anchor),
-        *aliases.value,
-        *blocks,
+    import_edit = (
+        (_Edit(import_offset, import_offset, import_text, import_anchor),)
+        if import_text
+        else ()
     )
+    edits = (
+        *import_edit,
+        *alias_edits.value,
+        *blocks,
+        *verification_edits.value,
+    )
+    if not edits:
+        return Ok(_identity_document(source, path, version))
     generated_text, mappings = _apply_edits(source, path, edits)
     return Ok(
         VirtualDocument(
@@ -148,11 +192,11 @@ def transform_source(
 
 
 def _generate_overloads(
-    source: str, module: SourceModule, maximum_arity: int
+    source: str,
+    module: SourceModule,
+    maximum_arity: int,
+    aliases: tuple[SemanticRelationshipAlias, ...],
 ) -> Result[tuple[_GeneratedOverloads, ...], OverlayError]:
-    aliases = collect_semantic_map_aliases(module.aliases)
-    if isinstance(aliases, Err):
-        return Err(_adaptation_error(module.path, aliases.error))
     generated: list[_GeneratedOverloads] = []
     class_parameters = {
         declaration.name: tuple(
@@ -180,7 +224,7 @@ def _generate_overloads(
         adapted = adapt_function(function, enclosing)
         if isinstance(adapted, Err):
             return Err(_adaptation_error(module.path, adapted.error))
-        expanded = expand_function_map_aliases(adapted.value, aliases.value)
+        expanded = expand_function_map_aliases(adapted.value, aliases)
         lowered = lower_variadic_module(
             StubModule(module.path.stem, (expanded,)),
             ArityFrontier(0, maximum_arity),
@@ -196,6 +240,8 @@ def _generate_overloads(
             for parameter in expanded.parameters
         ):
             declaration = _positional_variadic_overloads(declaration)
+        if _declaration_contains_map_value(declaration):
+            continue
         emitted = emit_stub_module(StubModule(module.path.stem, (declaration,)))
         if isinstance(emitted, Err):
             return Err(
@@ -209,6 +255,36 @@ def _generate_overloads(
             )
         )
     return Ok(tuple(generated))
+
+
+def _declaration_contains_map_value(declaration: OverloadDeclaration) -> bool:
+    return any(
+        _function_contains_map_value(signature)
+        for signature in (*declaration.signatures, declaration.fallback)
+    )
+
+
+def _function_contains_map_value(declaration: FunctionDeclaration) -> bool:
+    return any(
+        _type_contains_map_value(parameter.annotation)
+        for parameter in declaration.parameters
+    ) or _type_contains_map_value(declaration.return_type)
+
+
+def _type_contains_map_value(expression: TypeExpression) -> bool:
+    if isinstance(expression, MapValueType):
+        return True
+    if isinstance(expression, TypeApplication):
+        return _type_contains_map_value(expression.constructor) or any(
+            _type_contains_map_value(argument) for argument in expression.arguments
+        )
+    if isinstance(expression, FixedTuple):
+        return any(_type_contains_map_value(item) for item in expression.items)
+    if isinstance(expression, HomogeneousTuple | UnpackedType | EachType):
+        return _type_contains_map_value(expression.item)
+    if isinstance(expression, UnionExpression):
+        return any(_type_contains_map_value(member) for member in expression.members)
+    return False
 
 
 def _bound_structural_type_parameters(
@@ -341,26 +417,62 @@ def _source_span(source: str, function: SourceFunction) -> SourceSpan:
 
 def _function_nodes(
     tree: ast.Module,
-) -> dict[tuple[str, ...], ast.FunctionDef | ast.AsyncFunctionDef]:
-    nodes: dict[tuple[str, ...], ast.FunctionDef | ast.AsyncFunctionDef] = {}
-    for statement in tree.body:
-        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
-            nodes[(statement.name,)] = statement
-        elif isinstance(statement, ast.ClassDef):
-            for member in statement.body:
-                if isinstance(member, ast.FunctionDef | ast.AsyncFunctionDef):
-                    nodes[(statement.name, member.name)] = member
+) -> dict[tuple[tuple[str, ...], int], ast.FunctionDef | ast.AsyncFunctionDef]:
+    nodes: dict[
+        tuple[tuple[str, ...], int], ast.FunctionDef | ast.AsyncFunctionDef
+    ] = {}
+
+    def visit(statements: list[ast.stmt], scope: tuple[str, ...]) -> None:
+        for statement in statements:
+            if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
+                nodes[((*scope, statement.name), statement.lineno)] = statement
+            elif isinstance(statement, ast.ClassDef):
+                visit(statement.body, (*scope, statement.name))
+            elif isinstance(statement, ast.If | ast.While | ast.For | ast.AsyncFor):
+                visit(statement.body, scope)
+                visit(statement.orelse, scope)
+            elif isinstance(statement, ast.Try | ast.TryStar):
+                visit(statement.body, scope)
+                for handler in statement.handlers:
+                    visit(handler.body, scope)
+                visit(statement.orelse, scope)
+                visit(statement.finalbody, scope)
+            elif isinstance(statement, ast.With | ast.AsyncWith):
+                visit(statement.body, scope)
+            elif isinstance(statement, ast.Match):
+                for case in statement.cases:
+                    visit(case.body, scope)
+
+    visit(tree.body, ())
     return nodes
 
 
 def _alias_edits(
-    source: str, module: SourceModule
+    source: str,
+    module: SourceModule,
+    semantic_aliases: tuple[SemanticRelationshipAlias, ...],
 ) -> Result[tuple[_Edit, ...], OverlayError]:
     edits: list[_Edit] = []
     for alias in module.aliases:
         if len(alias.qualified_name) != 1 or not contains_marker(alias.value):
             continue
-        adapted = adapt_alias(alias)
+        relationship = next(
+            (item for item in semantic_aliases if item.name == alias.name),
+            None,
+        )
+        adapted = (
+            Ok(
+                TypeAliasDeclaration(
+                    name=alias.name,
+                    value=_relationship_fallback(relationship.relationship),
+                    type_parameters=tuple(
+                        parameter.declaration for parameter in alias.type_parameters
+                    ),
+                )
+            )
+            if relationship is not None
+            else adapt_alias(alias)
+        )
         if isinstance(adapted, Err):
             return Err(_adaptation_error(module.path, adapted.error))
         emitted = emit_stub_module(StubModule(module.path.stem, (adapted.value,)))
@@ -381,6 +493,95 @@ def _alias_edits(
             )
         )
     return Ok(tuple(edits))
+
+
+def _relationship_fallback(expression: MapType | IfType) -> TypeExpression:
+    if isinstance(expression, MapType):
+        return union_types(
+            (
+                *(_checker_type(case.output_type) for case in expression.cases),
+                _checker_type(expression.default),
+            )
+        )
+    return union_types(
+        (
+            _checker_type(expression.when_true),
+            _checker_type(expression.when_false),
+        )
+    )
+
+
+def _checker_type(expression: TypeExpression) -> TypeExpression:
+    if isinstance(expression, MapValueType):
+        return TypeName("object")
+    if isinstance(expression, MapType | IfType):
+        return _relationship_fallback(expression)
+    if isinstance(expression, TypeApplication):
+        return TypeApplication(
+            _checker_type(expression.constructor),
+            tuple(_checker_type(item) for item in expression.arguments),
+        )
+    if isinstance(expression, UnionExpression):
+        return union_types(tuple(_checker_type(item) for item in expression.members))
+    return expression
+
+
+def _verification_edits(
+    plan: VerificationPlan,
+) -> Result[tuple[_Edit, ...], str]:
+    reserved = set(plan.reserved_names)
+    next_identifier = 1
+    edits: list[_Edit] = []
+    for obligation in plan.obligations:
+        assignments: list[str] = []
+        expected_types: list[str] = []
+        for expected in obligation.expected_types:
+            emitted = emit_type_expression(expected)
+            if isinstance(emitted, Err):
+                assignments = []
+                break
+            while True:
+                name = f"__typeforge_return_{next_identifier}"
+                next_identifier += 1
+                if name not in reserved:
+                    reserved.add(name)
+                    break
+            assignments.append(
+                f"{name}: {emitted.value} = {obligation.expression_text}"
+            )
+            expected_types.append(emitted.value)
+        if not assignments:
+            continue
+        text = _render_verification_assignments(assignments, obligation)
+        edits.append(
+            _Edit(
+                start=obligation.insertion_offset,
+                end=obligation.insertion_offset,
+                text=text,
+                authored_span=obligation.expression_span,
+                provenance=ReturnCheckProvenance(
+                    callable_name=obligation.qualified_name,
+                    return_annotation=obligation.return_annotation,
+                    controller_parameter=obligation.controller_parameter,
+                    narrowed_inputs=obligation.narrowed_inputs,
+                    expected_types=tuple(expected_types),
+                ),
+            )
+        )
+    return Ok(tuple(edits))
+
+
+def _render_verification_assignments(
+    assignments: list[str], obligation: ReturnObligation
+) -> str:
+    if obligation.inline:
+        return "; ".join(assignments) + "; "
+    separator = f"\n{obligation.indentation}"
+    rendered = separator.join(assignments)
+    if obligation.starts_line:
+        prefix = "\n" if obligation.leading_newline else ""
+        return f"{prefix}{obligation.indentation}{rendered}\n"
+    return f"{rendered}{separator}"
 
 
 def _overload_insertion(
@@ -407,14 +608,16 @@ def _overload_insertion(
     return _Edit(offset, offset, block, generated.source_span)
 
 
-def _typing_import(overloads: tuple[str, ...]) -> str:
-    combined = "\n".join(overloads)
-    names = ["TYPE_CHECKING", "overload"]
+def _typing_import(content: tuple[str, ...], has_overloads: bool) -> str:
+    combined = "\n".join(content)
+    names = ["TYPE_CHECKING", "overload"] if has_overloads else []
     names.extend(
         name
         for name in ("Any", "Literal", "Never")
         if re.search(rf"\b{name}\b", combined)
     )
+    if not names:
+        return ""
     return f"from typing import {', '.join(names)}  {_IMPORT_MARKER}\n"
 
 
@@ -477,6 +680,7 @@ def _apply_edits(
                     generated_offset,
                     generated_offset + len(edit.text),
                 ),
+                edit.provenance,
             )
         )
         generated_offset += len(edit.text)
@@ -513,9 +717,17 @@ def _identity_document(source: str, path: Path, version: int) -> VirtualDocument
 
 
 def _mapping(
-    kind: MappingKind, authored: SourceSpan, generated: SourceSpan
+    kind: MappingKind,
+    authored: SourceSpan,
+    generated: SourceSpan,
+    provenance: ReturnCheckProvenance | None = None,
 ) -> SourceMapping:
-    return SourceMapping(authored=authored, generated=generated, origin=kind)
+    return SourceMapping(
+        authored=authored,
+        generated=generated,
+        origin=kind,
+        provenance=provenance,
+    )
 
 
 def _offset_span(path: Path, source: str, start: int, end: int) -> SourceSpan:
