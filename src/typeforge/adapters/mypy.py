@@ -11,7 +11,8 @@ from io import StringIO
 from pathlib import Path
 from typing import Protocol, cast
 
-from typeforge._result import Err, Ok, Result
+from returns.result import Failure, Result, Success
+
 from typeforge.analysis.mapping import (
     generated_span_to_authored,
     mapping_for_generated_offset,
@@ -83,7 +84,7 @@ def run_mypy_in_memory(
         from mypy.errors import CompileError
         from mypy.main import process_options
     except ImportError as error:
-        return Err(
+        return Failure(
             CheckerError(
                 checker="mypy",
                 message="unable to import mypy",
@@ -109,7 +110,7 @@ def run_mypy_in_memory(
                 None,
             )
             if source is None:
-                return Err(
+                return Failure(
                     CheckerError(
                         checker="mypy",
                         message="mypy did not resolve the requested source",
@@ -133,7 +134,7 @@ def run_mypy_in_memory(
                 stderr=stderr,
             )
     except (CompileError, OSError, SystemExit) as exception:
-        return Err(
+        return Failure(
             CheckerError(
                 checker="mypy",
                 message="mypy analysis failed",
@@ -162,7 +163,7 @@ def run_mypy_in_memory(
                 )
             )
     output = "\n".join(diagnostics)
-    return Ok(
+    return Success(
         MypyRunOutput(
             return_code=1 if has_errors else 0,
             stdout=f"{output}\n" if output else "",
@@ -220,14 +221,14 @@ def run_mypy_shadow_file(
                 text=True,
             )
     except OSError as error:
-        return Err(
+        return Failure(
             CheckerError(
                 checker="mypy",
                 message="unable to run mypy",
                 detail=str(error),
             )
         )
-    return Ok(
+    return Success(
         MypyRunOutput(
             return_code=completed.returncode,
             stdout=completed.stdout,
@@ -255,7 +256,7 @@ class MypyAdapter:
 
     def analyze(self, request: AnalysisRequest) -> Result[AnalysisResult, CheckerError]:
         if request.hover_queries:
-            return Err(
+            return Failure(
                 CheckerError(
                     checker=self.name,
                     message="mypy does not support hover queries",
@@ -276,24 +277,23 @@ class MypyAdapter:
                 extra_arguments=request.extra_arguments,
             )
         )
-        if isinstance(run_result, Err):
+        if isinstance(run_result, Failure):
             return run_result
-        if run_result.value.return_code not in (0, 1):
-            return Err(
+        run_output = run_result.unwrap()
+        if run_output.return_code not in (0, 1):
+            return Failure(
                 CheckerError(
                     checker=self.name,
                     message="mypy analysis failed",
-                    detail=run_result.value.stderr or run_result.value.stdout,
+                    detail=run_output.stderr or run_output.stdout,
                 )
             )
         diagnostics = parse_mypy_diagnostics(
-            run_result.value.stdout,
+            run_output.stdout,
             request.document,
             request.project_root,
         )
-        if isinstance(diagnostics, Err):
-            return diagnostics
-        return Ok(AnalysisResult(diagnostics=diagnostics.value))
+        return diagnostics.map(lambda items: AnalysisResult(diagnostics=items))
 
 
 def uses_current_mypy(command: tuple[str, ...]) -> bool:
@@ -335,10 +335,10 @@ def parse_mypy_diagnostics(
         if not line:
             continue
         parsed = parse_mypy_diagnostic(line, document, project_root)
-        if isinstance(parsed, Err):
+        if isinstance(parsed, Failure):
             return parsed
-        diagnostics.append(parsed.value)
-    return Ok(deduplicate_return_diagnostics(tuple(diagnostics)))
+        diagnostics.append(parsed.unwrap())
+    return Success(deduplicate_return_diagnostics(tuple(diagnostics)))
 
 
 def parse_mypy_diagnostic(
@@ -394,7 +394,7 @@ def parse_mypy_diagnostic(
         if path.resolve() == document_path.resolve()
         else generated_span
     )
-    return Ok(
+    return Success(
         Diagnostic(
             checker="mypy",
             path=path.resolve(),
@@ -423,8 +423,8 @@ def mypy_severity(severity: str) -> DiagnosticSeverity:
     return DiagnosticSeverity.ERROR
 
 
-def invalid_mypy_output(line: str, reason: str) -> Err[CheckerError]:
-    return Err(
+def invalid_mypy_output(line: str, reason: str) -> Failure[CheckerError]:
+    return Failure(
         CheckerError(
             checker="mypy",
             message="unable to parse mypy output",

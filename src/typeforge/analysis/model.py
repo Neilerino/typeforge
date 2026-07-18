@@ -3,7 +3,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Protocol
 
-from typeforge._result import Result
+from returns.result import Result
 
 
 @dataclass(frozen=True, slots=True, order=True)

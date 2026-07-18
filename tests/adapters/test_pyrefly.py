@@ -1,7 +1,8 @@
 import sys
 from pathlib import Path
 
-from typeforge._result import Ok
+from returns.result import Success
+
 from typeforge.adapters.pyrefly import PyreflyAdapter
 from typeforge.analysis.model import (
     AnalysisRequest,
@@ -150,16 +151,16 @@ def test_pyrefly_analyzes_generated_text_under_the_authored_uri(
         )
     )
 
-    assert isinstance(result, Ok)
-    assert len(result.value.diagnostics) == 1
-    diagnostic = result.value.diagnostics[0]
+    assert isinstance(result, Success)
+    assert len(result.unwrap().diagnostics) == 1
+    diagnostic = result.unwrap().diagnostics[0]
     assert diagnostic.path == document_path
     assert diagnostic.span == span(authored, 7, 13)
     assert diagnostic.severity is DiagnosticSeverity.WARNING
     assert diagnostic.code == "bad-query"
     assert diagnostic.message == "query result is incompatible"
-    assert len(result.value.hovers) == 1
-    hover = result.value.hovers[0]
+    assert len(result.unwrap().hovers) == 1
+    hover = result.unwrap().hovers[0]
     assert hover.path == document_path
     assert hover.span == span(authored, 7, 13)
     assert "tuple[int, Position]" in hover.contents
@@ -187,10 +188,10 @@ def test_pyrefly_reports_missing_binary_as_typed_failure(tmp_path: Path) -> None
         AnalysisRequest(document=document, project_root=tmp_path)
     )
 
-    assert not isinstance(result, Ok)
-    assert result.error.checker == "pyrefly"
-    assert result.error.detail is not None
-    assert result.error.detail.startswith("spawn:")
+    assert not isinstance(result, Success)
+    assert result.failure().checker == "pyrefly"
+    assert result.failure().detail is not None
+    assert result.failure().detail.startswith("spawn:")
 
 
 def test_installed_pyrefly_accepts_in_memory_document(tmp_path: Path) -> None:
@@ -223,8 +224,10 @@ def test_installed_pyrefly_accepts_in_memory_document(tmp_path: Path) -> None:
         )
     )
 
-    assert isinstance(result, Ok)
-    assert any("Literal['wrong']" in item.message for item in result.value.diagnostics)
+    assert isinstance(result, Success)
+    assert any(
+        "Literal['wrong']" in item.message for item in result.unwrap().diagnostics
+    )
 
 
 def test_pyrefly_checks_bounded_ecs_overlay_and_hovers_exact_type(
@@ -284,20 +287,22 @@ assert_type(result_2, tuple[int, Position, Velocity | None] | None)
     path = tmp_path / "ecs.py"
     path.write_text(source, encoding="utf-8")
     transformed = transform_source(source, path, maximum_arity=2, version=3)
-    assert isinstance(transformed, Ok)
-    assert "# typeforge: overlay" in transformed.value.generated_text
+    assert isinstance(transformed, Success)
+    assert "# typeforge: overlay" in transformed.unwrap().generated_text
     hover_offset = source.index("result_1 =")
     pyrefly = Path(sys.executable).with_name("pyrefly")
 
     result = PyreflyAdapter(command=(str(pyrefly), "lsp")).analyze(
         AnalysisRequest(
-            document=transformed.value,
+            document=transformed.unwrap(),
             project_root=tmp_path,
             hover_queries=(HoverQuery(position(source, hover_offset)),),
         )
     )
 
-    assert isinstance(result, Ok)
-    assert result.value.diagnostics == ()
-    assert len(result.value.hovers) == 1
-    assert "tuple[int, Position, Velocity] | None" in (result.value.hovers[0].contents)
+    assert isinstance(result, Success)
+    assert result.unwrap().diagnostics == ()
+    assert len(result.unwrap().hovers) == 1
+    assert "tuple[int, Position, Velocity] | None" in (
+        result.unwrap().hovers[0].contents
+    )

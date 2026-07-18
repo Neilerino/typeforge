@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import BinaryIO, Protocol, cast
 from urllib.parse import unquote, urlparse
 
-from typeforge._result import Err, Ok, Result
+from returns.result import Failure, Result, Success, safe
+
 from typeforge.analysis.mapping import (
     generated_span_to_authored,
     mapping_for_generated_offset,
@@ -59,9 +60,8 @@ class _Envelope:
     error: ProxyError | None = None
 
 
-def run_proxy(
-    streams: ProxyStreams, configuration: ProxyConfiguration
-) -> Result[None, ProxyError]:
+@safe(exceptions=(ProxyError,))
+def run_proxy(streams: ProxyStreams, configuration: ProxyConfiguration) -> None:
     try:
         backend = subprocess.Popen(
             configuration.backend_command,
@@ -72,10 +72,10 @@ def run_proxy(
             bufsize=0,
         )
     except OSError as error:
-        return Err(ProxyError(ProxyErrorCode.SPAWN, str(error)))
+        raise ProxyError(str(error), ProxyErrorCode.SPAWN) from error
     if backend.stdin is None or backend.stdout is None:
         backend.kill()
-        return Err(ProxyError(ProxyErrorCode.SPAWN, "backend pipes unavailable"))
+        raise ProxyError("backend pipes unavailable", ProxyErrorCode.SPAWN)
     backend_input = cast(BinaryIO, backend.stdout)
     backend_output = cast(BinaryIO, backend.stdin)
     incoming: queue.Queue[_Envelope] = queue.Queue()
@@ -90,17 +90,15 @@ def run_proxy(
         while True:
             envelope = incoming.get()
             if envelope.error is not None:
-                return Err(envelope.error)
+                raise envelope.error
             if envelope.message is None:
                 if envelope.peer is _Peer.EDITOR:
-                    return Ok(None)
+                    return
                 if editor_exited:
-                    return Ok(None)
-                return Err(
-                    ProxyError(
-                        ProxyErrorCode.BACKEND_EXIT,
-                        f"backend exited with status {backend.poll()}",
-                    )
+                    return
+                raise ProxyError(
+                    f"backend exited with status {backend.poll()}",
+                    ProxyErrorCode.BACKEND_EXIT,
                 )
             if envelope.peer is _Peer.EDITOR:
                 handled = _handle_editor_message(
@@ -110,11 +108,11 @@ def run_proxy(
                     documents,
                     pending,
                 )
-                if isinstance(handled, Err):
-                    return handled
+                if isinstance(handled, Failure):
+                    raise handled.failure()
                 editor_exited = envelope.message.get("method") == "exit"
                 if editor_exited:
-                    return Ok(None)
+                    return
             else:
                 handled = _handle_backend_message(
                     envelope.message,
@@ -123,8 +121,8 @@ def run_proxy(
                     documents,
                     pending,
                 )
-                if isinstance(handled, Err):
-                    return handled
+                if isinstance(handled, Failure):
+                    raise handled.failure()
     finally:
         _stop_backend(backend, backend_output)
         for reader in readers:
@@ -149,11 +147,11 @@ def _start_reader(
 def _read_loop(stream: BinaryIO, peer: _Peer, incoming: queue.Queue[_Envelope]) -> None:
     while True:
         result = read_message(stream)
-        if isinstance(result, Err):
-            incoming.put(_Envelope(peer, error=result.error))
+        if isinstance(result, Failure):
+            incoming.put(_Envelope(peer, error=result.failure()))
             return
-        incoming.put(_Envelope(peer, message=result.value))
-        if result.value is None:
+        incoming.put(_Envelope(peer, message=result.unwrap()))
+        if result.unwrap() is None:
             return
 
 
@@ -170,15 +168,15 @@ def _handle_editor_message(
         transformed = configuration.initialize(message)
     elif method == "textDocument/didOpen":
         opened = _open_document(message, configuration)
-        if isinstance(opened, Err):
+        if isinstance(opened, Failure):
             return opened
-        uri, state, transformed = opened.value
+        uri, state, transformed = opened.unwrap()
         documents[uri] = state
     elif method == "textDocument/didChange":
         changed = _change_document(message, configuration, documents)
-        if isinstance(changed, Err):
+        if isinstance(changed, Failure):
             return changed
-        uri, state, transformed = changed.value
+        uri, state, transformed = changed.unwrap()
         documents[uri] = state
     elif method == "textDocument/didClose":
         closed_uri = _text_document_uri(message)
@@ -276,9 +274,12 @@ def _add_hover_documentation(
         ),
     )
     documentation = configuration.documentation(query)
-    if isinstance(documentation, Err) or documentation.value is None:
+    if isinstance(documentation, Failure):
         return message
-    return append_hover_documentation(message, documentation.value.markdown)
+    documentation_value = documentation.unwrap()
+    if documentation_value is None:
+        return message
+    return append_hover_documentation(message, documentation_value.markdown)
 
 
 def _map_capabilities(message: JsonObject) -> JsonObject:
@@ -324,94 +325,99 @@ def _map_semantic_token_response(
     }
 
 
+@safe(exceptions=(ProxyError,))
 def _open_document(
     message: JsonObject, configuration: ProxyConfiguration
-) -> Result[tuple[str, DocumentState, JsonObject], ProxyError]:
+) -> tuple[str, DocumentState, JsonObject]:
     parameters = _object(message.get("params"))
     text_document = _object(parameters.get("textDocument")) if parameters else None
     if parameters is None or text_document is None:
-        return Err(_protocol_error("didOpen requires textDocument"))
+        raise ProxyError("didOpen requires textDocument")
     uri = text_document.get("uri")
     text = text_document.get("text")
     version = text_document.get("version")
     if not isinstance(uri, str) or not isinstance(text, str):
-        return Err(_protocol_error("didOpen requires uri and text"))
+        raise ProxyError("didOpen requires uri and text")
     transformed = _transform(
         uri,
         text,
         version if isinstance(version, int) else 0,
         configuration,
     )
-    if isinstance(transformed, Err):
-        return transformed
+    if isinstance(transformed, Failure):
+        raise transformed.failure()
+    document = transformed.unwrap()
     forwarded: JsonObject = {
         **message,
         "params": {
             **parameters,
             "textDocument": {
                 **text_document,
-                "text": transformed.value.generated_text,
+                "text": document.generated_text,
             },
         },
     }
-    return Ok((uri, DocumentState(transformed.value), forwarded))
+    return uri, DocumentState(document), forwarded
 
 
+@safe(exceptions=(ProxyError,))
 def _change_document(
     message: JsonObject,
     configuration: ProxyConfiguration,
     documents: dict[str, DocumentState],
-) -> Result[tuple[str, DocumentState, JsonObject], ProxyError]:
+) -> tuple[str, DocumentState, JsonObject]:
     parameters = _object(message.get("params"))
     text_document = _object(parameters.get("textDocument")) if parameters else None
     changes = parameters.get("contentChanges") if parameters else None
     if parameters is None or text_document is None or not isinstance(changes, list):
-        return Err(_protocol_error("didChange requires document and changes"))
+        raise ProxyError("didChange requires document and changes")
     uri = text_document.get("uri")
     version = text_document.get("version")
     if not isinstance(uri, str) or uri not in documents:
-        return Err(_protocol_error("didChange references an unopened document"))
+        raise ProxyError("didChange references an unopened document")
     authored = _apply_changes(documents[uri].document.authored_text, changes)
-    if isinstance(authored, Err):
-        return authored
+    if isinstance(authored, Failure):
+        raise authored.failure()
     transformed = _transform(
         uri,
-        authored.value,
+        authored.unwrap(),
         version if isinstance(version, int) else documents[uri].document.version + 1,
         configuration,
     )
-    if isinstance(transformed, Err):
-        return transformed
+    if isinstance(transformed, Failure):
+        raise transformed.failure()
+    document = transformed.unwrap()
     forwarded: JsonObject = {
         **message,
         "params": {
             **parameters,
-            "contentChanges": [{"text": transformed.value.generated_text}],
+            "contentChanges": [{"text": document.generated_text}],
         },
     }
-    return Ok((uri, DocumentState(transformed.value), forwarded))
+    return uri, DocumentState(document), forwarded
 
 
-def _apply_changes(source: str, changes: list[JsonValue]) -> Result[str, ProxyError]:
+@safe(exceptions=(ProxyError,))
+def _apply_changes(source: str, changes: list[JsonValue]) -> str:
     current = source
     for change_value in changes:
         change = _object(change_value)
         if change is None:
-            return Err(_protocol_error("invalid content change"))
+            raise ProxyError("invalid content change")
         replacement = change.get("text")
         if not isinstance(replacement, str):
-            return Err(_protocol_error("invalid content change"))
+            raise ProxyError("invalid content change")
         range_value = _object(change.get("range"))
         if range_value is None:
             current = replacement
             continue
         span = _source_span(current, range_value)
         if span is None:
-            return Err(_protocol_error("invalid content change range"))
+            raise ProxyError("invalid content change range")
         current = (
             current[: span.start.offset] + replacement + current[span.end.offset :]
         )
-    return Ok(current)
+    return current
 
 
 def _map_diagnostics(
@@ -526,16 +532,16 @@ def _transform(
 ) -> Result[VirtualDocument, ProxyError]:
     path = _uri_path(uri)
     if path is None:
-        return Ok(_identity_document(uri, Path(uri), source, version))
+        return Success(_identity_document(uri, Path(uri), source, version))
     transformed = transform_source(
         source,
         path,
         maximum_arity=configuration.maximum_arity,
         version=version,
     )
-    if isinstance(transformed, Err):
-        return Ok(_identity_document(uri, path, source, version))
-    return transformed
+    if isinstance(transformed, Failure):
+        return Success(_identity_document(uri, path, source, version))
+    return Success(transformed.unwrap())
 
 
 def _identity_document(
@@ -611,10 +617,6 @@ def _uri_path(uri: str) -> Path | None:
     if parsed.scheme != "file":
         return None
     return Path(unquote(parsed.path))
-
-
-def _protocol_error(message: str) -> ProxyError:
-    return ProxyError(ProxyErrorCode.PROTOCOL, message)
 
 
 def _stop_backend(backend: subprocess.Popen[bytes], backend_output: BinaryIO) -> None:

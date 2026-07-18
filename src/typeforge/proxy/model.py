@@ -67,9 +67,9 @@ class ProxyErrorCode(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class ProxyError:
-    code: ProxyErrorCode
+class ProxyError(Exception):
     message: str
+    code: ProxyErrorCode = ProxyErrorCode.PROTOCOL
 
 
 @dataclass(frozen=True, slots=True)

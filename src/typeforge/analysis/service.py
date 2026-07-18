@@ -2,7 +2,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from typeforge._result import Err, Ok, Result
+from returns.result import Failure, Result, Success
+
 from typeforge.analysis.model import (
     AnalysisRequest,
     AnalysisResult,
@@ -33,29 +34,27 @@ def analyze_path(
     adapter: CheckerAdapter,
     config_file: Path | None = None,
 ) -> Result[AnalysisResult, AnalysisError]:
-    source = read_source(path)
-    if isinstance(source, Err):
-        return source
-    transformed = transform_source(source.value, path, maximum_arity)
-    if isinstance(transformed, Err):
-        return Err(transform_error(transformed.error))
-    analyzed = adapter.analyze(
-        AnalysisRequest(
-            document=transformed.value,
-            project_root=project_root,
-            config_file=config_file,
+    return Result.do(
+        analyzed
+        for source in read_source(path)
+        for document in transform_source(source, path, maximum_arity).alt(
+            transform_error
         )
+        for analyzed in adapter.analyze(
+            AnalysisRequest(
+                document=document,
+                project_root=project_root,
+                config_file=config_file,
+            )
+        ).alt(lambda error: checker_error(path, error))
     )
-    if isinstance(analyzed, Err):
-        return Err(checker_error(path, analyzed.error))
-    return Ok(analyzed.value)
 
 
 def read_source(path: Path) -> Result[str, AnalysisError]:
     try:
-        return Ok(path.read_text(encoding="utf-8"))
+        return Success(path.read_text(encoding="utf-8"))
     except OSError as error:
-        return Err(AnalysisError(AnalysisErrorCode.READ, path, str(error)))
+        return Failure(AnalysisError(AnalysisErrorCode.READ, path, str(error)))
 
 
 def transform_error(error: OverlayError) -> AnalysisError:

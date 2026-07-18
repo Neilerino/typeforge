@@ -1,4 +1,5 @@
-from typeforge._result import Err, Ok
+from returns.result import Failure, Success
+
 from typeforge.compiler.evaluator import (
     All,
     Any,
@@ -44,14 +45,14 @@ def test_conditions_compose() -> None:
         )
     )
 
-    assert evaluate(expression) == Ok(True)
-    assert evaluate(If(expression, STR, BYTES)) == Ok(STR)
+    assert evaluate(expression) == Success(True)
+    assert evaluate(If(expression, STR, BYTES)) == Success(STR)
 
 
 def test_assignable_understands_union_sources_and_targets() -> None:
-    assert evaluate(Assignable(UnionType((INT, STR)), OBJECT)) == Ok(True)
-    assert evaluate(Assignable(INT, UnionType((STR, OBJECT)))) == Ok(True)
-    assert evaluate(Assignable(UnionType((INT, STR)), INT)) == Ok(False)
+    assert evaluate(Assignable(UnionType((INT, STR)), OBJECT)) == Success(True)
+    assert evaluate(Assignable(INT, UnionType((STR, OBJECT)))) == Success(True)
+    assert evaluate(Assignable(UnionType((INT, STR)), INT)) == Success(False)
 
 
 def test_map_matches_exact_types_and_uses_default() -> None:
@@ -61,11 +62,11 @@ def test_map_matches_exact_types_and_uses_default() -> None:
         DATETIME,
     )
 
-    assert evaluate(expression) == Ok(UnionType((STR, DATETIME)))
+    assert evaluate(expression) == Success(UnionType((STR, DATETIME)))
 
 
 def test_map_defaults_to_never() -> None:
-    assert evaluate(Map(BYTES, (Case(INT, STR),))) == Ok(NEVER)
+    assert evaluate(Map(BYTES, (Case(INT, STR),))) == Success(NEVER)
 
 
 def test_map_fields_transforms_typed_dict_values() -> None:
@@ -84,7 +85,7 @@ def test_map_fields_transforms_typed_dict_values() -> None:
 
     result = evaluate_map_fields(MapFields(source, transform, "JsonUser"))
 
-    assert result == Ok(
+    assert result == Success(
         TypedDictShape(
             "JsonUser",
             (
@@ -117,7 +118,7 @@ def test_map_fields_can_drop_and_change_field_modifiers() -> None:
 
     result = evaluate_map_fields(MapFields(source, transform))
 
-    assert result == Ok(
+    assert result == Success(
         TypedDictShape(
             "Credentials",
             (
@@ -132,14 +133,14 @@ def test_unbound_field_placeholders_are_typed_failures() -> None:
     key_result = evaluate(Key())
     value_result = evaluate(Value())
 
-    assert isinstance(key_result, Err)
-    assert key_result.error.code is EvaluationErrorCode.UNBOUND_KEY
-    assert isinstance(value_result, Err)
-    assert value_result.error.code is EvaluationErrorCode.UNBOUND_VALUE
+    assert isinstance(key_result, Failure)
+    assert key_result.failure().code is EvaluationErrorCode.UNBOUND_KEY
+    assert isinstance(value_result, Failure)
+    assert value_result.failure().code is EvaluationErrorCode.UNBOUND_VALUE
 
 
 def test_map_fields_rejects_non_record_input() -> None:
     result = evaluate_map_fields(MapFields(INT, Field(Key(), Value())))
 
-    assert isinstance(result, Err)
-    assert result.error.code is EvaluationErrorCode.EXPECTED_TYPED_DICT
+    assert isinstance(result, Failure)
+    assert result.failure().code is EvaluationErrorCode.EXPECTED_TYPED_DICT

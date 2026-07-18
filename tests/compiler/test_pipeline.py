@@ -1,14 +1,15 @@
 from pathlib import Path
 
-from typeforge._result import Err, Ok
+from returns.result import Failure, Success
+
 from typeforge.compiler.pipeline import UnsupportedPublicDeclaration, generate_module
 
 
 def test_source_is_compiled_to_portable_overloads() -> None:
     path = Path(__file__).parent / "fixtures" / "pipeline.py"
     generated = generate_module(path, maximum_arity=2)
-    assert isinstance(generated, Ok)
-    assert generated.value.content == (
+    assert isinstance(generated, Success)
+    assert generated.unwrap().content == (
         "from external import Parser\n"
         "from typing import overload\n\n"
         "def identity[T](value: T) -> T: ...\n\n"
@@ -36,11 +37,11 @@ def test_unpacked_collect_is_flattened_through_an_outer_union(tmp_path: Path) ->
 
     generated = generate_module(source, maximum_arity=2)
 
-    assert isinstance(generated, Ok)
+    assert isinstance(generated, Success)
     assert (
         "def query[E, Ts1, Ts2](components_1: type[Ts1], "
         "components_2: type[Ts2], /) -> tuple[E, Ts1, Ts2] | None: ..."
-        in generated.value.content
+        in generated.unwrap().content
     )
 
 
@@ -53,9 +54,9 @@ def test_unsupported_public_statements_fail_instead_of_disappearing(
         encoding="utf-8",
     )
     generated = generate_module(source, maximum_arity=2)
-    assert isinstance(generated, Err)
-    assert isinstance(generated.error, UnsupportedPublicDeclaration)
-    assert generated.error.line == 1
+    assert isinstance(generated, Failure)
+    assert isinstance(generated.failure(), UnsupportedPublicDeclaration)
+    assert generated.failure().line == 1
 
 
 def test_classes_preserve_decorators_bounds_fields_and_lowered_methods(
@@ -79,22 +80,24 @@ def test_classes_preserve_decorators_bounds_fields_and_lowered_methods(
 
     generated = generate_module(source, maximum_arity=2)
 
-    assert isinstance(generated, Ok)
-    assert "@dataclass(frozen=True)\nclass World[E: Entity]:" in generated.value.content
-    assert "    entities: set[E]" in generated.value.content
+    assert isinstance(generated, Success)
+    assert (
+        "@dataclass(frozen=True)\nclass World[E: Entity]:" in generated.unwrap().content
+    )
+    assert "    entities: set[E]" in generated.unwrap().content
     assert "    @classmethod\n    def empty(cls: Any) -> World[E]: ..." in (
-        generated.value.content
+        generated.unwrap().content
     )
     assert "    @overload\n    def bundle(self: Any) -> tuple[()]: ..." in (
-        generated.value.content
+        generated.unwrap().content
     )
     assert (
         "    def bundle[Ts1, Ts2](self: Any, values_1: Ts1, "
         "values_2: Ts2) -> tuple[Ts1, Ts2]: ..."
-    ) in generated.value.content
+    ) in generated.unwrap().content
     assert (
         "    def bundle[*Ts](self: Any, *values: *Ts) -> tuple[*Ts]: ..."
-    ) in generated.value.content
+    ) in generated.unwrap().content
 
 
 def test_unsupported_class_body_declarations_fail(tmp_path: Path) -> None:
@@ -106,8 +109,8 @@ def test_unsupported_class_body_declarations_fail(tmp_path: Path) -> None:
 
     generated = generate_module(source, maximum_arity=2)
 
-    assert isinstance(generated, Err)
-    assert isinstance(generated.error, UnsupportedPublicDeclaration)
+    assert isinstance(generated, Failure)
+    assert isinstance(generated.failure(), UnsupportedPublicDeclaration)
 
 
 def test_relative_imports_and_explicit_reexports_are_preserved(tmp_path: Path) -> None:
@@ -119,8 +122,8 @@ def test_relative_imports_and_explicit_reexports_are_preserved(tmp_path: Path) -
         encoding="utf-8",
     )
     generated = generate_module(source, maximum_arity=2)
-    assert isinstance(generated, Ok)
-    assert generated.value.content == (
+    assert isinstance(generated, Success)
+    assert generated.unwrap().content == (
         "from . import settings as settings\nfrom .models import User as User\n"
     )
 
@@ -131,8 +134,8 @@ def test_dynamic_exports_fail_instead_of_changing_the_public_api(
     source = tmp_path / "exports.py"
     source.write_text("__all__ = make_exports()\n", encoding="utf-8")
     generated = generate_module(source, maximum_arity=2)
-    assert isinstance(generated, Err)
-    assert isinstance(generated.error, UnsupportedPublicDeclaration)
+    assert isinstance(generated, Failure)
+    assert isinstance(generated.failure(), UnsupportedPublicDeclaration)
 
 
 def test_public_module_variables_are_preserved(tmp_path: Path) -> None:
@@ -149,8 +152,8 @@ def test_public_module_variables_are_preserved(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     generated = generate_module(source, maximum_arity=2)
-    assert isinstance(generated, Ok)
-    assert generated.value.content == (
+    assert isinstance(generated, Success)
+    assert generated.unwrap().content == (
         "from external import Service, make_service\n"
         "from typing import Any\n\n"
         "answer: int\n\n"
@@ -175,8 +178,8 @@ def test_runtime_main_guard_is_ignored(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     generated = generate_module(source, maximum_arity=2)
-    assert isinstance(generated, Ok)
-    assert generated.value.content == "def run() -> None: ...\n"
+    assert isinstance(generated, Success)
+    assert generated.unwrap().content == "def run() -> None: ...\n"
 
 
 def test_runtime_expression_statements_are_ignored(tmp_path: Path) -> None:
@@ -186,16 +189,16 @@ def test_runtime_expression_statements_are_ignored(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     generated = generate_module(source, maximum_arity=2)
-    assert isinstance(generated, Ok)
-    assert generated.value.content == "service: Service\n"
+    assert isinstance(generated, Success)
+    assert generated.unwrap().content == "service: Service\n"
 
 
 def test_assignment_expressions_that_bind_public_names_fail(tmp_path: Path) -> None:
     source = tmp_path / "application.py"
     source.write_text("(service := create_service())\n", encoding="utf-8")
     generated = generate_module(source, maximum_arity=2)
-    assert isinstance(generated, Err)
-    assert isinstance(generated.error, UnsupportedPublicDeclaration)
+    assert isinstance(generated, Failure)
+    assert isinstance(generated.failure(), UnsupportedPublicDeclaration)
 
 
 def test_reversed_runtime_main_guard_is_ignored(tmp_path: Path) -> None:
@@ -205,8 +208,8 @@ def test_reversed_runtime_main_guard_is_ignored(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     generated = generate_module(source, maximum_arity=2)
-    assert isinstance(generated, Ok)
-    assert generated.value.content == "\n"
+    assert isinstance(generated, Success)
+    assert generated.unwrap().content == "\n"
 
 
 def test_main_guard_else_branch_fails_instead_of_hiding_public_api(
@@ -221,6 +224,6 @@ def test_main_guard_else_branch_fails_instead_of_hiding_public_api(
         encoding="utf-8",
     )
     generated = generate_module(source, maximum_arity=2)
-    assert isinstance(generated, Err)
-    assert isinstance(generated.error, UnsupportedPublicDeclaration)
-    assert generated.error.line == 1
+    assert isinstance(generated, Failure)
+    assert isinstance(generated.failure(), UnsupportedPublicDeclaration)
+    assert generated.failure().line == 1

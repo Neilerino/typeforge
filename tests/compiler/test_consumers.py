@@ -4,8 +4,8 @@ from subprocess import run
 from sys import executable
 
 import pytest
+from returns.result import Success
 
-from typeforge._result import Ok
 from typeforge.compiler.pipeline import generate_module
 
 
@@ -145,8 +145,8 @@ def test_generated_stub_is_consumed_by_existing_checkers(
     consumer.write_text(CONSUMER_SOURCE, encoding="utf-8")
 
     generated = generate_module(library, maximum_arity=3)
-    assert isinstance(generated, Ok)
-    library.with_suffix(".pyi").write_text(generated.value.content, encoding="utf-8")
+    assert isinstance(generated, Success)
+    library.with_suffix(".pyi").write_text(generated.unwrap().content, encoding="utf-8")
 
     completed = run(
         (*checker.arguments, consumer.name),
@@ -204,8 +204,8 @@ def test_generated_class_stub_is_consumed_by_existing_checkers(
     consumer.write_text(CLASS_CONSUMER_SOURCE, encoding="utf-8")
 
     generated = generate_module(library, maximum_arity=3)
-    assert isinstance(generated, Ok)
-    library.with_suffix(".pyi").write_text(generated.value.content, encoding="utf-8")
+    assert isinstance(generated, Success)
+    library.with_suffix(".pyi").write_text(generated.unwrap().content, encoding="utf-8")
 
     completed = run(
         (*checker.arguments, consumer.name),
@@ -325,8 +325,8 @@ def test_generated_structural_map_stub_is_consumed_by_existing_checkers(
     assert authored.returncode == 0, authored.stdout + authored.stderr
 
     generated = generate_module(library, maximum_arity=2)
-    assert isinstance(generated, Ok)
-    library.with_suffix(".pyi").write_text(generated.value.content, encoding="utf-8")
+    assert isinstance(generated, Success)
+    library.with_suffix(".pyi").write_text(generated.unwrap().content, encoding="utf-8")
 
     completed = run(
         (*checker.arguments, consumer.name),
@@ -336,5 +336,5 @@ def test_generated_structural_map_stub_is_consumed_by_existing_checkers(
         text=True,
     )
     assert completed.returncode == 0, (
-        generated.value.content + completed.stdout + completed.stderr
+        generated.unwrap().content + completed.stdout + completed.stderr
     )

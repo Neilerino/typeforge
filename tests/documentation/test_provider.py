@@ -2,9 +2,9 @@ from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
+from returns.result import Failure, Result, Success
 
 from typeforge._documentation import Doc
-from typeforge._result import Err, Ok, Result
 from typeforge.analysis.model import SourcePosition, VirtualDocument
 from typeforge.documentation import (
     Documentation,
@@ -42,13 +42,13 @@ value: UserId
     path = tmp_path / "src" / "models.py"
     result = _documentation_at(source, path, tmp_path, "UserId", occurrence=3)
 
-    assert isinstance(result, Ok)
-    assert result.value is not None
-    assert result.value.markdown == (
+    assert isinstance(result, Success)
+    assert result.unwrap() is not None
+    assert result.unwrap().markdown == (
         "A stable user identifier.\n\n```python\nuser_id: UserId\n```"
     )
-    assert result.value.path == path
-    assert result.value.span.start.line == 3
+    assert result.unwrap().path == path
+    assert result.unwrap().span.start.line == 3
 
 
 def test_nested_doc_does_not_override_direct_alias_documentation(
@@ -66,9 +66,9 @@ value: Outer
 
     result = _documentation_at(source, path, tmp_path, "Outer", occurrence=3)
 
-    assert isinstance(result, Ok)
-    assert result.value is not None
-    assert result.value.markdown == "Outer documentation."
+    assert isinstance(result, Success)
+    assert result.unwrap() is not None
+    assert result.unwrap().markdown == "Outer documentation."
 
 
 def test_nested_annotated_metadata_is_flattened_in_order(
@@ -88,12 +88,12 @@ second: OuterWins
     inner = _documentation_at(source, path, tmp_path, "InnerWins", occurrence=2)
     outer = _documentation_at(source, path, tmp_path, "OuterWins", occurrence=2)
 
-    assert isinstance(inner, Ok)
-    assert inner.value is not None
-    assert inner.value.markdown == "Inner."
-    assert isinstance(outer, Ok)
-    assert outer.value is not None
-    assert outer.value.markdown == "Outer."
+    assert isinstance(inner, Success)
+    assert inner.unwrap() is not None
+    assert inner.unwrap().markdown == "Inner."
+    assert isinstance(outer, Success)
+    assert outer.unwrap() is not None
+    assert outer.unwrap().markdown == "Outer."
 
 
 def test_documentation_does_not_transfer_to_an_undocumented_alias(
@@ -110,7 +110,7 @@ value: Public
 
     result = _documentation_at(source, path, tmp_path, "Public", occurrence=2)
 
-    assert result == Ok(None)
+    assert result == Success(None)
 
 
 def test_alias_documentation_does_not_transfer_to_a_field_name(
@@ -128,10 +128,10 @@ identifier: Identifier
     field = _documentation_at(source, path, tmp_path, "identifier")
     annotation = _documentation_at(source, path, tmp_path, "Identifier", occurrence=2)
 
-    assert field == Ok(None)
-    assert isinstance(annotation, Ok)
-    assert annotation.value is not None
-    assert annotation.value.markdown == "An identifier."
+    assert field == Success(None)
+    assert isinstance(annotation, Success)
+    assert annotation.unwrap() is not None
+    assert annotation.unwrap().markdown == "An identifier."
 
 
 def test_resolves_cross_file_relative_imports_and_re_exports(
@@ -163,10 +163,10 @@ type Identifier = Annotated[int, Doc("An imported identifier.")]
         occurrence=2,
     )
 
-    assert isinstance(result, Ok)
-    assert result.value is not None
-    assert result.value.markdown == "An imported identifier."
-    assert result.value.path == types_path
+    assert isinstance(result, Success)
+    assert result.unwrap() is not None
+    assert result.unwrap().markdown == "An imported identifier."
+    assert result.unwrap().path == types_path
 
 
 def test_unsaved_workspace_document_takes_precedence_over_disk(
@@ -196,9 +196,9 @@ type Status = Annotated[str, Doc("Stale documentation.")]
         )
     )
 
-    assert isinstance(result, Ok)
-    assert result.value is not None
-    assert result.value.markdown == "Unsaved documentation."
+    assert isinstance(result, Success)
+    assert result.unwrap() is not None
+    assert result.unwrap().markdown == "Unsaved documentation."
 
 
 def test_configured_source_root_resolves_imported_documentation(
@@ -225,9 +225,9 @@ def test_configured_source_root_resolves_imported_documentation(
         )
     )
 
-    assert isinstance(result, Ok)
-    assert result.value is not None
-    assert result.value.markdown == "A configured-root code."
+    assert isinstance(result, Success)
+    assert result.unwrap() is not None
+    assert result.unwrap().markdown == "A configured-root code."
 
 
 def test_qualified_doc_and_annotated_names_are_supported(tmp_path: Path) -> None:
@@ -242,9 +242,9 @@ value: Amount
 
     result = _documentation_at(source, path, tmp_path, "Amount", occurrence=2)
 
-    assert isinstance(result, Ok)
-    assert result.value is not None
-    assert result.value.markdown == "An amount."
+    assert isinstance(result, Success)
+    assert result.unwrap() is not None
+    assert result.unwrap().markdown == "An amount."
 
 
 def test_qualified_type_reference_resolves_documentation(tmp_path: Path) -> None:
@@ -262,9 +262,9 @@ def test_qualified_type_reference_resolves_documentation(tmp_path: Path) -> None
 
     result = _documentation_at(source, consumer_path, tmp_path, "Code")
 
-    assert isinstance(result, Ok)
-    assert result.value is not None
-    assert result.value.markdown == "A qualified code."
+    assert isinstance(result, Success)
+    assert result.unwrap() is not None
+    assert result.unwrap().markdown == "A qualified code."
 
 
 def test_nested_qualified_type_reference_resolves_documentation(
@@ -284,9 +284,9 @@ def test_nested_qualified_type_reference_resolves_documentation(
 
     result = _documentation_at(source, consumer_path, tmp_path, "Code")
 
-    assert isinstance(result, Ok)
-    assert result.value is not None
-    assert result.value.markdown == "A nested qualified code."
+    assert isinstance(result, Success)
+    assert result.unwrap() is not None
+    assert result.unwrap().markdown == "A nested qualified code."
 
 
 def test_from_imported_module_reference_resolves_documentation(
@@ -311,9 +311,9 @@ def test_from_imported_module_reference_resolves_documentation(
         "Code",
     )
 
-    assert isinstance(result, Ok)
-    assert result.value is not None
-    assert result.value.markdown == "A module-qualified code."
+    assert isinstance(result, Success)
+    assert result.unwrap() is not None
+    assert result.unwrap().markdown == "A module-qualified code."
 
 
 def test_directly_annotated_fields_and_parameters_are_documented(
@@ -337,15 +337,15 @@ def render(months: Annotated[int, Doc("The number of months.")]) -> None:
     field = _documentation_at(source, path, tmp_path, "enabled")
     parameter = _documentation_at(source, path, tmp_path, "months")
 
-    assert isinstance(module_value, Ok)
-    assert module_value.value is not None
-    assert module_value.value.markdown == "A module value."
-    assert isinstance(field, Ok)
-    assert field.value is not None
-    assert field.value.markdown == "Whether the feature is enabled."
-    assert isinstance(parameter, Ok)
-    assert parameter.value is not None
-    assert parameter.value.markdown == "The number of months."
+    assert isinstance(module_value, Success)
+    assert module_value.unwrap() is not None
+    assert module_value.unwrap().markdown == "A module value."
+    assert isinstance(field, Success)
+    assert field.unwrap() is not None
+    assert field.unwrap().markdown == "Whether the feature is enabled."
+    assert isinstance(parameter, Success)
+    assert parameter.unwrap() is not None
+    assert parameter.unwrap().markdown == "The number of months."
 
 
 def test_documentation_markdown_is_cleaned_like_a_docstring(
@@ -373,9 +373,9 @@ value: Documented
 
     result = _documentation_at(source, path, tmp_path, "Documented", occurrence=3)
 
-    assert isinstance(result, Ok)
-    assert result.value is not None
-    assert result.value.markdown == (
+    assert isinstance(result, Success)
+    assert result.unwrap() is not None
+    assert result.unwrap().markdown == (
         "A documented string.\n\n```python\nvalue: Documented\n```"
     )
 
@@ -388,9 +388,9 @@ def test_typeforge_marker_documentation_resolves_from_installed_source(
 
     result = _documentation_at(source, path, tmp_path, "Each", occurrence=2)
 
-    assert isinstance(result, Ok)
-    assert result.value is not None
-    assert "heterogeneous variadic parameter" in result.value.markdown
+    assert isinstance(result, Success)
+    assert result.unwrap() is not None
+    assert "heterogeneous variadic parameter" in result.unwrap().markdown
 
 
 def test_invalid_doc_metadata_is_a_typed_failure(tmp_path: Path) -> None:
@@ -406,9 +406,9 @@ value: Label
 
     result = _documentation_at(source, path, tmp_path, "Label", occurrence=2)
 
-    assert isinstance(result, Err)
-    assert result.error.code is DocumentationErrorCode.INVALID_DOC
-    assert result.error.path == path
+    assert isinstance(result, Failure)
+    assert result.failure().code is DocumentationErrorCode.INVALID_DOC
+    assert result.failure().path == path
 
 
 def test_source_syntax_error_is_a_typed_failure(tmp_path: Path) -> None:
@@ -417,8 +417,8 @@ def test_source_syntax_error_is_a_typed_failure(tmp_path: Path) -> None:
 
     result = _documentation_at(source, path, tmp_path, "Broken")
 
-    assert isinstance(result, Err)
-    assert result.error.code is DocumentationErrorCode.SYNTAX
+    assert isinstance(result, Failure)
+    assert result.failure().code is DocumentationErrorCode.SYNTAX
 
 
 def test_non_type_symbol_has_no_documentation(tmp_path: Path) -> None:
@@ -427,7 +427,7 @@ def test_non_type_symbol_has_no_documentation(tmp_path: Path) -> None:
 
     result = _documentation_at(source, path, tmp_path, "value", occurrence=2)
 
-    assert result == Ok(None)
+    assert result == Success(None)
 
 
 def _documentation_at(

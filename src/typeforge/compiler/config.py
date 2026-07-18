@@ -5,7 +5,7 @@ from pathlib import Path
 from tomllib import TOMLDecodeError, loads
 from typing import cast
 
-from typeforge._result import Err, Ok, Result
+from returns.result import Result, Success, safe
 
 
 class AnalysisChecker(StrEnum):
@@ -28,123 +28,109 @@ class ProjectConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class ConfigError:
+class ConfigError(Exception):
     path: Path
     message: str
 
 
 def load_project_config(path: Path) -> Result[ProjectConfig, ConfigError]:
-    document_result = read_toml(path)
-    if isinstance(document_result, Err):
-        return document_result
-    tool = mapping_value(document_result.value.get("tool"))
+    return Result.do(
+        config
+        for document in read_toml(path)
+        for config in _load_config_document(path, document)
+    )
+
+
+def _load_config_document(
+    path: Path, document: Mapping[str, object]
+) -> Result[ProjectConfig, ConfigError]:
+    tool = mapping_value(document.get("tool"))
     typeforge = mapping_value(tool.get("typeforge")) if tool is not None else None
-    if typeforge is None:
-        return Ok(ProjectConfig())
-    return parse_project_config(path, typeforge)
+    return (
+        Success(ProjectConfig())
+        if typeforge is None
+        else parse_project_config(path, typeforge)
+    )
 
 
 def read_toml(path: Path) -> Result[Mapping[str, object], ConfigError]:
-    try:
-        document = loads(path.read_text())
-    except OSError as error:
-        return Err(ConfigError(path, str(error)))
-    except TOMLDecodeError as error:
-        return Err(ConfigError(path, str(error)))
-    return Ok(cast(Mapping[str, object], document))
+    return _read_toml(path).alt(lambda error: ConfigError(path, str(error)))
+
+
+@safe(exceptions=(OSError, TOMLDecodeError))
+def _read_toml(path: Path) -> Mapping[str, object]:
+    return cast(Mapping[str, object], loads(path.read_text()))
 
 
 def parse_project_config(
     path: Path,
     values: Mapping[str, object],
 ) -> Result[ProjectConfig, ConfigError]:
-    roots_result = source_roots_value(path, values.get("source-roots", ["src"]))
-    if isinstance(roots_result, Err):
-        return roots_result
-    output_result = path_value(
-        path,
-        "output-dir",
-        values.get("output-dir", ".typeforge/stubs"),
-    )
-    if isinstance(output_result, Err):
-        return output_result
-    arity_result = arity_value(path, values.get("max-arity", 5))
-    if isinstance(arity_result, Err):
-        return arity_result
-    analysis_result = analysis_value(path, values.get("analysis"))
-    if isinstance(analysis_result, Err):
-        return analysis_result
-    return Ok(
+    return Result.do(
         ProjectConfig(
-            source_roots=roots_result.value,
-            output_directory=output_result.value,
-            maximum_arity=arity_result.value,
-            analysis=analysis_result.value,
+            source_roots=roots,
+            output_directory=output,
+            maximum_arity=arity,
+            analysis=analysis,
         )
+        for roots in source_roots_value(path, values.get("source-roots", ["src"]))
+        for output in path_value(
+            path, "output-dir", values.get("output-dir", ".typeforge/stubs")
+        )
+        for arity in arity_value(path, values.get("max-arity", 5))
+        for analysis in analysis_value(path, values.get("analysis"))
     )
 
 
-def analysis_value(
-    path: Path,
-    value: object,
-) -> Result[AnalysisConfig, ConfigError]:
+@safe(exceptions=(ConfigError,))
+def analysis_value(path: Path, value: object) -> AnalysisConfig:
     if value is None:
-        return Ok(AnalysisConfig())
+        return AnalysisConfig()
     values = mapping_value(value)
     if values is None:
-        return Err(ConfigError(path, "analysis must be a table"))
+        raise ConfigError(path, "analysis must be a table")
     checker_value = values.get("checker", AnalysisChecker.MYPY.value)
     if not isinstance(checker_value, str):
-        return Err(ConfigError(path, "analysis.checker must be mypy or pyrefly"))
+        raise ConfigError(path, "analysis.checker must be mypy or pyrefly")
     try:
         checker = AnalysisChecker(checker_value)
     except ValueError:
-        return Err(ConfigError(path, "analysis.checker must be mypy or pyrefly"))
+        raise ConfigError(path, "analysis.checker must be mypy or pyrefly") from None
     command_value = values.get("command")
     if command_value is None:
-        return Ok(AnalysisConfig(checker))
+        return AnalysisConfig(checker)
     if not isinstance(command_value, list) or not command_value:
-        return Err(
-            ConfigError(path, "analysis.command must be a non-empty string array")
-        )
+        raise ConfigError(path, "analysis.command must be a non-empty string array")
     command_items = cast(list[object], command_value)
     if not all(isinstance(item, str) and item for item in command_items):
-        return Err(
-            ConfigError(path, "analysis.command must be a non-empty string array")
-        )
-    return Ok(AnalysisConfig(checker, tuple(cast(list[str], command_items))))
+        raise ConfigError(path, "analysis.command must be a non-empty string array")
+    return AnalysisConfig(checker, tuple(cast(list[str], command_items)))
 
 
-def source_roots_value(
-    path: Path,
-    value: object,
-) -> Result[tuple[Path, ...], ConfigError]:
+@safe(exceptions=(ConfigError,))
+def source_roots_value(path: Path, value: object) -> tuple[Path, ...]:
     if not isinstance(value, list) or not value:
-        return Err(ConfigError(path, "source-roots must be a non-empty string array"))
+        raise ConfigError(path, "source-roots must be a non-empty string array")
     roots: list[Path] = []
     for root in cast(list[object], value):
         if not isinstance(root, str) or not root:
-            return Err(
-                ConfigError(path, "source-roots must be a non-empty string array")
-            )
+            raise ConfigError(path, "source-roots must be a non-empty string array")
         roots.append(Path(root))
-    return Ok(tuple(roots))
+    return tuple(roots)
 
 
-def path_value(
-    path: Path,
-    name: str,
-    value: object,
-) -> Result[Path, ConfigError]:
+@safe(exceptions=(ConfigError,))
+def path_value(path: Path, name: str, value: object) -> Path:
     if not isinstance(value, str) or not value:
-        return Err(ConfigError(path, f"{name} must be a non-empty string"))
-    return Ok(Path(value))
+        raise ConfigError(path, f"{name} must be a non-empty string")
+    return Path(value)
 
 
-def arity_value(path: Path, value: object) -> Result[int, ConfigError]:
+@safe(exceptions=(ConfigError,))
+def arity_value(path: Path, value: object) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-        return Err(ConfigError(path, "max-arity must be a positive integer"))
-    return Ok(value)
+        raise ConfigError(path, "max-arity must be a positive integer")
+    return value
 
 
 def mapping_value(value: object) -> Mapping[str, object] | None:

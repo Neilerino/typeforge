@@ -7,8 +7,9 @@ from inspect import cleandoc
 from pathlib import Path
 from typing import Protocol
 
+from returns.result import Failure, Result, Success
+
 from typeforge._documentation import Doc
-from typeforge._result import Err, Ok, Result
 from typeforge.analysis.model import SourcePosition, SourceSpan, VirtualDocument
 
 __all__ = (
@@ -62,33 +63,31 @@ def static_documentation(
 ) -> Result[Documentation | None, DocumentationError]:
     context = _resolution_context(query)
     module = _module_for_document(context, query.document)
-    if isinstance(module, Err):
+    if isinstance(module, Failure):
         return module
-    declaration = _declaration_at(module.value, query.position)
+    module_value = module.unwrap()
+    declaration = _declaration_at(module_value, query.position)
     if declaration is not None:
-        direct = _direct_documentation(declaration.expression, module.value, context)
-        if isinstance(direct, Err):
+        direct = _direct_documentation(declaration.expression, module_value, context)
+        if isinstance(direct, Failure):
             return direct
-        if direct.value is not None:
-            return Ok(
-                Documentation(
-                    direct.value,
-                    module.value.path,
-                    declaration.span,
-                )
+        direct_value = direct.unwrap()
+        if direct_value is not None:
+            return Success(
+                Documentation(direct_value, module_value.path, declaration.span)
             )
-        return Ok(None)
+        return Success(None)
     reference = _reference_at(
         query.document.authored_text,
-        module.value.tree,
+        module_value.tree,
         query.position,
-        module.value,
+        module_value,
     )
     if reference is None:
-        return Ok(None)
+        return Success(None)
     if isinstance(reference, _ImportedSymbol):
         return _documentation_for_target(context, reference, ())
-    return _documentation_for(context, module.value, reference, ())
+    return _documentation_for(context, module_value, reference, ())
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,14 +157,12 @@ def _load_module(
     context: _ResolutionContext, name: str
 ) -> Result[_Module | None, DocumentationError]:
     source = _find_source(context, name)
-    if isinstance(source, Err):
+    if isinstance(source, Failure):
         return source
-    if source.value is None:
-        return Ok(None)
-    parsed = _parse_module(name, source.value.path, source.value.text)
-    if isinstance(parsed, Err):
-        return parsed
-    return Ok(parsed.value)
+    source_value = source.unwrap()
+    if source_value is None:
+        return Success(None)
+    return _parse_module(name, source_value.path, source_value.text)
 
 
 def _documentation_for(
@@ -176,19 +173,20 @@ def _documentation_for(
 ) -> Result[Documentation | None, DocumentationError]:
     key = (module.path, symbol)
     if key in visited:
-        return Ok(None)
+        return Success(None)
     next_visited = (*visited, key)
     definition = _definition(module.definitions, symbol)
     if definition is not None:
         direct = _direct_documentation(definition.expression, module, context)
-        if isinstance(direct, Err):
+        if isinstance(direct, Failure):
             return direct
-        if direct.value is not None:
-            return Ok(Documentation(direct.value, module.path, definition.span))
+        direct_value = direct.unwrap()
+        if direct_value is not None:
+            return Success(Documentation(direct_value, module.path, definition.span))
     imported = _lookup(module.imports, symbol)
     if imported is not None:
         return _documentation_for_target(context, imported, next_visited)
-    return Ok(None)
+    return Success(None)
 
 
 def _documentation_for_target(
@@ -197,11 +195,12 @@ def _documentation_for_target(
     visited: tuple[tuple[Path, str], ...],
 ) -> Result[Documentation | None, DocumentationError]:
     loaded = _load_module(context, target.module)
-    if isinstance(loaded, Err):
+    if isinstance(loaded, Failure):
         return loaded
-    if loaded.value is None:
-        return Ok(None)
-    return _documentation_for(context, loaded.value, target.name, visited)
+    loaded_module = loaded.unwrap()
+    if loaded_module is None:
+        return Success(None)
+    return _documentation_for(context, loaded_module, target.name, visited)
 
 
 def _is_special_form(
@@ -217,19 +216,19 @@ def _is_special_form(
     if target in visited:
         return False
     if target.name != name:
-        loaded = _load_module(context, target.module)
-        if isinstance(loaded, Err) or loaded.value is None:
+        loaded_module = _load_module(context, target.module).value_or(None)
+        if loaded_module is None:
             return False
-        definition = _definition(loaded.value.definitions, target.name)
+        definition = _definition(loaded_module.definitions, target.name)
         if definition is None:
-            imported = _lookup(loaded.value.imports, target.name)
+            imported = _lookup(loaded_module.imports, target.name)
             if imported is None:
                 return False
             return _target_is_special_form(context, imported, name, (*visited, target))
         return _is_special_form(
             context,
             definition.expression,
-            loaded.value,
+            loaded_module,
             name,
             (*visited, target),
         )
@@ -244,15 +243,15 @@ def _target_is_special_form(
 ) -> bool:
     if target.name == name and target.module in _SPECIAL_FORM_MODULES:
         return True
-    loaded = _load_module(context, target.module)
-    if isinstance(loaded, Err) or loaded.value is None:
+    loaded_module = _load_module(context, target.module).value_or(None)
+    if loaded_module is None:
         return False
-    definition = _definition(loaded.value.definitions, target.name)
+    definition = _definition(loaded_module.definitions, target.name)
     if definition is not None:
         return _is_special_form(
-            context, definition.expression, loaded.value, name, visited
+            context, definition.expression, loaded_module, name, visited
         )
-    imported = _lookup(loaded.value.imports, target.name)
+    imported = _lookup(loaded_module.imports, target.name)
     if imported is None or imported in visited:
         return False
     return _target_is_special_form(context, imported, name, (*visited, imported))
@@ -272,19 +271,19 @@ def _find_source(
         resolved = candidate.resolve()
         buffered = workspace.get(resolved)
         if buffered is not None:
-            return Ok(buffered)
+            return Success(buffered)
         try:
             if resolved.is_file():
-                return Ok(_Source(resolved, resolved.read_text(encoding="utf-8")))
+                return Success(_Source(resolved, resolved.read_text(encoding="utf-8")))
         except OSError as error:
-            return Err(
+            return Failure(
                 DocumentationError(
                     DocumentationErrorCode.READ,
                     resolved,
                     str(error),
                 )
             )
-    return Ok(None)
+    return Success(None)
 
 
 _SPECIAL_FORM_MODULES = frozenset(
@@ -298,7 +297,7 @@ def _parse_module(
     try:
         tree = ast.parse(source, filename=str(path), type_comments=True)
     except SyntaxError as error:
-        return Err(
+        return Failure(
             DocumentationError(
                 DocumentationErrorCode.SYNTAX,
                 path,
@@ -307,7 +306,7 @@ def _parse_module(
         )
     imports, module_imports = _imports(tree, name, path.name == "__init__.py")
     definitions, declarations = _definitions(tree, source)
-    return Ok(
+    return Success(
         _Module(
             name=name,
             path=path,
@@ -457,16 +456,16 @@ def _direct_documentation(
     if not isinstance(expression, ast.Subscript) or not _is_special_form(
         context, expression.value, module, "Annotated"
     ):
-        return Ok(None)
+        return Success(None)
     elements = (
         expression.slice.elts
         if isinstance(expression.slice, ast.Tuple)
         else [expression.slice]
     )
     nested = _direct_documentation(elements[0], module, context)
-    if isinstance(nested, Err):
+    if isinstance(nested, Failure):
         return nested
-    documentation = nested.value
+    documentation = nested.unwrap()
     for metadata in elements[1:]:
         if not isinstance(metadata, ast.Call) or not _is_special_form(
             context, metadata.func, module, "Doc"
@@ -474,7 +473,7 @@ def _direct_documentation(
             continue
         value = _doc_argument(metadata)
         if value is None:
-            return Err(
+            return Failure(
                 DocumentationError(
                     DocumentationErrorCode.INVALID_DOC,
                     module.path,
@@ -482,7 +481,7 @@ def _direct_documentation(
                 )
             )
         documentation = value
-    return Ok(documentation)
+    return Success(documentation)
 
 
 def _doc_argument(call: ast.Call) -> str | None:

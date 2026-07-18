@@ -2,7 +2,8 @@ import ast
 from dataclasses import dataclass
 from pathlib import Path
 
-from typeforge._result import Err, Ok, Result
+from returns.result import Failure, Result, Success
+
 from typeforge.compiler.model import (
     AppliedTypeExpression,
     ClassDeclaration,
@@ -50,37 +51,10 @@ class _ImportBindings:
 
 
 def parse_module(path: Path) -> Result[SourceModule, FrontendError]:
-    source_result = _read_source(path)
-    if isinstance(source_result, Err):
-        return Err(source_result.error)
-    source = source_result.value
-    try:
-        tree = ast.parse(source, filename=str(path), type_comments=True)
-    except SyntaxError as error:
-        return Err(_syntax_error(path, error))
-    bindings = _collect_import_bindings(tree)
-    scoped_statements = _scoped_statements(tree)
-    functions = tuple(
-        _parse_function(path, source, node, scope, bindings)
-        for node, scope in scoped_statements
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-    )
-    aliases = tuple(
-        _parse_type_alias(path, source, node, scope, bindings)
-        for node, scope in scoped_statements
-        if isinstance(node, ast.TypeAlias)
-    )
-    typed_dicts = _parse_typed_dicts(path, source, scoped_statements, bindings)
-    classes = _parse_classes(path, source, tree, bindings, typed_dicts)
-    return Ok(
-        SourceModule(
-            path=path,
-            functions=functions,
-            aliases=aliases,
-            typed_dicts=typed_dicts,
-            classes=classes,
-        )
-    )
+    source = _read_source(path)
+    if isinstance(source, Failure):
+        return source
+    return parse_source(source.unwrap(), path)
 
 
 def parse_source(
@@ -89,7 +63,7 @@ def parse_source(
     try:
         tree = ast.parse(source, filename=str(path), type_comments=True)
     except SyntaxError as error:
-        return Err(_syntax_error(path, error))
+        return Failure(_syntax_error(path, error))
     bindings = _collect_import_bindings(tree)
     scoped_statements = _scoped_statements(tree)
     functions = tuple(
@@ -104,7 +78,7 @@ def parse_source(
     )
     typed_dicts = _parse_typed_dicts(path, source, scoped_statements, bindings)
     classes = _parse_classes(path, source, tree, bindings, typed_dicts)
-    return Ok(
+    return Success(
         SourceModule(
             path=path,
             functions=functions,
@@ -117,9 +91,9 @@ def parse_source(
 
 def _read_source(path: Path) -> Result[str, SourceReadError]:
     try:
-        return Ok(path.read_text(encoding="utf-8"))
+        return Success(path.read_text(encoding="utf-8"))
     except OSError as error:
-        return Err(SourceReadError(path=path, message=str(error)))
+        return Failure(SourceReadError(path=path, message=str(error)))
 
 
 def _syntax_error(path: Path, error: SyntaxError) -> SourceSyntaxError:

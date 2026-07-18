@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from typeforge._result import Err, Ok, Result
+from returns.result import Failure, Result, Success
+
 from typeforge.analysis.model import (
     MappingKind,
     ReturnCheckProvenance,
@@ -106,7 +107,7 @@ def transform_source(
     version: int = 0,
 ) -> Result[VirtualDocument, OverlayError]:
     if maximum_arity < 0:
-        return Err(
+        return Failure(
             OverlayError(
                 OverlayErrorCode.INVALID_ARITY,
                 path,
@@ -114,20 +115,22 @@ def transform_source(
             )
         )
     if _START_MARKER in source:
-        return Ok(_identity_document(source, path, version))
+        return Success(_identity_document(source, path, version))
     parsed = parse_source(source, path)
-    if isinstance(parsed, Err):
-        return Err(_frontend_error(parsed.error))
-    aliases = collect_semantic_relationship_aliases(parsed.value.aliases)
-    if isinstance(aliases, Err):
-        return Err(_adaptation_error(parsed.value.path, aliases.error))
-    generated = _generate_overloads(source, parsed.value, maximum_arity, aliases.value)
-    if isinstance(generated, Err):
+    if isinstance(parsed, Failure):
+        return Failure(_frontend_error(parsed.failure()))
+    module = parsed.unwrap()
+    aliases = collect_semantic_relationship_aliases(module.aliases)
+    if isinstance(aliases, Failure):
+        return Failure(_adaptation_error(module.path, aliases.failure()))
+    relationships = aliases.unwrap()
+    generated = _generate_overloads(source, module, maximum_arity, relationships)
+    if isinstance(generated, Failure):
         return generated
     try:
         tree = ast.parse(source, filename=str(path), type_comments=True)
     except SyntaxError as error:
-        return Err(OverlayError(OverlayErrorCode.SYNTAX, path, error.msg))
+        return Failure(OverlayError(OverlayErrorCode.SYNTAX, path, error.msg))
     nodes = _function_nodes(tree)
     blocks = tuple(
         _overload_insertion(
@@ -135,34 +138,34 @@ def transform_source(
             item,
             nodes[(item.qualified_name, item.source_span.start.line + 1)],
         )
-        for item in generated.value
+        for item in generated.unwrap()
         if (item.qualified_name, item.source_span.start.line + 1) in nodes
     )
-    alias_edits = _alias_edits(source, parsed.value, aliases.value)
-    if isinstance(alias_edits, Err):
+    alias_edits = _alias_edits(source, module, relationships)
+    if isinstance(alias_edits, Failure):
         return alias_edits
     verification = plan_implementation_verification(
         source,
         path,
-        parsed.value,
+        module,
         tree,
-        aliases.value,
+        relationships,
     )
-    if isinstance(verification, Err):
-        return Err(_adaptation_error(parsed.value.path, verification.error))
-    verification_edits = _verification_edits(verification.value)
-    if isinstance(verification_edits, Err):
-        return Err(
+    if isinstance(verification, Failure):
+        return Failure(_adaptation_error(module.path, verification.failure()))
+    verification_edits = _verification_edits(verification.unwrap())
+    if isinstance(verification_edits, Failure):
+        return Failure(
             OverlayError(
                 OverlayErrorCode.EMISSION,
                 path,
-                verification_edits.error,
+                verification_edits.failure(),
             )
         )
-    content = tuple(item.text for item in generated.value) + tuple(
-        item.text for item in (*alias_edits.value, *verification_edits.value)
+    content = tuple(item.text for item in generated.unwrap()) + tuple(
+        item.text for item in (*alias_edits.unwrap(), *verification_edits.unwrap())
     )
-    import_text = _typing_import(content, has_overloads=bool(generated.value))
+    import_text = _typing_import(content, has_overloads=bool(generated.unwrap()))
     import_offset = _import_offset(source, tree)
     import_anchor = _offset_span(path, source, import_offset, import_offset)
     import_edit = (
@@ -172,14 +175,14 @@ def transform_source(
     )
     edits = (
         *import_edit,
-        *alias_edits.value,
+        *alias_edits.unwrap(),
         *blocks,
-        *verification_edits.value,
+        *verification_edits.unwrap(),
     )
     if not edits:
-        return Ok(_identity_document(source, path, version))
+        return Success(_identity_document(source, path, version))
     generated_text, mappings = _apply_edits(source, path, edits)
-    return Ok(
+    return Success(
         VirtualDocument(
             uri=path.resolve().as_uri() if path != Path("<memory>") else str(path),
             path=path,
@@ -222,16 +225,16 @@ def _generate_overloads(
             else ()
         )
         adapted = adapt_function(function, enclosing)
-        if isinstance(adapted, Err):
-            return Err(_adaptation_error(module.path, adapted.error))
-        expanded = expand_function_map_aliases(adapted.value, aliases)
+        if isinstance(adapted, Failure):
+            return Failure(_adaptation_error(module.path, adapted.failure()))
+        expanded = expand_function_map_aliases(adapted.unwrap(), aliases)
         lowered = lower_variadic_module(
             StubModule(module.path.stem, (expanded,)),
             ArityFrontier(0, maximum_arity),
         )
-        if isinstance(lowered, Err):
-            return Err(_lowering_error(module.path, lowered.error))
-        declaration = lowered.value.declarations[0]
+        if isinstance(lowered, Failure):
+            return Failure(_lowering_error(module.path, lowered.failure()))
+        declaration = lowered.unwrap().declarations[0]
         if not isinstance(declaration, OverloadDeclaration):
             continue
         declaration = _bound_structural_type_parameters(declaration, generic_classes)
@@ -243,18 +246,18 @@ def _generate_overloads(
         if _declaration_contains_map_value(declaration):
             continue
         emitted = emit_stub_module(StubModule(module.path.stem, (declaration,)))
-        if isinstance(emitted, Err):
-            return Err(
-                OverlayError(OverlayErrorCode.EMISSION, module.path, emitted.error)
+        if isinstance(emitted, Failure):
+            return Failure(
+                OverlayError(OverlayErrorCode.EMISSION, module.path, emitted.failure())
             )
         generated.append(
             _GeneratedOverloads(
                 function.qualified_name,
                 _source_span(source, function),
-                emitted.value.rstrip(),
+                emitted.unwrap().rstrip(),
             )
         )
-    return Ok(tuple(generated))
+    return Success(tuple(generated))
 
 
 def _declaration_contains_map_value(declaration: OverloadDeclaration) -> bool:
@@ -461,7 +464,7 @@ def _alias_edits(
             None,
         )
         adapted = (
-            Ok(
+            Success(
                 TypeAliasDeclaration(
                     name=alias.name,
                     value=_relationship_fallback(relationship.relationship),
@@ -473,12 +476,12 @@ def _alias_edits(
             if relationship is not None
             else adapt_alias(alias)
         )
-        if isinstance(adapted, Err):
-            return Err(_adaptation_error(module.path, adapted.error))
-        emitted = emit_stub_module(StubModule(module.path.stem, (adapted.value,)))
-        if isinstance(emitted, Err):
-            return Err(
-                OverlayError(OverlayErrorCode.EMISSION, module.path, emitted.error)
+        if isinstance(adapted, Failure):
+            return Failure(_adaptation_error(module.path, adapted.failure()))
+        emitted = emit_stub_module(StubModule(module.path.stem, (adapted.unwrap(),)))
+        if isinstance(emitted, Failure):
+            return Failure(
+                OverlayError(OverlayErrorCode.EMISSION, module.path, emitted.failure())
             )
         start = (
             _line_offset(source, alias.span.start.line - 1) + alias.span.start.column
@@ -488,11 +491,11 @@ def _alias_edits(
             _Edit(
                 start=start,
                 end=end,
-                text=emitted.value.rstrip(),
+                text=emitted.unwrap().rstrip(),
                 authored_span=_offset_span(module.path, source, start, end),
             )
         )
-    return Ok(tuple(edits))
+    return Success(tuple(edits))
 
 
 def _relationship_fallback(expression: MapType | IfType) -> TypeExpression:
@@ -537,7 +540,7 @@ def _verification_edits(
         expected_types: list[str] = []
         for expected in obligation.expected_types:
             emitted = emit_type_expression(expected)
-            if isinstance(emitted, Err):
+            if isinstance(emitted, Failure):
                 assignments = []
                 break
             while True:
@@ -547,9 +550,9 @@ def _verification_edits(
                     reserved.add(name)
                     break
             assignments.append(
-                f"{name}: {emitted.value} = {obligation.expression_text}"
+                f"{name}: {emitted.unwrap()} = {obligation.expression_text}"
             )
-            expected_types.append(emitted.value)
+            expected_types.append(emitted.unwrap())
         if not assignments:
             continue
         text = _render_verification_assignments(assignments, obligation)
@@ -568,7 +571,7 @@ def _verification_edits(
                 ),
             )
         )
-    return Ok(tuple(edits))
+    return Success(tuple(edits))
 
 
 def _render_verification_assignments(

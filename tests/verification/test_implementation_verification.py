@@ -6,8 +6,8 @@ from pathlib import Path
 from textwrap import dedent
 
 import pytest
+from returns.result import Success
 
-from typeforge._result import Ok
 from typeforge.adapters.mypy import MypyAdapter
 from typeforge.adapters.pyrefly import PyreflyAdapter
 from typeforge.analysis import MappingKind
@@ -58,9 +58,9 @@ class Values:
 def _transform(body: str, path: Path = Path("verification.py")) -> str:
     source = f"{_PRELUDE}\n\n{dedent(body).strip()}\n"
     transformed = transform_source(source, path)
-    assert isinstance(transformed, Ok)
-    ast.parse(transformed.value.generated_text)
-    return transformed.value.generated_text
+    assert isinstance(transformed, Success)
+    ast.parse(transformed.unwrap().generated_text)
+    return transformed.unwrap().generated_text
 
 
 def _assert_return_check(generated: str, check: ReturnCheck) -> None:
@@ -727,8 +727,8 @@ def test_generated_return_check_maps_back_to_the_authored_expression(
     source = f"{_PRELUDE}\n\n{dedent(body).strip()}\n"
     path = tmp_path / "mapping.py"
     transformed = transform_source(source, path)
-    assert isinstance(transformed, Ok)
-    document = transformed.value
+    assert isinstance(transformed, Success)
+    document = transformed.unwrap()
     generated_expression = document.generated_text.index("= flag()") + 2
     authored_expression = source.index("flag()", source.index("def convert"))
 
@@ -785,24 +785,24 @@ def test_pyrefly_checks_nonliteral_and_awaited_expressions_in_memory(
     path = tmp_path / "checker.py"
     path.write_text(source, encoding="utf-8")
     transformed = transform_source(source, path)
-    assert isinstance(transformed, Ok)
+    assert isinstance(transformed, Success)
     pyrefly = Path(sys.executable).with_name("pyrefly")
 
     analyzed = PyreflyAdapter(
         command=(str(pyrefly), "lsp"), timeout_seconds=30.0
-    ).analyze(AnalysisRequest(document=transformed.value, project_root=tmp_path))
+    ).analyze(AnalysisRequest(document=transformed.unwrap(), project_root=tmp_path))
 
-    assert isinstance(analyzed, Ok)
+    assert isinstance(analyzed, Success)
     invalid_name = source.index("result", source.index("return result"))
     invalid_await = source.index("await async_flag()")
     diagnostic_offsets = {
-        diagnostic.span.start.offset for diagnostic in analyzed.value.diagnostics
+        diagnostic.span.start.offset for diagnostic in analyzed.unwrap().diagnostics
     }
     assert invalid_name in diagnostic_offsets
     assert invalid_await in diagnostic_offsets
     return_diagnostics = tuple(
         diagnostic
-        for diagnostic in analyzed.value.diagnostics
+        for diagnostic in analyzed.unwrap().diagnostics
         if diagnostic.provenance is not None
     )
     assert len(return_diagnostics) == 2
@@ -813,7 +813,7 @@ def test_pyrefly_checks_nonliteral_and_awaited_expressions_in_memory(
     assert not any(
         source.index("text()", source.index("def valid_call"))
         == diagnostic.span.start.offset
-        for diagnostic in analyzed.value.diagnostics
+        for diagnostic in analyzed.unwrap().diagnostics
     )
 
 
@@ -836,15 +836,15 @@ def test_mypy_checks_return_obligations_in_memory(tmp_path: Path) -> None:
     path = tmp_path / "checker.py"
     path.write_text(source, encoding="utf-8")
     transformed = transform_source(source, path)
-    assert isinstance(transformed, Ok)
+    assert isinstance(transformed, Success)
 
     analyzed = MypyAdapter().analyze(
-        AnalysisRequest(document=transformed.value, project_root=tmp_path)
+        AnalysisRequest(document=transformed.unwrap(), project_root=tmp_path)
     )
 
-    assert isinstance(analyzed, Ok)
+    assert isinstance(analyzed, Success)
     return_diagnostics = tuple(
-        item for item in analyzed.value.diagnostics if item.provenance is not None
+        item for item in analyzed.unwrap().diagnostics if item.provenance is not None
     )
     assert len(return_diagnostics) == 1
     assert return_diagnostics[0].span.start.offset == source.index(
@@ -878,16 +878,16 @@ def test_original_map_implementation_example_reports_only_invalid_branches(
     path = tmp_path / "original.py"
     path.write_text(source, encoding="utf-8")
     transformed = transform_source(source, path)
-    assert isinstance(transformed, Ok)
+    assert isinstance(transformed, Success)
     pyrefly = Path(sys.executable).with_name("pyrefly")
 
     analyzed = PyreflyAdapter(
         command=(str(pyrefly), "lsp"), timeout_seconds=30.0
-    ).analyze(AnalysisRequest(document=transformed.value, project_root=tmp_path))
+    ).analyze(AnalysisRequest(document=transformed.unwrap(), project_root=tmp_path))
 
-    assert isinstance(analyzed, Ok)
+    assert isinstance(analyzed, Success)
     return_diagnostics = tuple(
-        item for item in analyzed.value.diagnostics if item.provenance is not None
+        item for item in analyzed.unwrap().diagnostics if item.provenance is not None
     )
     assert len(return_diagnostics) == 2
     assert {

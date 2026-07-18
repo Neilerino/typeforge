@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from typeforge._result import Err, Ok, Result
+from returns.result import Failure, Result, Success
+
 from typeforge.adapters.mypy import MypyAdapter, MypyConfiguration
 from typeforge.adapters.pyrefly import PYREFLY_COMMAND, PyreflyAdapter
 from typeforge.analysis.model import CheckerAdapter, DiagnosticSeverity
@@ -83,17 +84,17 @@ class WriteState(StrEnum):
 def main(argv: Sequence[str] | None = None) -> int:
     invocation = parse_invocation(argv)
     project_result = load_project(invocation.config_path)
-    if isinstance(project_result, Err):
-        _print_error(project_result.error)
+    if isinstance(project_result, Failure):
+        _print_error(project_result.failure())
         return 1
-    project = project_result.value
+    project = project_result.unwrap()
 
     if isinstance(invocation.command, ShowCommand):
         generated = _generate(project, invocation.command.path)
-        if isinstance(generated, Err):
-            _print_error(generated.error)
+        if isinstance(generated, Failure):
+            _print_error(generated.failure())
             return 1
-        sys.stdout.write(generated.value.content)
+        sys.stdout.write(generated.unwrap().content)
         return 0
 
     if isinstance(invocation.command, CheckCommand):
@@ -103,21 +104,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _lsp(project, invocation.command)
 
     sources_result = resolve_sources(project, invocation.command.paths)
-    if isinstance(sources_result, Err):
-        _print_error(sources_result.error)
+    if isinstance(sources_result, Failure):
+        _print_error(sources_result.failure())
         return 1
-    for source in sources_result.value:
+    for source in sources_result.unwrap():
         generated = _generate(project, source)
-        if isinstance(generated, Err):
-            _print_error(generated.error)
+        if isinstance(generated, Failure):
+            _print_error(generated.failure())
             return 1
         output_result = output_path(project, source)
-        if isinstance(output_result, Err):
-            _print_error(output_result.error)
+        if isinstance(output_result, Failure):
+            _print_error(output_result.failure())
             return 1
-        written = write_generated(output_result.value, generated.value.content)
-        if isinstance(written, Err):
-            _print_error(written.error)
+        written = write_generated(output_result.unwrap(), generated.unwrap().content)
+        if isinstance(written, Failure):
+            _print_error(written.failure())
             return 1
     return 0
 
@@ -160,19 +161,18 @@ def parse_invocation(argv: Sequence[str] | None = None) -> Invocation:
 
 
 def load_project(config_path: Path) -> Result[Project, CliError]:
-    loaded = load_project_config(config_path)
-    if isinstance(loaded, Err):
-        return Err(
-            CliError(CliErrorCode.CONFIG, loaded.error.message, loaded.error.path)
-        )
-    return Ok(_resolve_project(config_path.parent, loaded.value))
+    return (
+        load_project_config(config_path)
+        .alt(lambda error: CliError(CliErrorCode.CONFIG, error.message, error.path))
+        .map(lambda config: _resolve_project(config_path.parent, config))
+    )
 
 
 def resolve_sources(
     project: Project, requested: tuple[Path, ...]
 ) -> Result[tuple[Path, ...], CliError]:
     if not requested:
-        return Ok(discover_sources(project))
+        return Success(discover_sources(project))
     sources: set[Path] = set()
     for requested_path in requested:
         path = _absolute_from(project.root, requested_path)
@@ -181,7 +181,7 @@ def resolve_sources(
         elif path.is_file() and path.suffix == ".py":
             sources.add(path)
         else:
-            return Err(
+            return Failure(
                 CliError(
                     CliErrorCode.SOURCE,
                     "source must be a Python file or directory",
@@ -190,14 +190,14 @@ def resolve_sources(
             )
     for source in sources:
         if _containing_root(project, source) is None:
-            return Err(
+            return Failure(
                 CliError(
                     CliErrorCode.SOURCE,
                     "source is outside configured source roots",
                     source,
                 )
             )
-    return Ok(tuple(sorted(sources)))
+    return Success(tuple(sorted(sources)))
 
 
 def discover_sources(project: Project) -> tuple[Path, ...]:
@@ -212,7 +212,7 @@ def discover_sources(project: Project) -> tuple[Path, ...]:
 def output_path(project: Project, source: Path) -> Result[Path, CliError]:
     root = _containing_root(project, source)
     if root is None:
-        return Err(
+        return Failure(
             CliError(
                 CliErrorCode.SOURCE,
                 "source is outside configured source roots",
@@ -220,13 +220,13 @@ def output_path(project: Project, source: Path) -> Result[Path, CliError]:
             )
         )
     relative = source.relative_to(root).with_suffix(".pyi")
-    return Ok(project.output_directory / relative)
+    return Success(project.output_directory / relative)
 
 
 def write_generated(path: Path, content: str) -> Result[WriteState, CliError]:
     try:
         if path.exists() and path.read_text(encoding="utf-8") == content:
-            return Ok(WriteState.UNCHANGED)
+            return Success(WriteState.UNCHANGED)
         path.parent.mkdir(parents=True, exist_ok=True)
         descriptor, temporary_name = tempfile.mkstemp(
             dir=path.parent, prefix=".typeforge-"
@@ -239,16 +239,15 @@ def write_generated(path: Path, content: str) -> Result[WriteState, CliError]:
         finally:
             temporary_path.unlink(missing_ok=True)
     except OSError as error:
-        return Err(CliError(CliErrorCode.WRITE, str(error), path))
-    return Ok(WriteState.WRITTEN)
+        return Failure(CliError(CliErrorCode.WRITE, str(error), path))
+    return Success(WriteState.WRITTEN)
 
 
 def _generate(project: Project, path: Path) -> Result[GeneratedModule, CliError]:
     source = _absolute_from(project.root, path)
-    generated = generate_module(source, project.maximum_arity)
-    if isinstance(generated, Err):
-        return Err(CliError(CliErrorCode.GENERATION, generated.error.message, source))
-    return Ok(generated.value)
+    return generate_module(source, project.maximum_arity).alt(
+        lambda error: CliError(CliErrorCode.GENERATION, error.message, source)
+    )
 
 
 def _resolve_project(root: Path, config: ProjectConfig) -> Project:
@@ -264,12 +263,12 @@ def _resolve_project(root: Path, config: ProjectConfig) -> Project:
 
 def _check(project: Project, config_path: Path, command: CheckCommand) -> int:
     sources = resolve_sources(project, command.paths)
-    if isinstance(sources, Err):
-        _print_error(sources.error)
+    if isinstance(sources, Failure):
+        _print_error(sources.failure())
         return 1
     adapter = checker_adapter(project.analysis, command.checker)
     has_errors = False
-    for source in sources.value:
+    for source in sources.unwrap():
         analyzed = analyze_path(
             source,
             project.root,
@@ -277,18 +276,19 @@ def _check(project: Project, config_path: Path, command: CheckCommand) -> int:
             adapter,
             config_path,
         )
-        if isinstance(analyzed, Err):
+        if isinstance(analyzed, Failure):
+            error = analyzed.failure()
             _print_error(
                 CliError(
                     CliErrorCode.GENERATION,
-                    analyzed.error.message,
-                    analyzed.error.path,
+                    error.message,
+                    error.path,
                 )
             )
-            if analyzed.error.detail:
-                print(analyzed.error.detail, file=sys.stderr)
+            if error.detail:
+                print(error.detail, file=sys.stderr)
             return 1
-        for diagnostic in analyzed.value.diagnostics:
+        for diagnostic in analyzed.unwrap().diagnostics:
             position = diagnostic.span.start
             code = f" [{diagnostic.code}]" if diagnostic.code else ""
             print(
@@ -333,9 +333,10 @@ def _lsp(project: Project, command: LspCommand) -> int:
             maximum_arity=project.maximum_arity,
         ),
     )
-    if isinstance(result, Err):
+    if isinstance(result, Failure):
+        error = result.failure()
         print(
-            f"typeforge: {result.error.code.value}: {result.error.message}",
+            f"typeforge: {error.code.value}: {error.message}",
             file=sys.stderr,
         )
         return 1

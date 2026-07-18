@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from typeforge._result import Err, Ok
+from returns.result import Failure, Success
+
 from typeforge.compiler.frontend import (
     SourceReadError,
     SourceSyntaxError,
@@ -26,8 +27,8 @@ def test_parse_module_finds_enriched_functions_and_preserves_spans() -> None:
     path = FIXTURES / "enriched.py"
     result = parse_module(path)
 
-    assert isinstance(result, Ok)
-    module = result.value
+    assert isinstance(result, Success)
+    module = result.unwrap()
     assert tuple(function.qualified_name for function in module.functions) == (
         ("combine",),
         ("Factory", "create"),
@@ -61,8 +62,8 @@ def test_parse_module_finds_enriched_functions_and_preserves_spans() -> None:
 def test_module_aliases_resolve_to_markers() -> None:
     result = parse_module(FIXTURES / "enriched.py")
 
-    assert isinstance(result, Ok)
-    create = result.value.functions[1]
+    assert isinstance(result, Success)
+    create = result.unwrap().functions[1]
     values = create.parameters[1].annotation
     assert isinstance(values, MarkerTypeExpression)
     assert values.marker is MarkerKind.EACH
@@ -75,8 +76,8 @@ def test_module_aliases_resolve_to_markers() -> None:
 def test_unimported_marker_names_are_not_treated_as_typeforge_markers() -> None:
     result = parse_source("def f[T](value: Each[T]) -> Collect[T]: ...\n")
 
-    assert isinstance(result, Ok)
-    assert enriched_functions(result.value) == ()
+    assert isinstance(result, Success)
+    assert enriched_functions(result.unwrap()) == ()
 
 
 def test_parses_markers_inside_unpacked_tuple_union() -> None:
@@ -85,8 +86,8 @@ def test_parses_markers_inside_unpacked_tuple_union() -> None:
         "def query[E, *Ts]() -> tuple[E, *Collect[Ts]] | None: ...\n"
     )
 
-    assert isinstance(result, Ok)
-    returns = result.value.functions[0].returns
+    assert isinstance(result, Success)
+    returns = result.unwrap().functions[0].returns
     assert isinstance(returns, UnionTypeExpression)
     tuple_type = returns.members[0]
     assert isinstance(tuple_type, AppliedTypeExpression)
@@ -100,18 +101,18 @@ def test_parses_markers_inside_unpacked_tuple_union() -> None:
 def test_syntax_failures_are_typed_and_located() -> None:
     result = parse_source("def broken(: ...\n")
 
-    assert isinstance(result, Err)
-    assert isinstance(result.error, SourceSyntaxError)
-    assert result.error.span.start.line == 1
+    assert isinstance(result, Failure)
+    assert isinstance(result.failure(), SourceSyntaxError)
+    assert result.failure().span.start.line == 1
 
 
 def test_read_failures_are_typed() -> None:
     path = FIXTURES / "missing.py"
     result = parse_module(path)
 
-    assert isinstance(result, Err)
-    assert isinstance(result.error, SourceReadError)
-    assert result.error.path == path
+    assert isinstance(result, Failure)
+    assert isinstance(result.failure(), SourceReadError)
+    assert result.failure().path == path
 
 
 def test_annotated_metadata_is_transparent_to_the_compiler_frontend() -> None:
@@ -134,8 +135,8 @@ def test_annotated_metadata_is_transparent_to_the_compiler_frontend() -> None:
     for source in sources:
         result = parse_source(source)
 
-        assert isinstance(result, Ok)
-        alias = result.value.aliases[0]
+        assert isinstance(result, Success)
+        alias = result.unwrap().aliases[0]
         assert isinstance(alias.value, MarkerTypeExpression)
         assert alias.value.marker is MarkerKind.MAP_FIELDS
 
@@ -148,8 +149,8 @@ def test_annotated_typed_dict_field_preserves_field_qualifiers() -> None:
         '    value: Annotated[ReadOnly[NotRequired[int]], Doc("A value.")]\n'
     )
 
-    assert isinstance(result, Ok)
-    field = result.value.typed_dicts[0].fields[0]
+    assert isinstance(result, Success)
+    field = result.unwrap().typed_dicts[0].fields[0]
     assert not field.required
     assert field.readonly
     assert field.annotation.source == "int"
@@ -158,8 +159,8 @@ def test_annotated_typed_dict_field_preserves_field_qualifiers() -> None:
 def test_full_typeforge_syntax_is_recognized_in_type_aliases() -> None:
     result = parse_module(FIXTURES / "full_syntax.py")
 
-    assert isinstance(result, Ok)
-    module = result.value
+    assert isinstance(result, Success)
+    module = result.unwrap()
     assert tuple(alias.name for alias in module.aliases) == (
         "JsonValue",
         "PublicRecord",
@@ -183,8 +184,8 @@ def test_full_typeforge_syntax_is_recognized_in_type_aliases() -> None:
 def test_typed_dict_fields_preserve_shape_modifiers() -> None:
     result = parse_module(FIXTURES / "full_syntax.py")
 
-    assert isinstance(result, Ok)
-    typed_dict = result.value.typed_dicts[0]
+    assert isinstance(result, Success)
+    typed_dict = result.unwrap().typed_dicts[0]
     assert typed_dict.name == "Payload"
     assert not typed_dict.total
     assert tuple(
@@ -198,7 +199,7 @@ def test_typed_dict_fields_preserve_shape_modifiers() -> None:
         ("owner", "str", False, True),
     )
     assert typed_dict.fields[0].span.start.line == 51
-    derived = result.value.typed_dicts[1]
+    derived = result.unwrap().typed_dicts[1]
     assert derived.name == "ExtendedPayload"
     assert derived.bases == (("Payload",),)
     assert derived.fields[0].required
@@ -217,8 +218,8 @@ def test_ordinary_classes_preserve_generic_structure_and_members() -> None:
         "    def empty(cls) -> World[E]: ...\n"
     )
 
-    assert isinstance(result, Ok)
-    entity, world = result.value.classes
+    assert isinstance(result, Success)
+    entity, world = result.unwrap().classes
     assert entity.bases[0].source == "Protocol"
     assert entity.methods[0].qualified_name == ("Entity", "__hash__")
     assert world.type_parameters[0].declaration == "E: Entity"

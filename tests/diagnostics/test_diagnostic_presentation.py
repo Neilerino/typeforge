@@ -60,8 +60,7 @@ def test_preserves_checker_message_without_unambiguous_provenance() -> None:
     ambiguous = f"{SOURCE}\n{SOURCE}"
 
     assert (
-        present_pyrefly_message(ambiguous, "no-matching-overload", MESSAGE)
-        == MESSAGE
+        present_pyrefly_message(ambiguous, "no-matching-overload", MESSAGE) == MESSAGE
     )
     assert present_pyrefly_message("value = 1\n", "other", MESSAGE) == MESSAGE
     assert (

@@ -1,6 +1,7 @@
 from io import BytesIO
 
-from typeforge._result import Ok
+from returns.result import Success
+
 from typeforge.proxy.framing import read_message, write_message
 from typeforge.proxy.model import JsonObject
 
@@ -18,8 +19,8 @@ def test_reads_payload_split_across_raw_stream_chunks() -> None:
         "method": "textDocument/hover",
     }
     output = BytesIO()
-    assert write_message(output, message) == Ok(None)
+    assert write_message(output, message) == Success(None)
 
     result = read_message(_ChunkedReader(output.getvalue()))
 
-    assert result == Ok(message)
+    assert result == Success(message)

@@ -1,4 +1,5 @@
-from typeforge._result import Err, Ok
+from returns.result import Failure, Success
+
 from typeforge.compiler.emitter import emit_stub_module
 from typeforge.compiler.lowering import (
     AllPredicate,
@@ -57,9 +58,9 @@ def variadic_module() -> StubModule:
 def test_lowers_each_collect_to_deterministic_portable_overloads() -> None:
     lowered = lower_variadic_module(variadic_module(), ArityFrontier(0, 2))
 
-    assert isinstance(lowered, Ok)
-    emitted = emit_stub_module(lowered.value)
-    assert emitted == Ok(
+    assert isinstance(lowered, Success)
+    emitted = emit_stub_module(lowered.unwrap())
+    assert emitted == Success(
         "from example.parser import Parser\n"
         "from typing import overload\n\n"
         "@overload\n"
@@ -105,8 +106,8 @@ def test_flattens_unpacked_collect_inside_tuple_union() -> None:
 
     lowered = lower_variadic_module(module, ArityFrontier(2, 2))
 
-    assert isinstance(lowered, Ok)
-    assert emit_stub_module(lowered.value) == Ok(
+    assert isinstance(lowered, Success)
+    assert emit_stub_module(lowered.unwrap()) == Success(
         "from typing import overload\n\n"
         "@overload\n"
         "def query[E, Ts1, Ts2](components_1: type[Ts1], "
@@ -128,10 +129,10 @@ def test_preserves_unenriched_declarations_in_complete_module() -> None:
 
     lowered = lower_variadic_module(module, ArityFrontier(1, 1))
 
-    assert isinstance(lowered, Ok)
-    emitted = emit_stub_module(lowered.value)
-    assert isinstance(emitted, Ok)
-    assert emitted.value.startswith(
+    assert isinstance(lowered, Success)
+    emitted = emit_stub_module(lowered.unwrap())
+    assert isinstance(emitted, Success)
+    assert emitted.unwrap().startswith(
         "from typing import overload\n\ndef identity[T](value: T) -> T: ...\n\n"
     )
 
@@ -152,15 +153,15 @@ def test_rejects_each_on_non_variadic_parameter() -> None:
 
     result = lower_variadic_module(invalid, ArityFrontier())
 
-    assert isinstance(result, Err)
-    assert result.error.code is LoweringErrorCode.INVALID_EACH_POSITION
+    assert isinstance(result, Failure)
+    assert result.failure().code is LoweringErrorCode.INVALID_EACH_POSITION
 
 
 def test_rejects_invalid_arity_frontier_as_typed_failure() -> None:
     result = lower_variadic_module(variadic_module(), ArityFrontier(3, 2))
 
-    assert isinstance(result, Err)
-    assert result.error.code is LoweringErrorCode.INVALID_FRONTIER
+    assert isinstance(result, Failure)
+    assert result.failure().code is LoweringErrorCode.INVALID_FRONTIER
 
 
 def test_lowers_literal_conditional_to_precise_and_conservative_overloads() -> None:
@@ -186,8 +187,8 @@ def test_lowers_literal_conditional_to_precise_and_conservative_overloads() -> N
 
     lowered = lower_variadic_module(module, ArityFrontier())
 
-    assert isinstance(lowered, Ok)
-    assert emit_stub_module(lowered.value) == Ok(
+    assert isinstance(lowered, Success)
+    assert emit_stub_module(lowered.unwrap()) == Success(
         "from typing import Literal, overload\n\n"
         "@overload\n"
         "def read(path: str, mode: Literal['text']) -> str: ...\n"
@@ -216,8 +217,8 @@ def test_lowers_assignable_conditional_for_an_ordinary_type() -> None:
 
     lowered = lower_variadic_module(module, ArityFrontier())
 
-    assert isinstance(lowered, Ok)
-    assert emit_stub_module(lowered.value) == Ok(
+    assert isinstance(lowered, Success)
+    assert emit_stub_module(lowered.unwrap()) == Success(
         "from typing import overload\n\n"
         "@overload\n"
         "def normalize(value: str) -> str: ...\n"
@@ -248,8 +249,8 @@ def test_lowers_any_and_not_predicates_in_stable_order() -> None:
 
     lowered = lower_variadic_module(module, ArityFrontier())
 
-    assert isinstance(lowered, Ok)
-    assert emit_stub_module(lowered.value) == Ok(
+    assert isinstance(lowered, Success)
+    assert emit_stub_module(lowered.unwrap()) == Success(
         "from typing import Literal, overload\n\n"
         "@overload\n"
         "def choose(kind: Literal['text']) -> str: ...\n"
@@ -278,8 +279,8 @@ def test_lowers_known_false_not_predicate_case() -> None:
 
     lowered = lower_variadic_module(module, ArityFrontier())
 
-    assert isinstance(lowered, Ok)
-    assert emit_stub_module(lowered.value) == Ok(
+    assert isinstance(lowered, Success)
+    assert emit_stub_module(lowered.unwrap()) == Success(
         "from typing import overload\n\n"
         "@overload\n"
         "def choose(kind: bytes) -> bytes: ...\n"
@@ -310,8 +311,8 @@ def test_lowers_known_true_all_predicate_case() -> None:
 
     lowered = lower_variadic_module(module, ArityFrontier())
 
-    assert isinstance(lowered, Ok)
-    assert emit_stub_module(lowered.value) == Ok(
+    assert isinstance(lowered, Success)
+    assert emit_stub_module(lowered.unwrap()) == Success(
         "from typing import overload\n\n"
         "@overload\n"
         "def choose(kind: str) -> str: ...\n"
@@ -340,8 +341,8 @@ def test_rejects_assignability_with_an_unrepresentable_controller_position() -> 
 
     lowered = lower_variadic_module(module, ArityFrontier())
 
-    assert isinstance(lowered, Err)
-    assert lowered.error.code is LoweringErrorCode.UNSUPPORTED_PREDICATE
+    assert isinstance(lowered, Failure)
+    assert lowered.failure().code is LoweringErrorCode.UNSUPPORTED_PREDICATE
 
 
 def test_lowers_finite_map_in_declared_case_order() -> None:
@@ -367,8 +368,8 @@ def test_lowers_finite_map_in_declared_case_order() -> None:
 
     lowered = lower_variadic_module(module, ArityFrontier())
 
-    assert isinstance(lowered, Ok)
-    assert emit_stub_module(lowered.value) == Ok(
+    assert isinstance(lowered, Success)
+    assert emit_stub_module(lowered.unwrap()) == Success(
         "from typing import overload\n\n"
         "@overload\n"
         "def serialize(value: int) -> float: ...\n"
@@ -403,5 +404,5 @@ def test_rejects_duplicate_finite_map_inputs() -> None:
 
     lowered = lower_variadic_module(module, ArityFrontier())
 
-    assert isinstance(lowered, Err)
-    assert lowered.error.code is LoweringErrorCode.DUPLICATE_MAP_CASE
+    assert isinstance(lowered, Failure)
+    assert lowered.failure().code is LoweringErrorCode.DUPLICATE_MAP_CASE

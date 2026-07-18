@@ -2,8 +2,8 @@ import sys
 from pathlib import Path
 
 import pytest
+from returns.result import Result, Success
 
-from typeforge._result import Ok, Result
 from typeforge.adapters.mypy import (
     MypyAdapter,
     MypyConfiguration,
@@ -29,10 +29,10 @@ def test_mypy_normalizes_shadow_file_diagnostics(tmp_path: Path) -> None:
     generated_text = 'value: int = "wrong"\n'
     source_path.write_text(authored_text)
 
-    def run_mypy(request: MypyRunRequest) -> Ok[MypyRunOutput]:
+    def run_mypy(request: MypyRunRequest) -> Success[MypyRunOutput]:
         assert request.source_path == source_path
         assert request.generated_text == generated_text
-        return Ok(
+        return Success(
             MypyRunOutput(
                 return_code=1,
                 stdout=(
@@ -52,10 +52,10 @@ def test_mypy_normalizes_shadow_file_diagnostics(tmp_path: Path) -> None:
         )
     )
 
-    assert isinstance(result, Ok)
+    assert isinstance(result, Success)
     assert source_path.read_text() == authored_text
-    assert len(result.value.diagnostics) == 1
-    diagnostic = result.value.diagnostics[0]
+    assert len(result.unwrap().diagnostics) == 1
+    diagnostic = result.unwrap().diagnostics[0]
     assert diagnostic.path == source_path
     assert diagnostic.severity is DiagnosticSeverity.ERROR
     assert diagnostic.code == "assignment"
@@ -119,8 +119,8 @@ assert_type(
         )
     )
 
-    assert isinstance(result, Ok), result
-    assert result.value.diagnostics == ()
+    assert isinstance(result, Success), result
+    assert result.unwrap().diagnostics == ()
     assert source_path.read_text() == authored_text
     assert not (tmp_path / ".mypy_cache").exists()
 
@@ -158,8 +158,8 @@ def test_in_memory_mypy_resolves_config_paths_from_project_root(
         )
     )
 
-    assert isinstance(result, Ok), result
-    assert result.value.diagnostics == ()
+    assert isinstance(result, Success), result
+    assert result.unwrap().diagnostics == ()
     assert Path.cwd() == outside
 
 
@@ -189,7 +189,7 @@ def test_mypy_maps_generated_diagnostics_to_the_authored_origin(
         request: MypyRunRequest,
     ) -> Result[MypyRunOutput, CheckerError]:
         del request
-        return Ok(
+        return Success(
             MypyRunOutput(
                 return_code=1,
                 stdout=(
@@ -205,8 +205,8 @@ def test_mypy_maps_generated_diagnostics_to_the_authored_origin(
         AnalysisRequest(document=virtual_document, project_root=tmp_path)
     )
 
-    assert isinstance(result, Ok)
-    assert result.value.diagnostics[0].span == SourceSpan(origin.start, origin.start)
+    assert isinstance(result, Success)
+    assert result.unwrap().diagnostics[0].span == SourceSpan(origin.start, origin.start)
 
 
 def test_mypy_checks_typeforge_overlay_for_same_file_calls(tmp_path: Path) -> None:
@@ -249,18 +249,18 @@ assert_type(
 """
     source_path.write_text(authored_text)
     transformed = transform_source(authored_text, source_path, maximum_arity=3)
-    assert isinstance(transformed, Ok), transformed
+    assert isinstance(transformed, Success), transformed
 
     result = MypyAdapter().analyze(
         AnalysisRequest(
-            document=transformed.value,
+            document=transformed.unwrap(),
             project_root=tmp_path,
             extra_arguments=("--strict", "--python-version", "3.14"),
         )
     )
 
-    assert isinstance(result, Ok), result
-    assert result.value.diagnostics == ()
+    assert isinstance(result, Success), result
+    assert result.unwrap().diagnostics == ()
     assert source_path.read_text() == authored_text
 
 
@@ -276,9 +276,9 @@ def test_mypy_maps_utf8_byte_columns_to_authored_characters(tmp_path: Path) -> N
         )
     )
 
-    assert isinstance(result, Ok)
-    assert len(result.value.diagnostics) == 1
-    span = result.value.diagnostics[0].span
+    assert isinstance(result, Success)
+    assert len(result.unwrap().diagnostics) == 1
+    span = result.unwrap().diagnostics[0].span
     assert authored_text[span.start.offset : span.end.offset] == '"wrong"'
 
 

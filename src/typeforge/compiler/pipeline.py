@@ -2,7 +2,8 @@ import ast
 from dataclasses import dataclass
 from pathlib import Path
 
-from typeforge._result import Err, Ok, Result
+from returns.result import Failure, Result, Success
+
 from typeforge.compiler import evaluator as record_evaluator
 from typeforge.compiler.emitter import emit_stub_module
 from typeforge.compiler.frontend import FrontendError, parse_module
@@ -145,51 +146,55 @@ def generate_module(
     path: Path,
     maximum_arity: int,
 ) -> Result[GeneratedModule, GenerationError]:
-    parsed = parse_module(path)
-    if isinstance(parsed, Err):
-        return Err(parsed.error)
-    validated = validate_public_surface(parsed.value)
-    if isinstance(validated, Err):
-        return Err(validated.error)
-    adapted = adapt_source_module(parsed.value)
-    if isinstance(adapted, Err):
-        return Err(adapted.error)
-    records = materialize_record_transforms(parsed.value, adapted.value)
-    if isinstance(records, Err):
-        return Err(records.error)
-    prepared = apply_record_materialization(adapted.value, records.value)
-    lowered = lower_variadic_module(prepared, ArityFrontier(0, maximum_arity))
-    if isinstance(lowered, Err):
-        return Err(lowered.error)
-    emitted = emit_stub_module(lowered.value)
-    if isinstance(emitted, Err):
-        return Err(EmissionError(emitted.error))
-    variables = collect_module_variables(parsed.value.path)
-    imports = lowered.value.imports
-    if variables.requires_any:
-        imports = merge_imports((*imports, ImportFrom("typing", ("Any",))))
-        emitted = emit_stub_module(
-            StubModule(lowered.value.name, lowered.value.declarations, imports)
+    return Result.do(
+        generated
+        for parsed in parse_module(path)
+        for _ in validate_public_surface(parsed)
+        for adapted in adapt_source_module(parsed)
+        for records in materialize_record_transforms(parsed, adapted)
+        for lowered in lower_variadic_module(
+            apply_record_materialization(adapted, records),
+            ArityFrontier(0, maximum_arity),
         )
-        if isinstance(emitted, Err):
-            return Err(EmissionError(emitted.error))
-    content = inject_declarations(
-        emitted.value,
-        (*records.value.declarations, *variables.declarations),
+        for generated in _emit_generated_module(path, parsed, lowered, records)
     )
-    return Ok(GeneratedModule(path, content))
+
+
+def _emit_generated_module(
+    path: Path,
+    parsed: SourceModule,
+    lowered: StubModule,
+    records: _RecordMaterialization,
+) -> Result[GeneratedModule, EmissionError]:
+    variables = collect_module_variables(parsed.path)
+    if variables.requires_any:
+        lowered = StubModule(
+            lowered.name,
+            lowered.declarations,
+            merge_imports((*lowered.imports, ImportFrom("typing", ("Any",)))),
+        )
+    declarations = (*records.declarations, *variables.declarations)
+    return (
+        emit_stub_module(lowered)
+        .alt(EmissionError)
+        .map(
+            lambda emitted: GeneratedModule(
+                path, inject_declarations(emitted, declarations)
+            )
+        )
+    )
 
 
 def materialize_record_transforms(
     module: SourceModule, stub: StubModule
 ) -> Result[_RecordMaterialization, AdaptationError]:
     if not module.typed_dicts:
-        return Ok(_RecordMaterialization((), (), ()))
+        return Success(_RecordMaterialization((), (), ()))
     source_shapes = build_record_shapes(module.typed_dicts)
     derived_result = derive_record_shapes(module.aliases, source_shapes)
-    if isinstance(derived_result, Err):
+    if isinstance(derived_result, Failure):
         return derived_result
-    derived = derived_result.value
+    derived = derived_result.unwrap()
     replacements: list[tuple[str, OverloadDeclaration]] = []
     source_functions = {
         function.name: function
@@ -249,7 +254,7 @@ def materialize_record_transforms(
         for field in item.shape.fields
     ):
         typing_names.add("Never")
-    return Ok(
+    return Success(
         _RecordMaterialization(
             declarations=declarations,
             replacements=tuple(replacements),
@@ -308,7 +313,7 @@ def derive_record_shapes(
         if alias.value.marker is not MarkerKind.MAP_FIELDS:
             continue
         if len(alias.type_parameters) != 1:
-            return Err(
+            return Failure(
                 AdaptationError(
                     alias.name,
                     alias.value.source,
@@ -321,31 +326,34 @@ def derive_record_shapes(
             expression = adapt_evaluator_expression(
                 alias.value, ((parameter, source_shape),), output_name
             )
-            if isinstance(expression, Err):
-                return Err(
-                    AdaptationError(alias.name, alias.value.source, expression.error)
+            if isinstance(expression, Failure):
+                return Failure(
+                    AdaptationError(
+                        alias.name, alias.value.source, expression.failure()
+                    )
                 )
-            if not isinstance(expression.value, record_evaluator.MapFields):
-                return Err(
+            evaluator_expression = expression.unwrap()
+            if not isinstance(evaluator_expression, record_evaluator.MapFields):
+                return Failure(
                     AdaptationError(
                         alias.name,
                         alias.value.source,
                         "alias must evaluate to MapFields",
                     )
                 )
-            evaluated = record_evaluator.evaluate_map_fields(expression.value)
-            if isinstance(evaluated, Err):
-                return Err(
+            evaluated = record_evaluator.evaluate_map_fields(evaluator_expression)
+            if isinstance(evaluated, Failure):
+                return Failure(
                     AdaptationError(
                         alias.name,
                         alias.value.source,
-                        evaluated.error.message,
+                        evaluated.failure().message,
                     )
                 )
             derived.append(
-                _DerivedRecord(alias.name, source_shape.name or "", evaluated.value)
+                _DerivedRecord(alias.name, source_shape.name or "", evaluated.unwrap())
             )
-    return Ok(tuple(derived))
+    return Success(tuple(derived))
 
 
 def adapt_evaluator_expression(
@@ -355,83 +363,83 @@ def adapt_evaluator_expression(
 ) -> Result[record_evaluator.Expression, str]:
     if isinstance(expression, NameTypeExpression):
         bound = dict(environment).get(expression.source)
-        return Ok(bound if bound is not None else NamedType(expression.source))
+        return Success(bound if bound is not None else NamedType(expression.source))
     if isinstance(expression, RawTypeExpression):
-        return Ok(NamedType(expression.source))
+        return Success(NamedType(expression.source))
     if isinstance(expression, AppliedTypeExpression):
         literal = adapt_field_name_literal(expression)
         if literal is not None:
-            return Ok(literal)
-        return Ok(NamedType(expression.source))
+            return Success(literal)
+        return Success(NamedType(expression.source))
     if isinstance(expression, UnionTypeExpression | StarredTypeExpression):
-        return Ok(NamedType(expression.source))
+        return Success(NamedType(expression.source))
     assert isinstance(expression, MarkerTypeExpression)
     marker = expression.marker
     if marker is MarkerKind.KEY:
-        return Ok(record_evaluator.Key())
+        return Success(record_evaluator.Key())
     if marker is MarkerKind.VALUE:
-        return Ok(record_evaluator.Value())
+        return Success(record_evaluator.Value())
     if marker is MarkerKind.DROP:
-        return Ok(record_evaluator.Drop())
+        return Success(record_evaluator.Drop())
     if marker in {
         MarkerKind.FIELD,
         MarkerKind.OPTIONAL_FIELD,
         MarkerKind.READONLY_FIELD,
     }:
         arguments = adapt_evaluator_expressions(expression.arguments, environment)
-        if isinstance(arguments, Err):
+        if isinstance(arguments, Failure):
             return arguments
-        if len(arguments.value) != 2:
-            return Err(f"{marker.value} requires two type arguments")
+        if len(arguments.unwrap()) != 2:
+            return Failure(f"{marker.value} requires two type arguments")
         if marker is MarkerKind.FIELD:
-            return Ok(record_evaluator.Field(*arguments.value))
+            return Success(record_evaluator.Field(*arguments.unwrap()))
         if marker is MarkerKind.OPTIONAL_FIELD:
-            return Ok(record_evaluator.OptionalField(*arguments.value))
-        return Ok(record_evaluator.ReadonlyField(*arguments.value))
+            return Success(record_evaluator.OptionalField(*arguments.unwrap()))
+        return Success(record_evaluator.ReadonlyField(*arguments.unwrap()))
     if marker is MarkerKind.MAP_FIELDS:
         arguments = adapt_evaluator_expressions(expression.arguments, environment)
-        if isinstance(arguments, Err):
+        if isinstance(arguments, Failure):
             return arguments
-        if len(arguments.value) != 2:
-            return Err("MapFields requires two type arguments")
-        return Ok(
+        if len(arguments.unwrap()) != 2:
+            return Failure("MapFields requires two type arguments")
+        return Success(
             record_evaluator.MapFields(
-                arguments.value[0], arguments.value[1], output_name
+                arguments.unwrap()[0], arguments.unwrap()[1], output_name
             )
         )
     if marker is MarkerKind.MAP:
         return adapt_evaluator_map(expression, environment)
     if marker is MarkerKind.IF:
         arguments = adapt_evaluator_expressions(expression.arguments, environment)
-        if isinstance(arguments, Err):
+        if isinstance(arguments, Failure):
             return arguments
-        if len(arguments.value) != 3:
-            return Err("If requires three type arguments")
-        return Ok(record_evaluator.If(*arguments.value))
+        if len(arguments.unwrap()) != 3:
+            return Failure("If requires three type arguments")
+        return Success(record_evaluator.If(*arguments.unwrap()))
     if marker in {MarkerKind.EQUAL, MarkerKind.ASSIGNABLE}:
         arguments = adapt_evaluator_expressions(expression.arguments, environment)
-        if isinstance(arguments, Err):
+        if isinstance(arguments, Failure):
             return arguments
-        if len(arguments.value) != 2:
-            return Err(f"{marker.value} requires two type arguments")
+        if len(arguments.unwrap()) != 2:
+            return Failure(f"{marker.value} requires two type arguments")
         if marker is MarkerKind.EQUAL:
-            return Ok(record_evaluator.Equal(*arguments.value))
-        return Ok(record_evaluator.Assignable(*arguments.value))
+            return Success(record_evaluator.Equal(*arguments.unwrap()))
+        return Success(record_evaluator.Assignable(*arguments.unwrap()))
     if marker in {MarkerKind.ALL, MarkerKind.ANY}:
         arguments = adapt_evaluator_expressions(expression.arguments, environment)
-        if isinstance(arguments, Err):
+        if isinstance(arguments, Failure):
             return arguments
         if marker is MarkerKind.ALL:
-            return Ok(record_evaluator.All(arguments.value))
-        return Ok(record_evaluator.Any(arguments.value))
+            return Success(record_evaluator.All(arguments.unwrap()))
+        return Success(record_evaluator.Any(arguments.unwrap()))
     if marker is MarkerKind.NOT:
         arguments = adapt_evaluator_expressions(expression.arguments, environment)
-        if isinstance(arguments, Err):
+        if isinstance(arguments, Failure):
             return arguments
-        if len(arguments.value) != 1:
-            return Err("Not requires one type argument")
-        return Ok(record_evaluator.Not(arguments.value[0]))
-    return Err(f"unsupported record expression {marker.value}")
+        if len(arguments.unwrap()) != 1:
+            return Failure("Not requires one type argument")
+        return Success(record_evaluator.Not(arguments.unwrap()[0]))
+    return Failure(f"unsupported record expression {marker.value}")
 
 
 def adapt_evaluator_expressions(
@@ -441,10 +449,10 @@ def adapt_evaluator_expressions(
     adapted: list[record_evaluator.Expression] = []
     for expression in expressions:
         result = adapt_evaluator_expression(expression, environment)
-        if isinstance(result, Err):
+        if isinstance(result, Failure):
             return result
-        adapted.append(result.value)
-    return Ok(tuple(adapted))
+        adapted.append(result.unwrap())
+    return Success(tuple(adapted))
 
 
 def adapt_evaluator_map(
@@ -452,27 +460,27 @@ def adapt_evaluator_map(
     environment: tuple[tuple[str, StaticType], ...],
 ) -> Result[record_evaluator.Expression, str]:
     if len(expression.arguments) < 2:
-        return Err("Map requires a subject and at least one Case or Default")
+        return Failure("Map requires a subject and at least one Case or Default")
     subject = adapt_evaluator_expression(expression.arguments[0], environment)
-    if isinstance(subject, Err):
+    if isinstance(subject, Failure):
         return subject
     cases: list[record_evaluator.Case] = []
     default: record_evaluator.Expression | None = None
     for entry in expression.arguments[1:]:
         if not isinstance(entry, MarkerTypeExpression):
-            return Err("Map entries must be Case or Default")
+            return Failure("Map entries must be Case or Default")
         arguments = adapt_evaluator_expressions(entry.arguments, environment)
-        if isinstance(arguments, Err):
+        if isinstance(arguments, Failure):
             return arguments
-        if entry.marker is MarkerKind.CASE and len(arguments.value) == 2:
-            cases.append(record_evaluator.Case(*arguments.value))
-        elif entry.marker is MarkerKind.DEFAULT and len(arguments.value) == 1:
-            default = arguments.value[0]
+        if entry.marker is MarkerKind.CASE and len(arguments.unwrap()) == 2:
+            cases.append(record_evaluator.Case(*arguments.unwrap()))
+        elif entry.marker is MarkerKind.DEFAULT and len(arguments.unwrap()) == 1:
+            default = arguments.unwrap()[0]
         else:
-            return Err("Map entries must be Case[Input, Output] or Default[Output]")
+            return Failure("Map entries must be Case[Input, Output] or Default[Output]")
     if default is None:
-        return Ok(record_evaluator.Map(subject.value, tuple(cases)))
-    return Ok(record_evaluator.Map(subject.value, tuple(cases), default))
+        return Success(record_evaluator.Map(subject.unwrap(), tuple(cases)))
+    return Success(record_evaluator.Map(subject.unwrap(), tuple(cases), default))
 
 
 def adapt_field_name_literal(
@@ -714,37 +722,37 @@ def adapt_source_module(
 ) -> Result[StubModule, AdaptationError]:
     imports = collect_imports(module.path)
     semantic_aliases_result = collect_semantic_relationship_aliases(module.aliases)
-    if isinstance(semantic_aliases_result, Err):
+    if isinstance(semantic_aliases_result, Failure):
         return semantic_aliases_result
-    semantic_aliases = semantic_aliases_result.value
+    semantic_aliases = semantic_aliases_result.unwrap()
     declarations: list[tuple[int, Declaration]] = []
     for alias in module.aliases:
         if len(alias.qualified_name) != 1:
             continue
         adapted_alias = adapt_alias(alias)
-        if isinstance(adapted_alias, Err):
+        if isinstance(adapted_alias, Failure):
             return adapted_alias
-        declarations.append((alias.span.start.line, adapted_alias.value))
+        declarations.append((alias.span.start.line, adapted_alias.unwrap()))
     for source_class in module.classes:
         adapted_class = adapt_class(source_class)
-        if isinstance(adapted_class, Err):
+        if isinstance(adapted_class, Failure):
             return adapted_class
         declarations.append(
             (
                 source_class.span.start.line,
-                expand_class_map_aliases(adapted_class.value, semantic_aliases),
+                expand_class_map_aliases(adapted_class.unwrap(), semantic_aliases),
             )
         )
     for function in module.functions:
         if len(function.qualified_name) != 1:
             continue
         adapted = adapt_function(function)
-        if isinstance(adapted, Err):
+        if isinstance(adapted, Failure):
             return adapted
         declarations.append(
             (
                 function.span.start.line,
-                expand_function_map_aliases(adapted.value, semantic_aliases),
+                expand_function_map_aliases(adapted.unwrap(), semantic_aliases),
             )
         )
     all_functions = (
@@ -769,7 +777,7 @@ def adapt_source_module(
     ordered = tuple(
         declaration for _, declaration in sorted(declarations, key=lambda item: item[0])
     )
-    return Ok(StubModule(module.path.stem, ordered, imports))
+    return Success(StubModule(module.path.stem, ordered, imports))
 
 
 def collect_semantic_relationship_aliases(
@@ -783,7 +791,7 @@ def collect_semantic_relationship_aliases(
         ):
             continue
         if len(alias.type_parameters) != 1:
-            return Err(
+            return Failure(
                 AdaptationError(
                     alias.name,
                     alias.value.source,
@@ -792,12 +800,13 @@ def collect_semantic_relationship_aliases(
             )
         parameter = alias.type_parameters[0].name
         adapted = adapt_type_expression(alias.name, alias.value, (parameter,))
-        if isinstance(adapted, Err):
+        if isinstance(adapted, Failure):
             return adapted
-        if not isinstance(adapted.value, MapType | IfType):
+        relationship = adapted.unwrap()
+        if not isinstance(relationship, MapType | IfType):
             raise AssertionError("relationship adaptation produced a plain type")
-        semantic.append(SemanticRelationshipAlias(alias.name, parameter, adapted.value))
-    return Ok(tuple(semantic))
+        semantic.append(SemanticRelationshipAlias(alias.name, parameter, relationship))
+    return Success(tuple(semantic))
 
 
 def collect_semantic_map_aliases(
@@ -899,10 +908,9 @@ def adapt_alias(
     type_parameters = tuple(
         parameter.declaration for parameter in alias.type_parameters
     )
-    value = adapt_alias_fallback(alias.name, alias.value, parameter_names)
-    if isinstance(value, Err):
-        return value
-    return Ok(TypeAliasDeclaration(alias.name, value.value, type_parameters))
+    return adapt_alias_fallback(alias.name, alias.value, parameter_names).map(
+        lambda value: TypeAliasDeclaration(alias.name, value, type_parameters)
+    )
 
 
 def adapt_class(
@@ -914,32 +922,32 @@ def adapt_class(
     bases = adapt_type_expressions(
         source_class.name, source_class.bases, parameter_names
     )
-    if isinstance(bases, Err):
+    if isinstance(bases, Failure):
         return bases
     fields: list[ClassField] = []
     for field in source_class.fields:
         annotation = adapt_type_expression(
             source_class.name, field.annotation, parameter_names
         )
-        if isinstance(annotation, Err):
+        if isinstance(annotation, Failure):
             return annotation
         fields.append(
             ClassField(
                 field.name,
-                annotation.value,
+                annotation.unwrap(),
                 "..." if field.has_default else None,
             )
         )
     methods: list[FunctionDeclaration] = []
     for method in source_class.methods:
         adapted_method = adapt_function(method, parameter_names)
-        if isinstance(adapted_method, Err):
+        if isinstance(adapted_method, Failure):
             return adapted_method
-        methods.append(adapted_method.value)
-    return Ok(
+        methods.append(adapted_method.unwrap())
+    return Success(
         ClassDeclaration(
             name=source_class.name,
-            bases=bases.value,
+            bases=bases.unwrap(),
             fields=tuple(fields),
             methods=tuple(methods),
             type_parameters=tuple(
@@ -964,18 +972,18 @@ def adapt_alias_fallback(
         return adapt_single_alias_argument(declaration, expression, type_parameters)
     if marker is MarkerKind.COLLECT:
         item = adapt_single_alias_argument(declaration, expression, type_parameters)
-        if isinstance(item, Err):
+        if isinstance(item, Failure):
             return item
-        return Ok(HomogeneousTuple(item.value))
+        return Success(HomogeneousTuple(item.unwrap()))
     if marker is MarkerKind.IF:
         if len(arguments) != 3:
-            return Err(_marker_arity_error(declaration, expression, "three"))
+            return Failure(_marker_arity_error(declaration, expression, "three"))
         branches = adapt_type_expressions(declaration, arguments[1:], type_parameters)
-        if isinstance(branches, Err):
+        if isinstance(branches, Failure):
             return branches
-        return Ok(UnionExpression(branches.value))
+        return Success(UnionExpression(branches.unwrap()))
     if marker in {MarkerKind.MAP, MarkerKind.MAP_FIELDS}:
-        return Ok(TypeName("object"))
+        return Success(TypeName("object"))
     if marker in {
         MarkerKind.ASSIGNABLE,
         MarkerKind.EQUAL,
@@ -983,7 +991,7 @@ def adapt_alias_fallback(
         MarkerKind.ANY,
         MarkerKind.NOT,
     }:
-        return Ok(TypeName("bool"))
+        return Success(TypeName("bool"))
     if marker in {
         MarkerKind.CASE,
         MarkerKind.DEFAULT,
@@ -992,7 +1000,7 @@ def adapt_alias_fallback(
         MarkerKind.READONLY_FIELD,
     }:
         if not arguments:
-            return Err(
+            return Failure(
                 AdaptationError(
                     declaration,
                     expression.source,
@@ -1001,12 +1009,12 @@ def adapt_alias_fallback(
             )
         return adapt_alias_fallback(declaration, arguments[-1], type_parameters)
     if marker is MarkerKind.DROP:
-        return Ok(TypeName("Never"))
+        return Success(TypeName("Never"))
     if marker is MarkerKind.KEY:
-        return Ok(TypeName("str"))
+        return Success(TypeName("str"))
     if marker is MarkerKind.VALUE:
-        return Ok(TypeName("object"))
-    return Ok(TypeName("object"))
+        return Success(TypeName("object"))
+    return Success(TypeName("object"))
 
 
 def adapt_single_alias_argument(
@@ -1015,7 +1023,7 @@ def adapt_single_alias_argument(
     type_parameters: tuple[str, ...],
 ) -> Result[TypeExpression, AdaptationError]:
     if len(expression.arguments) != 1:
-        return Err(_marker_arity_error(declaration, expression, "one"))
+        return Failure(_marker_arity_error(declaration, expression, "one"))
     return adapt_alias_fallback(
         declaration,
         expression.arguments[0],
@@ -1032,14 +1040,14 @@ def validate_public_surface(
     for statement in tree.body:
         unsupported = unsupported_public_statement(statement, typed_dict_names)
         if unsupported is not None:
-            return Err(
+            return Failure(
                 UnsupportedPublicDeclaration(
                     module.path,
                     statement.lineno,
                     unsupported,
                 )
             )
-    return Ok(None)
+    return Success(None)
 
 
 def unsupported_public_statement(
@@ -1155,9 +1163,9 @@ def adapt_function(
                 parameter.annotation,
                 visible_type_parameters,
             )
-            if isinstance(adapted, Err):
+            if isinstance(adapted, Failure):
                 return adapted
-            annotation = adapted.value
+            annotation = adapted.unwrap()
         parameters.append(
             Parameter(
                 name=parameter.name,
@@ -1173,10 +1181,10 @@ def adapt_function(
             function.returns,
             visible_type_parameters,
         )
-        if isinstance(adapted_return, Err):
+        if isinstance(adapted_return, Failure):
             return adapted_return
-        return_type = adapted_return.value
-    return Ok(
+        return_type = adapted_return.unwrap()
+    return Success(
         FunctionDeclaration(
             name=function.name,
             parameters=tuple(parameters),
@@ -1195,78 +1203,57 @@ def adapt_type_expression(
 ) -> Result[TypeExpression, AdaptationError]:
     if isinstance(expression, NameTypeExpression):
         if expression.source in type_parameters:
-            return Ok(TypeVariable(expression.source))
-        return Ok(TypeName(expression.source))
+            return Success(TypeVariable(expression.source))
+        return Success(TypeName(expression.source))
     if isinstance(expression, RawTypeExpression):
-        return Ok(TypeName(expression.source))
+        return Success(TypeName(expression.source))
     if isinstance(expression, UnionTypeExpression):
-        members = adapt_type_expressions(
+        return adapt_type_expressions(
             declaration, expression.members, type_parameters
-        )
-        if isinstance(members, Err):
-            return members
-        return Ok(UnionExpression(members.value))
+        ).map(UnionExpression)
     if isinstance(expression, StarredTypeExpression):
-        starred_result = adapt_type_expression(
-            declaration, expression.item, type_parameters
-        )
-        return (
-            starred_result
-            if isinstance(starred_result, Err)
-            else Ok(UnpackedType(starred_result.value))
+        return adapt_type_expression(declaration, expression.item, type_parameters).map(
+            UnpackedType
         )
     if isinstance(expression, AppliedTypeExpression):
-        constructor = adapt_type_expression(
-            declaration,
-            expression.constructor,
-            type_parameters,
+        return Result.do(
+            TypeApplication(constructor, arguments)
+            for constructor in adapt_type_expression(
+                declaration, expression.constructor, type_parameters
+            )
+            for arguments in adapt_type_expressions(
+                declaration, expression.arguments, type_parameters
+            )
         )
-        if isinstance(constructor, Err):
-            return constructor
-        arguments_result = adapt_type_expressions(
-            declaration,
-            expression.arguments,
-            type_parameters,
-        )
-        if isinstance(arguments_result, Err):
-            return arguments_result
-        return Ok(TypeApplication(constructor.value, arguments_result.value))
     assert isinstance(expression, MarkerTypeExpression)
     if expression.marker is MarkerKind.VALUE:
         if expression.arguments:
-            return Err(_marker_arity_error(declaration, expression, "no"))
-        return Ok(MapValueType())
+            return Failure(_marker_arity_error(declaration, expression, "no"))
+        return Success(MapValueType())
     if expression.marker is MarkerKind.IF:
         return adapt_if_expression(declaration, expression, type_parameters)
     if expression.marker is MarkerKind.MAP:
         return adapt_map_expression(declaration, expression, type_parameters)
-    arguments_result = adapt_type_expressions(
-        declaration,
-        expression.arguments,
-        type_parameters,
-    )
-    if isinstance(arguments_result, Err):
-        return arguments_result
-    if len(arguments_result.value) != 1:
-        return Err(
+    if len(expression.arguments) != 1:
+        return Failure(
             AdaptationError(
                 declaration,
                 expression.source,
                 f"{expression.marker.value} requires one type argument",
             )
         )
-    marker_item = arguments_result.value[0]
-    if expression.marker is MarkerKind.EACH:
-        return Ok(EachType(marker_item))
-    if expression.marker is MarkerKind.COLLECT:
-        return Ok(CollectType(marker_item))
-    return Err(
-        AdaptationError(
-            declaration,
-            expression.source,
-            f"unsupported marker {expression.marker.value}",
+    if expression.marker not in {MarkerKind.EACH, MarkerKind.COLLECT}:
+        return Failure(
+            AdaptationError(
+                declaration,
+                expression.source,
+                f"unsupported marker {expression.marker.value}",
+            )
         )
-    )
+    marker_type = EachType if expression.marker is MarkerKind.EACH else CollectType
+    return adapt_type_expression(
+        declaration, expression.arguments[0], type_parameters
+    ).map(marker_type)
 
 
 def adapt_if_expression(
@@ -1275,16 +1262,16 @@ def adapt_if_expression(
     type_parameters: tuple[str, ...],
 ) -> Result[TypeExpression, AdaptationError]:
     if len(expression.arguments) != 3:
-        return Err(_marker_arity_error(declaration, expression, "three"))
-    condition = adapt_predicate(declaration, expression.arguments[0], type_parameters)
-    if isinstance(condition, Err):
-        return condition
-    branches = adapt_type_expressions(
-        declaration, expression.arguments[1:], type_parameters
+        return Failure(_marker_arity_error(declaration, expression, "three"))
+    return Result.do(
+        IfType(condition, branches[0], branches[1])
+        for condition in adapt_predicate(
+            declaration, expression.arguments[0], type_parameters
+        )
+        for branches in adapt_type_expressions(
+            declaration, expression.arguments[1:], type_parameters
+        )
     )
-    if isinstance(branches, Err):
-        return branches
-    return Ok(IfType(condition.value, branches.value[0], branches.value[1]))
 
 
 def adapt_map_expression(
@@ -1293,7 +1280,7 @@ def adapt_map_expression(
     type_parameters: tuple[str, ...],
 ) -> Result[TypeExpression, AdaptationError]:
     if len(expression.arguments) < 2:
-        return Err(
+        return Failure(
             AdaptationError(
                 declaration,
                 expression.source,
@@ -1303,30 +1290,30 @@ def adapt_map_expression(
     subject = adapt_type_expression(
         declaration, expression.arguments[0], type_parameters
     )
-    if isinstance(subject, Err):
+    if isinstance(subject, Failure):
         return subject
     cases: list[MapCase] = []
     default: TypeExpression = TypeName("Never")
     for entry in expression.arguments[1:]:
         if not isinstance(entry, MarkerTypeExpression):
-            return Err(_invalid_map_entry(declaration, entry))
+            return Failure(_invalid_map_entry(declaration, entry))
         if entry.marker is MarkerKind.CASE and len(entry.arguments) == 2:
             values = adapt_type_expressions(
                 declaration, entry.arguments, type_parameters
             )
-            if isinstance(values, Err):
+            if isinstance(values, Failure):
                 return values
-            cases.append(MapCase(values.value[0], values.value[1]))
+            cases.append(MapCase(values.unwrap()[0], values.unwrap()[1]))
         elif entry.marker is MarkerKind.DEFAULT and len(entry.arguments) == 1:
             adapted_default = adapt_type_expression(
                 declaration, entry.arguments[0], type_parameters
             )
-            if isinstance(adapted_default, Err):
+            if isinstance(adapted_default, Failure):
                 return adapted_default
-            default = adapted_default.value
+            default = adapted_default.unwrap()
         else:
-            return Err(_invalid_map_entry(declaration, entry))
-    return Ok(MapType(subject.value, tuple(cases), default))
+            return Failure(_invalid_map_entry(declaration, entry))
+    return Success(MapType(subject.unwrap(), tuple(cases), default))
 
 
 def adapt_predicate(
@@ -1335,7 +1322,7 @@ def adapt_predicate(
     type_parameters: tuple[str, ...],
 ) -> Result[Predicate, AdaptationError]:
     if not isinstance(expression, MarkerTypeExpression):
-        return Err(
+        return Failure(
             AdaptationError(
                 declaration,
                 expression.source,
@@ -1344,33 +1331,32 @@ def adapt_predicate(
         )
     if expression.marker in {MarkerKind.EQUAL, MarkerKind.ASSIGNABLE}:
         if len(expression.arguments) != 2:
-            return Err(_marker_arity_error(declaration, expression, "two"))
+            return Failure(_marker_arity_error(declaration, expression, "two"))
         operands = adapt_type_expressions(
             declaration, expression.arguments, type_parameters
         )
-        if isinstance(operands, Err):
+        if isinstance(operands, Failure):
             return operands
         if expression.marker is MarkerKind.EQUAL:
-            return Ok(EqualPredicate(operands.value[0], operands.value[1]))
-        return Ok(AssignablePredicate(operands.value[0], operands.value[1]))
+            return operands.map(lambda items: EqualPredicate(items[0], items[1]))
+        return operands.map(lambda items: AssignablePredicate(items[0], items[1]))
     if expression.marker in {MarkerKind.ALL, MarkerKind.ANY}:
         predicates: list[Predicate] = []
         for argument in expression.arguments:
             adapted = adapt_predicate(declaration, argument, type_parameters)
-            if isinstance(adapted, Err):
+            if isinstance(adapted, Failure):
                 return adapted
-            predicates.append(adapted.value)
+            predicates.append(adapted.unwrap())
         if expression.marker is MarkerKind.ALL:
-            return Ok(AllPredicate(tuple(predicates)))
-        return Ok(AnyPredicate(tuple(predicates)))
+            return Success(AllPredicate(tuple(predicates)))
+        return Success(AnyPredicate(tuple(predicates)))
     if expression.marker is MarkerKind.NOT:
         if len(expression.arguments) != 1:
-            return Err(_marker_arity_error(declaration, expression, "one"))
-        adapted = adapt_predicate(declaration, expression.arguments[0], type_parameters)
-        if isinstance(adapted, Err):
-            return adapted
-        return Ok(NotPredicate(adapted.value))
-    return Err(
+            return Failure(_marker_arity_error(declaration, expression, "one"))
+        return adapt_predicate(
+            declaration, expression.arguments[0], type_parameters
+        ).map(NotPredicate)
+    return Failure(
         AdaptationError(
             declaration,
             expression.source,
@@ -1407,10 +1393,10 @@ def adapt_type_expressions(
     adapted: list[TypeExpression] = []
     for expression in expressions:
         result = adapt_type_expression(declaration, expression, type_parameters)
-        if isinstance(result, Err):
+        if isinstance(result, Failure):
             return result
-        adapted.append(result.value)
-    return Ok(tuple(adapted))
+        adapted.append(result.unwrap())
+    return Success(tuple(adapted))
 
 
 def adapt_parameter_kind(kind: SourceParameterKind) -> ParameterKind:

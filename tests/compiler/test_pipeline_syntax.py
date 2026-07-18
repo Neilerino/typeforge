@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from typeforge._result import Ok
+from returns.result import Success
+
 from typeforge.compiler.pipeline import generate_module
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -9,8 +10,8 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def test_conditionals_maps_and_record_maps_compile_to_portable_stubs() -> None:
     generated = generate_module(FIXTURES / "pipeline_syntax.py", maximum_arity=2)
 
-    assert isinstance(generated, Ok)
-    assert generated.value.content == (
+    assert isinstance(generated, Success)
+    assert generated.unwrap().content == (
         "from datetime import datetime\n"
         "from typing import Literal, Never, TypedDict, overload\n\n"
         "class User(TypedDict):\n"
@@ -46,8 +47,8 @@ def test_conditionals_maps_and_record_maps_compile_to_portable_stubs() -> None:
 def test_existing_each_collect_pipeline_remains_supported() -> None:
     generated = generate_module(FIXTURES / "pipeline.py", maximum_arity=1)
 
-    assert isinstance(generated, Ok)
-    assert "def combine[T1](parsers_1: Parser[T1], /)" in generated.value.content
+    assert isinstance(generated, Success)
+    assert "def combine[T1](parsers_1: Parser[T1], /)" in generated.unwrap().content
 
 
 def test_field_maps_can_drop_fields_and_change_modifiers(tmp_path: Path) -> None:
@@ -85,16 +86,16 @@ def publicize[T](value: T) -> Public[T]:
 
     generated = generate_module(source, maximum_arity=2)
 
-    assert isinstance(generated, Ok)
-    assert "class Public_Credentials(TypedDict):" in generated.value.content
+    assert isinstance(generated, Success)
+    assert "class Public_Credentials(TypedDict):" in generated.unwrap().content
     assert (
         "    password:"
-        not in generated.value.content.split("class Public_Credentials(TypedDict):", 1)[
-            1
-        ]
+        not in generated.unwrap().content.split(
+            "class Public_Credentials(TypedDict):", 1
+        )[1]
     )
-    assert "    token: ReadOnly[str]" in generated.value.content
-    assert "    attempts: NotRequired[int]" in generated.value.content
+    assert "    token: ReadOnly[str]" in generated.unwrap().content
+    assert "    attempts: NotRequired[int]" in generated.unwrap().content
 
 
 def test_documented_record_map_compiles_like_its_underlying_expression(
@@ -122,8 +123,8 @@ def copy[T](value: T) -> Copy[T]:
 
     generated = generate_module(source, maximum_arity=2)
 
-    assert isinstance(generated, Ok)
-    assert "class Copy_User(TypedDict):" in generated.value.content
-    assert "    name: str" in generated.value.content
-    assert "def copy(value: User) -> Copy_User: ..." in generated.value.content
-    assert "type Copy[T] = object" in generated.value.content
+    assert isinstance(generated, Success)
+    assert "class Copy_User(TypedDict):" in generated.unwrap().content
+    assert "    name: str" in generated.unwrap().content
+    assert "def copy(value: User) -> Copy_User: ..." in generated.unwrap().content
+    assert "type Copy[T] = object" in generated.unwrap().content

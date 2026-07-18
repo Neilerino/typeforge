@@ -2,8 +2,8 @@ import sys
 from pathlib import Path
 
 import pytest
+from returns.result import Success
 
-from typeforge._result import Ok
 from typeforge.adapters.mypy import MypyAdapter
 from typeforge.adapters.pyrefly import PYREFLY_COMMAND, PyreflyAdapter
 from typeforge.cli import (
@@ -115,9 +115,11 @@ def test_explicit_path_is_relative_to_working_directory(
 def test_unchanged_content_is_not_rewritten(tmp_path: Path) -> None:
     output = tmp_path / "module.pyi"
 
-    assert write_generated(output, "def run() -> None: ...\n") == Ok(WriteState.WRITTEN)
+    assert write_generated(output, "def run() -> None: ...\n") == Success(
+        WriteState.WRITTEN
+    )
     modified = output.stat().st_mtime_ns
-    assert write_generated(output, "def run() -> None: ...\n") == Ok(
+    assert write_generated(output, "def run() -> None: ...\n") == Success(
         WriteState.UNCHANGED
     )
     assert output.stat().st_mtime_ns == modified

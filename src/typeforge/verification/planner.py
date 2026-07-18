@@ -2,7 +2,8 @@ import ast
 from dataclasses import dataclass
 from pathlib import Path
 
-from typeforge._result import Err, Ok, Result
+from returns.result import Failure, Result, Success
+
 from typeforge.analysis.model import SourcePosition, SourceSpan
 from typeforge.analysis.positions import source_position_from_utf8
 from typeforge.compiler.emitter import emit_type_expression
@@ -65,9 +66,9 @@ def plan_implementation_verification(
             continue
         enclosing = _enclosing_type_parameters(module, function.qualified_name)
         contract_result = build_return_contract(function, aliases, enclosing)
-        if isinstance(contract_result, Err):
+        if isinstance(contract_result, Failure):
             return contract_result
-        contract = contract_result.value
+        contract = contract_result.unwrap()
         if contract is None:
             continue
         initial = FlowState(tuple(item.index for item in contract.alternatives))
@@ -92,7 +93,7 @@ def plan_implementation_verification(
             }
         )
     )
-    return Ok(VerificationPlan(tuple(obligations), reserved))
+    return Success(VerificationPlan(tuple(obligations), reserved))
 
 
 def _analyze_statements(
@@ -552,13 +553,11 @@ def _invalidate_symbol(
 def _render_input(alternative: Alternative) -> str | None:
     if alternative.input_type is None:
         return None
-    emitted = emit_type_expression(alternative.input_type)
-    return emitted.value if isinstance(emitted, Ok) else None
+    return emit_type_expression(alternative.input_type).value_or(None)
 
 
 def _render_output(alternative: Alternative) -> str | None:
-    emitted = emit_type_expression(alternative.output_type)
-    return emitted.value if isinstance(emitted, Ok) else None
+    return emit_type_expression(alternative.output_type).value_or(None)
 
 
 def _known_runtime_subclass(candidate: str | None, parents: tuple[str, ...]) -> bool:

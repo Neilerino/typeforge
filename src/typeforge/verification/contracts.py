@@ -1,4 +1,5 @@
-from typeforge._result import Err, Ok, Result
+from returns.result import Failure, Result, Success
+
 from typeforge.compiler.lowering import (
     AllPredicate,
     AnyPredicate,
@@ -32,9 +33,9 @@ def build_return_contract(
     enclosing_type_parameters: tuple[str, ...] = (),
 ) -> Result[ReturnContract | None, AdaptationError]:
     adapted = adapt_function(function, enclosing_type_parameters)
-    if isinstance(adapted, Err):
+    if isinstance(adapted, Failure):
         return adapted
-    expanded = expand_function_map_aliases(adapted.value, aliases)
+    expanded = expand_function_map_aliases(adapted.unwrap(), aliases)
     relationship = expanded.return_type
     mapping = (
         relationship
@@ -44,7 +45,7 @@ def build_return_contract(
         else None
     )
     if mapping is None or not isinstance(mapping.subject, TypeVariable):
-        return Ok(None)
+        return Success(None)
     controller = mapping.subject.name
     controller_parameters = tuple(
         parameter.name
@@ -52,7 +53,7 @@ def build_return_contract(
         if parameter.annotation == TypeVariable(controller)
     )
     if len(controller_parameters) != 1:
-        return Ok(None)
+        return Success(None)
     alternatives = tuple(
         Alternative(
             index=index,
@@ -73,7 +74,7 @@ def build_return_contract(
             is_default=True,
         ),
     )
-    return Ok(
+    return Success(
         ReturnContract(
             qualified_name=function.qualified_name,
             return_annotation=(
@@ -89,11 +90,11 @@ def build_return_contract(
 
 def _conditional_mapping(conditional: IfType) -> MapType | None:
     controller = predicate_controller(conditional.condition)
-    if isinstance(controller, Err) or not predicate_is_supported(
-        conditional.condition, controller.value
+    if isinstance(controller, Failure) or not predicate_is_supported(
+        conditional.condition, controller.unwrap()
     ):
         return None
-    matches = predicate_matches(conditional.condition, controller.value)
+    matches = predicate_matches(conditional.condition, controller.unwrap())
     cases = tuple(
         MapCase(
             match.input_type,
@@ -106,7 +107,7 @@ def _conditional_mapping(conditional: IfType) -> MapType | None:
         if _predicate_default(conditional.condition)
         else conditional.when_false
     )
-    return MapType(TypeVariable(controller.value), cases, default)
+    return MapType(TypeVariable(controller.unwrap()), cases, default)
 
 
 def _predicate_default(predicate: Predicate) -> bool:

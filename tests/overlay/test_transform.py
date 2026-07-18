@@ -3,7 +3,8 @@ from pathlib import Path
 from subprocess import run
 from sys import executable
 
-from typeforge._result import Err, Ok
+from returns.result import Failure, Success
+
 from typeforge.analysis import MappingKind
 from typeforge.analysis.mapping import (
     authored_to_generated,
@@ -24,8 +25,8 @@ def test_enriched_function_is_overlaid_without_touching_authored_text() -> None:
 
     transformed = transform_source(source, Path("example.py"), maximum_arity=2)
 
-    assert isinstance(transformed, Ok)
-    document = transformed.value
+    assert isinstance(transformed, Success)
+    document = transformed.unwrap()
     assert document.authored_text == source
     assert "if TYPE_CHECKING:  # typeforge: overlay" in document.generated_text
     assert "@overload\n    def collect() -> tuple[()]: ..." in document.generated_text
@@ -43,8 +44,8 @@ def test_positions_at_an_insertion_boundary_select_authored_source() -> None:
         "    return values\n"
     )
     transformed = transform_source(source, Path("example.py"), maximum_arity=1)
-    assert isinstance(transformed, Ok)
-    document = transformed.value
+    assert isinstance(transformed, Success)
+    document = transformed.unwrap()
     authored_offset = source.index("def collect")
     generated_offset = document.generated_text.rindex("def collect")
 
@@ -69,8 +70,8 @@ def test_enriched_method_is_inserted_inside_its_owning_class() -> None:
 
     transformed = transform_source(source, Path("factory.py"), maximum_arity=1)
 
-    assert isinstance(transformed, Ok)
-    generated = transformed.value.generated_text
+    assert isinstance(transformed, Success)
+    generated = transformed.unwrap().generated_text
     assert "class Factory:\n    if TYPE_CHECKING:" in generated
     assert "        @overload\n        async def create(self: Any, /)" in generated
     assert "async def create[T1](self: Any, values_1: T1, /)" in generated
@@ -88,11 +89,13 @@ def test_map_aliases_are_expanded_before_overlay_lowering() -> None:
 
     transformed = transform_source(source, Path("encoding.py"), maximum_arity=1)
 
-    assert isinstance(transformed, Ok)
-    assert "type Encoded[T] = bytes | str" in transformed.value.generated_text
-    assert "def encode(value: int) -> bytes: ..." in (transformed.value.generated_text)
+    assert isinstance(transformed, Success)
+    assert "type Encoded[T] = bytes | str" in transformed.unwrap().generated_text
+    assert "def encode(value: int) -> bytes: ..." in (
+        transformed.unwrap().generated_text
+    )
     assert "def encode[T](value: T) -> bytes | str: ..." in (
-        transformed.value.generated_text
+        transformed.unwrap().generated_text
     )
 
 
@@ -102,17 +105,17 @@ def test_transform_is_idempotent() -> None:
         "def collect[T](*values: Each[T]) -> Collect[T]: ...\n"
     )
     first = transform_source(source, Path("example.py"), maximum_arity=2)
-    assert isinstance(first, Ok)
+    assert isinstance(first, Success)
 
     second = transform_source(
-        first.value.generated_text,
+        first.unwrap().generated_text,
         Path("example.py"),
         maximum_arity=2,
     )
 
-    assert isinstance(second, Ok)
-    assert second.value.generated_text == first.value.generated_text
-    assert second.value.generated_text.count("# typeforge: overlay\n") == 1
+    assert isinstance(second, Success)
+    assert second.unwrap().generated_text == first.unwrap().generated_text
+    assert second.unwrap().generated_text.count("# typeforge: overlay\n") == 1
 
 
 def test_mappings_cover_authored_regions_and_generated_overloads() -> None:
@@ -124,8 +127,8 @@ def test_mappings_cover_authored_regions_and_generated_overloads() -> None:
 
     transformed = transform_source(source, Path("example.py"), maximum_arity=1)
 
-    assert isinstance(transformed, Ok)
-    document = transformed.value
+    assert isinstance(transformed, Success)
+    document = transformed.unwrap()
     authored = tuple(
         mapping
         for mapping in document.mappings
@@ -165,23 +168,23 @@ def test_ordinary_source_is_returned_unchanged() -> None:
 
     transformed = transform_source(source, Path("ordinary.py"))
 
-    assert isinstance(transformed, Ok)
-    assert transformed.value.authored_text == source
-    assert transformed.value.generated_text == source
-    assert len(transformed.value.mappings) == 1
-    assert transformed.value.mappings[0].origin is MappingKind.AUTHORED
+    assert isinstance(transformed, Success)
+    assert transformed.unwrap().authored_text == source
+    assert transformed.unwrap().generated_text == source
+    assert len(transformed.unwrap().mappings) == 1
+    assert transformed.unwrap().mappings[0].origin is MappingKind.AUTHORED
 
 
 def test_syntax_and_configuration_failures_are_typed() -> None:
     syntax = transform_source("def broken(: ...\n", Path("broken.py"))
     frontier = transform_source("pass\n", Path("valid.py"), maximum_arity=-1)
 
-    assert isinstance(syntax, Err)
-    assert isinstance(syntax.error, OverlayError)
-    assert syntax.error.code == "syntax"
-    assert isinstance(frontier, Err)
-    assert isinstance(frontier.error, OverlayError)
-    assert frontier.error.code == "invalid_arity"
+    assert isinstance(syntax, Failure)
+    assert isinstance(syntax.failure(), OverlayError)
+    assert syntax.failure().code == "syntax"
+    assert isinstance(frontier, Failure)
+    assert isinstance(frontier.failure(), OverlayError)
+    assert frontier.failure().code == "invalid_arity"
 
 
 def test_mypy_consumes_same_file_method_overlay(tmp_path: Path) -> None:
@@ -195,9 +198,9 @@ def test_mypy_consumes_same_file_method_overlay(tmp_path: Path) -> None:
         'assert_type(factory.create(1, "two"), tuple[int, str])\n'
     )
     transformed = transform_source(source, tmp_path / "same_file.py", maximum_arity=2)
-    assert isinstance(transformed, Ok)
+    assert isinstance(transformed, Success)
     path = tmp_path / "same_file.py"
-    path.write_text(transformed.value.generated_text, encoding="utf-8")
+    path.write_text(transformed.unwrap().generated_text, encoding="utf-8")
 
     completed = run(
         (
@@ -249,10 +252,10 @@ def test_mypy_consumes_bounded_structural_map_overlay(tmp_path: Path) -> None:
         ")\n"
     )
     transformed = transform_source(source, tmp_path / "ecs.py", maximum_arity=2)
-    assert isinstance(transformed, Ok)
-    assert "query[T1: Component]" in transformed.value.generated_text
+    assert isinstance(transformed, Success)
+    assert "query[T1: Component]" in transformed.unwrap().generated_text
     path = tmp_path / "ecs.py"
-    path.write_text(transformed.value.generated_text, encoding="utf-8")
+    path.write_text(transformed.unwrap().generated_text, encoding="utf-8")
 
     completed = run(
         (

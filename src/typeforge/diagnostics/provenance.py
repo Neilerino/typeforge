@@ -1,4 +1,5 @@
-from typeforge._result import Err
+from returns.result import Failure
+
 from typeforge.compiler.frontend import parse_source
 from typeforge.compiler.model import ParameterKind, enriched_functions
 from typeforge.diagnostics.model import (
@@ -18,7 +19,7 @@ _PARAMETER_KINDS = {
 
 def collect_authored_callables(source: str) -> tuple[AuthoredCallable, ...]:
     parsed = parse_source(source)
-    if isinstance(parsed, Err):
+    if isinstance(parsed, Failure):
         return ()
     return tuple(
         AuthoredCallable(
@@ -40,5 +41,5 @@ def collect_authored_callables(source: str) -> tuple[AuthoredCallable, ...]:
                 function.returns.source if function.returns is not None else None
             ),
         )
-        for function in enriched_functions(parsed.value)
+        for function in enriched_functions(parsed.unwrap())
     )

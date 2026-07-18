@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from sys import executable
 
-from typeforge._result import Err, Ok, Result
+from returns.result import Failure, Result, Success
+
 from typeforge.adapters.lsp import (
     LspConfiguration,
     LspDiagnostic,
@@ -98,25 +99,27 @@ class PyreflyAdapter:
                 for item in hover_positions
             ),
         )
-        if isinstance(lsp_result, Err):
-            return Err(
+        if isinstance(lsp_result, Failure):
+            lsp_error = lsp_result.failure()
+            return Failure(
                 CheckerError(
                     checker=self.name,
                     message="Pyrefly language server analysis failed",
-                    detail=f"{lsp_result.error.code.value}: {lsp_result.error.message}",
+                    detail=f"{lsp_error.code.value}: {lsp_error.message}",
                 )
             )
+        lsp_analysis = lsp_result.unwrap()
         diagnostics = tuple(
             normalize_diagnostic(document, item)
-            for item in lsp_result.value.diagnostics
+            for item in lsp_analysis.diagnostics
             if not is_overlay_artifact(document, item)
         )
-        return Ok(
+        return Success(
             AnalysisResult(
                 diagnostics=deduplicate_return_diagnostics(diagnostics),
                 hovers=tuple(
                     normalized
-                    for item in lsp_result.value.hovers
+                    for item in lsp_analysis.hovers
                     if (normalized := normalize_hover(document, item)) is not None
                 ),
             )

@@ -4,7 +4,8 @@ import threading
 from pathlib import Path
 from typing import BinaryIO, cast
 
-from typeforge._result import Ok, Result
+from returns.result import Result, Success
+
 from typeforge.proxy import (
     ProxyError,
     ProxyStreams,
@@ -182,13 +183,13 @@ def pipe() -> tuple[BinaryIO, BinaryIO]:
 
 def receive(stream: BinaryIO) -> JsonObject:
     received = read_message(stream)
-    assert isinstance(received, Ok)
-    assert received.value is not None
-    return received.value
+    assert isinstance(received, Success)
+    assert received.unwrap() is not None
+    return received.unwrap()
 
 
 def send(stream: BinaryIO, message: JsonObject) -> None:
-    assert isinstance(write_message(stream, message), Ok)
+    assert isinstance(write_message(stream, message), Success)
 
 
 def response_for(
@@ -400,7 +401,7 @@ def test_proxy_forwards_lifecycle_and_maps_documents(tmp_path: Path) -> None:
     proxy_thread.join(timeout=5.0)
 
     assert not proxy_thread.is_alive()
-    assert completed == [Ok(None)]
+    assert completed == [Success(None)]
 
 
 def test_real_pyrefly_proxy_hovers_same_file_ecs_result(tmp_path: Path) -> None:
@@ -660,4 +661,4 @@ assert_type(result_2, tuple[int, Position, Velocity | None] | None)
     assert response_for(editor_input, editor_output, 15)["id"] == 15
     send(editor_output, {"jsonrpc": "2.0", "method": "exit"})
     proxy_thread.join(timeout=5.0)
-    assert completed == [Ok(None)]
+    assert completed == [Success(None)]

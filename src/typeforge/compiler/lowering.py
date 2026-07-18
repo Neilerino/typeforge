@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from itertools import product
 
-from typeforge._result import Err, Ok, Result
+from returns.result import Failure, Result, Success
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,7 +248,7 @@ def lower_variadic_module(
     module: StubModule, frontier: ArityFrontier
 ) -> Result[StubModule, LoweringError]:
     if frontier.minimum < 0 or frontier.maximum < frontier.minimum:
-        return Err(
+        return Failure(
             LoweringError(
                 LoweringErrorCode.INVALID_FRONTIER,
                 module.name,
@@ -261,9 +261,9 @@ def lower_variadic_module(
     for declaration in module.declarations:
         if isinstance(declaration, ClassDeclaration):
             class_result = _lower_class(declaration, frontier)
-            if isinstance(class_result, Err):
+            if isinstance(class_result, Failure):
                 return class_result
-            lowered_class, class_has_overloads = class_result.value
+            lowered_class, class_has_overloads = class_result.unwrap()
             has_overloads = has_overloads or class_has_overloads
             lowered.append(lowered_class)
             continue
@@ -271,9 +271,9 @@ def lower_variadic_module(
             lowered.append(declaration)
             continue
         result = _lower_function(declaration, frontier)
-        if isinstance(result, Err):
+        if isinstance(result, Failure):
             return result
-        lowered_declaration = result.value
+        lowered_declaration = result.unwrap()
         has_overloads = has_overloads or isinstance(
             lowered_declaration, OverloadDeclaration
         )
@@ -289,7 +289,7 @@ def lower_variadic_module(
             lowered_module.declarations,
             _add_import(lowered_module.imports, ImportFrom("typing", ("Literal",))),
         )
-    return Ok(lowered_module)
+    return Success(lowered_module)
 
 
 def _lower_class(
@@ -303,15 +303,16 @@ def _lower_class(
             has_overloads = True
             continue
         lowered = _lower_function(method, frontier)
-        if isinstance(lowered, Err):
+        if isinstance(lowered, Failure):
             return lowered
-        if isinstance(lowered.value, TypeAliasDeclaration | ClassDeclaration):
+        lowered_method = lowered.unwrap()
+        if isinstance(lowered_method, TypeAliasDeclaration | ClassDeclaration):
             raise AssertionError(
                 "function lowering produced a non-callable declaration"
             )
-        methods.append(lowered.value)
-        has_overloads = has_overloads or isinstance(lowered.value, OverloadDeclaration)
-    return Ok(
+        methods.append(lowered_method)
+        has_overloads = has_overloads or isinstance(lowered_method, OverloadDeclaration)
+    return Success(
         (
             ClassDeclaration(
                 name=declaration.name,
@@ -346,9 +347,9 @@ def _lower_each_function(
         if isinstance(parameter.annotation, EachType)
     )
     if not each_parameters:
-        return Ok(declaration)
+        return Success(declaration)
     if len(each_parameters) != 1:
-        return Err(
+        return Failure(
             LoweringError(
                 LoweringErrorCode.MULTIPLE_CAPTURES,
                 declaration.name,
@@ -359,9 +360,9 @@ def _lower_each_function(
     each_parameter = each_parameters[0]
     each_annotation = each_parameter.annotation
     if not isinstance(each_annotation, EachType):
-        return Ok(declaration)
+        return Success(declaration)
     if each_parameter.kind is not ParameterKind.VAR_POSITIONAL:
-        return Err(
+        return Failure(
             LoweringError(
                 LoweringErrorCode.INVALID_EACH_POSITION,
                 declaration.name,
@@ -371,7 +372,7 @@ def _lower_each_function(
 
     captured_names = _collect_variable_names(each_annotation.item)
     if len(captured_names) != 1:
-        return Err(
+        return Failure(
             LoweringError(
                 LoweringErrorCode.MISSING_CAPTURE,
                 declaration.name,
@@ -391,7 +392,7 @@ def _lower_each_function(
         )
     )
     fallback = _fallback_signature(declaration)
-    return Ok(OverloadDeclaration(signatures, fallback))
+    return Success(OverloadDeclaration(signatures, fallback))
 
 
 @dataclass(frozen=True, slots=True)
@@ -404,36 +405,37 @@ def _lower_if_function(
     declaration: FunctionDeclaration, conditional: IfType
 ) -> Result[Declaration, LoweringError]:
     controller = predicate_controller(conditional.condition)
-    if isinstance(controller, Err):
-        return Err(
+    if isinstance(controller, Failure):
+        return Failure(
             LoweringError(
-                controller.error,
+                controller.failure(),
                 declaration.name,
                 "conditional predicate must compare one type parameter "
                 "to a concrete type",
             )
         )
-    if not _function_has_controller(declaration, controller.value):
-        return Err(
+    controller_name = controller.unwrap()
+    if not _function_has_controller(declaration, controller_name):
+        return Failure(
             LoweringError(
                 LoweringErrorCode.MISSING_CONTROLLER,
                 declaration.name,
-                f"no parameter is controlled by {controller.value}",
+                f"no parameter is controlled by {controller_name}",
             )
         )
-    if not predicate_is_supported(conditional.condition, controller.value):
-        return Err(
+    if not predicate_is_supported(conditional.condition, controller_name):
+        return Failure(
             LoweringError(
                 LoweringErrorCode.UNSUPPORTED_PREDICATE,
                 declaration.name,
                 "predicate cannot be represented at a callable boundary",
             )
         )
-    matches = predicate_matches(conditional.condition, controller.value)
+    matches = predicate_matches(conditional.condition, controller_name)
     signatures = tuple(
         _specialized_signature(
             declaration,
-            controller.value,
+            controller_name,
             match.input_type,
             conditional.when_true if match.result else conditional.when_false,
         )
@@ -444,15 +446,15 @@ def _lower_if_function(
         _union((conditional.when_true, conditional.when_false)),
     )
     if not signatures:
-        return Ok(fallback)
-    return Ok(OverloadDeclaration(signatures, fallback))
+        return Success(fallback)
+    return Success(OverloadDeclaration(signatures, fallback))
 
 
 def _lower_map_function(
     declaration: FunctionDeclaration, mapping: MapType
 ) -> Result[Declaration, LoweringError]:
     if not isinstance(mapping.subject, TypeVariable):
-        return Err(
+        return Failure(
             LoweringError(
                 LoweringErrorCode.MISSING_CONTROLLER,
                 declaration.name,
@@ -461,7 +463,7 @@ def _lower_map_function(
         )
     controller = mapping.subject.name
     if not _function_has_controller(declaration, controller):
-        return Err(
+        return Failure(
             LoweringError(
                 LoweringErrorCode.MISSING_CONTROLLER,
                 declaration.name,
@@ -471,7 +473,7 @@ def _lower_map_function(
     seen: set[TypeExpression] = set()
     for case in mapping.cases:
         if case.input_type in seen:
-            return Err(
+            return Failure(
                 LoweringError(
                     LoweringErrorCode.DUPLICATE_MAP_CASE,
                     declaration.name,
@@ -493,8 +495,8 @@ def _lower_map_function(
         _union((*tuple(case.output_type for case in mapping.cases), mapping.default)),
     )
     if not signatures:
-        return Ok(fallback)
-    return Ok(OverloadDeclaration(signatures, fallback))
+        return Success(fallback)
+    return Success(OverloadDeclaration(signatures, fallback))
 
 
 def _specialized_signature(
@@ -543,8 +545,8 @@ def predicate_controller(
 ) -> Result[str, LoweringErrorCode]:
     names = _predicate_variable_names(predicate)
     if len(names) != 1:
-        return Err(LoweringErrorCode.UNSUPPORTED_PREDICATE)
-    return Ok(names[0])
+        return Failure(LoweringErrorCode.UNSUPPORTED_PREDICATE)
+    return Success(names[0])
 
 
 def _predicate_variable_names(predicate: Predicate) -> tuple[str, ...]:

@@ -11,7 +11,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import BinaryIO, cast
 
-from typeforge._result import Err, Ok, Result
+from returns.result import Failure, Result, Success, safe
 
 type JsonValue = (
     None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
@@ -70,7 +70,7 @@ class LspErrorCode(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class LspError:
+class LspError(Exception):
     code: LspErrorCode
     message: str
 
@@ -89,11 +89,12 @@ class _IncomingMessage:
     error: str | None = None
 
 
+@safe(exceptions=(LspError,))
 def analyze_document(
     configuration: LspConfiguration,
     document: LspDocument,
     hover_positions: tuple[LspPosition, ...] = (),
-) -> Result[LspAnalysis, LspError]:
+) -> LspAnalysis:
     try:
         process = subprocess.Popen(
             configuration.command,
@@ -103,10 +104,10 @@ def analyze_document(
             stderr=subprocess.DEVNULL,
         )
     except OSError as error:
-        return Err(LspError(LspErrorCode.SPAWN, str(error)))
+        raise LspError(LspErrorCode.SPAWN, str(error)) from error
     if process.stdin is None or process.stdout is None:
         process.kill()
-        return Err(LspError(LspErrorCode.SPAWN, "language server pipes unavailable"))
+        raise LspError(LspErrorCode.SPAWN, "language server pipes unavailable")
     writer = cast(BinaryIO, process.stdin)
     reader_stream = cast(BinaryIO, process.stdout)
 
@@ -129,8 +130,8 @@ def analyze_document(
             "initialize",
             _initialize_parameters(configuration, document),
         )
-        if isinstance(initialize, Err):
-            return initialize
+        if isinstance(initialize, Failure):
+            raise initialize.failure()
         initialized = _await_response(
             process,
             writer,
@@ -139,12 +140,12 @@ def analyze_document(
             deadline,
             document.uri,
         )
-        if isinstance(initialized, Err):
-            return initialized
+        if isinstance(initialized, Failure):
+            raise initialized.failure()
         next_request_id += 1
         notified = _notify(writer, "initialized", {})
-        if isinstance(notified, Err):
-            return notified
+        if isinstance(notified, Failure):
+            raise notified.failure()
         opened = _notify(
             writer,
             "textDocument/didOpen",
@@ -157,10 +158,10 @@ def analyze_document(
                 }
             },
         )
-        if isinstance(opened, Err):
-            return opened
+        if isinstance(opened, Failure):
+            raise opened.failure()
 
-        diagnostic_response: Result[_Response, LspError] = Err(
+        diagnostic_response: Result[_Response, LspError] = Failure(
             LspError(LspErrorCode.SERVER, "diagnostic request was not attempted")
         )
         for _ in range(3):
@@ -170,8 +171,8 @@ def analyze_document(
                 "textDocument/diagnostic",
                 {"textDocument": {"uri": document.uri}},
             )
-            if isinstance(pulled, Err):
-                return pulled
+            if isinstance(pulled, Failure):
+                raise pulled.failure()
             diagnostic_response = _await_response(
                 process,
                 writer,
@@ -183,21 +184,21 @@ def analyze_document(
             next_request_id += 1
             if not _is_mutation_cancellation(diagnostic_response):
                 break
-        if isinstance(diagnostic_response, Ok):
-            if diagnostic_response.value.diagnostics is not None:
-                diagnostics = diagnostic_response.value.diagnostics
+        if isinstance(diagnostic_response, Success):
+            if diagnostic_response.unwrap().diagnostics is not None:
+                diagnostics = diagnostic_response.unwrap().diagnostics
             else:
                 report = _parse_diagnostic_report(
-                    document.uri, diagnostic_response.value.result
+                    document.uri, diagnostic_response.unwrap().result
                 )
-                if isinstance(report, Err):
-                    return report
-                diagnostics = report.value
-        elif "not found" not in diagnostic_response.error.message.lower():
-            return diagnostic_response
+                if isinstance(report, Failure):
+                    raise report.failure()
+                diagnostics = report.unwrap()
+        elif "not found" not in diagnostic_response.failure().message.lower():
+            raise diagnostic_response.failure()
 
         for position in hover_positions:
-            response: Result[_Response, LspError] = Err(
+            response: Result[_Response, LspError] = Failure(
                 LspError(LspErrorCode.SERVER, "hover request was not attempted")
             )
             for _ in range(3):
@@ -210,8 +211,8 @@ def analyze_document(
                         "position": _position_value(position),
                     },
                 )
-                if isinstance(sent, Err):
-                    return sent
+                if isinstance(sent, Failure):
+                    raise sent.failure()
                 response = _await_response(
                     process,
                     writer,
@@ -223,14 +224,14 @@ def analyze_document(
                 next_request_id += 1
                 if not _is_mutation_cancellation(response):
                     break
-            if isinstance(response, Err):
-                return response
-            if response.value.diagnostics is not None:
-                diagnostics = response.value.diagnostics
-            parsed_hover = _parse_hover(position, response.value.result)
-            if isinstance(parsed_hover, Err):
-                return parsed_hover
-            hovers.append(parsed_hover.value)
+            if isinstance(response, Failure):
+                raise response.failure()
+            if response.unwrap().diagnostics is not None:
+                diagnostics = response.unwrap().diagnostics
+            parsed_hover = _parse_hover(position, response.unwrap().result)
+            if isinstance(parsed_hover, Failure):
+                raise parsed_hover.failure()
+            hovers.append(parsed_hover.unwrap())
 
         if diagnostics is None:
             published = _await_diagnostics(
@@ -240,10 +241,10 @@ def analyze_document(
                 deadline,
                 document.uri,
             )
-            if isinstance(published, Err):
-                return published
-            diagnostics = published.value
-        return Ok(LspAnalysis(diagnostics, tuple(hovers)))
+            if isinstance(published, Failure):
+                raise published.failure()
+            diagnostics = published.unwrap()
+        return LspAnalysis(diagnostics, tuple(hovers))
     finally:
         _stop_server(process, writer, next_request_id, deadline)
 
@@ -258,9 +259,9 @@ def _is_mutation_cancellation(
     response: Result[_Response, LspError],
 ) -> bool:
     return (
-        isinstance(response, Err)
-        and response.error.code is LspErrorCode.SERVER
-        and "canceled due to subsequent mutation" in response.error.message.lower()
+        isinstance(response, Failure)
+        and response.failure().code is LspErrorCode.SERVER
+        and "canceled due to subsequent mutation" in response.failure().message.lower()
     )
 
 
@@ -275,26 +276,26 @@ def _await_response(
     diagnostics: tuple[LspDiagnostic, ...] | None = None
     while True:
         received = _next_message(process, messages, deadline)
-        if isinstance(received, Err):
+        if isinstance(received, Failure):
             return received
-        message = received.value
+        message = received.unwrap()
         published = _published_diagnostics(message, document_uri)
-        if isinstance(published, Err):
+        if isinstance(published, Failure):
             return published
-        if published.value is not None:
-            diagnostics = published.value
+        if published.unwrap() is not None:
+            diagnostics = published.unwrap()
             continue
         if _is_server_request(message):
             answered = _answer_server_request(writer, message)
-            if isinstance(answered, Err):
+            if isinstance(answered, Failure):
                 return answered
             continue
         if _message_id(message) != request_id:
             continue
         error = message.get("error")
         if isinstance(error, dict):
-            return Err(LspError(LspErrorCode.SERVER, _server_error_message(error)))
-        return Ok(_Response(message.get("result"), diagnostics))
+            return Failure(LspError(LspErrorCode.SERVER, _server_error_message(error)))
+        return Success(_Response(message.get("result"), diagnostics))
 
 
 def _await_diagnostics(
@@ -306,42 +307,42 @@ def _await_diagnostics(
 ) -> Result[tuple[LspDiagnostic, ...], LspError]:
     while True:
         received = _next_message(process, messages, deadline)
-        if isinstance(received, Err):
+        if isinstance(received, Failure):
             return received
-        message = received.value
+        message = received.unwrap()
         published = _published_diagnostics(message, document_uri)
-        if isinstance(published, Err):
+        if isinstance(published, Failure):
             return published
-        if published.value is not None:
-            return Ok(published.value)
+        published_diagnostics = published.unwrap()
+        if published_diagnostics is not None:
+            return Success(published_diagnostics)
         if _is_server_request(message):
             answered = _answer_server_request(writer, message)
-            if isinstance(answered, Err):
+            if isinstance(answered, Failure):
                 return answered
 
 
+@safe(exceptions=(LspError,))
 def _next_message(
     process: subprocess.Popen[bytes],
     messages: queue.Queue[_IncomingMessage],
     deadline: float,
-) -> Result[dict[str, JsonValue], LspError]:
+) -> dict[str, JsonValue]:
     remaining = deadline - time.monotonic()
     if remaining <= 0:
-        return Err(LspError(LspErrorCode.TIMEOUT, "language server timed out"))
+        raise LspError(LspErrorCode.TIMEOUT, "language server timed out")
     try:
         incoming = messages.get(timeout=remaining)
     except queue.Empty:
-        return Err(LspError(LspErrorCode.TIMEOUT, "language server timed out"))
+        raise LspError(LspErrorCode.TIMEOUT, "language server timed out") from None
     if incoming.error is not None:
-        return Err(LspError(LspErrorCode.PROTOCOL, incoming.error))
+        raise LspError(LspErrorCode.PROTOCOL, incoming.error)
     if incoming.value is None:
-        return Err(
-            LspError(
-                LspErrorCode.EXIT,
-                f"language server exited with status {process.poll()}",
-            )
+        raise LspError(
+            LspErrorCode.EXIT,
+            f"language server exited with status {process.poll()}",
         )
-    return Ok(incoming.value)
+    return incoming.value
 
 
 def _read_messages(stream: BinaryIO, messages: queue.Queue[_IncomingMessage]) -> None:
@@ -387,17 +388,15 @@ def _read_message(stream: BinaryIO) -> _IncomingMessage:
     return _IncomingMessage(cast(dict[str, JsonValue], decoded))
 
 
-def _write_message(
-    writer: BinaryIO, message: Mapping[str, JsonValue]
-) -> Result[None, LspError]:
+@safe(exceptions=(LspError,))
+def _write_message(writer: BinaryIO, message: Mapping[str, JsonValue]) -> None:
     try:
         payload = json.dumps(message, separators=(",", ":")).encode("utf-8")
         writer.write(f"Content-Length: {len(payload)}\r\n\r\n".encode("ascii"))
         writer.write(payload)
         writer.flush()
     except OSError as error:
-        return Err(LspError(LspErrorCode.EXIT, str(error)))
-    return Ok(None)
+        raise LspError(LspErrorCode.EXIT, str(error)) from error
 
 
 def _request(
@@ -452,84 +451,86 @@ def _initialize_parameters(
     }
 
 
+@safe(exceptions=(LspError,))
 def _published_diagnostics(
     message: Mapping[str, JsonValue], document_uri: str
-) -> Result[tuple[LspDiagnostic, ...] | None, LspError]:
+) -> tuple[LspDiagnostic, ...] | None:
     if message.get("method") != "textDocument/publishDiagnostics":
-        return Ok(None)
+        return None
     parameters = message.get("params")
     if not isinstance(parameters, dict) or parameters.get("uri") != document_uri:
-        return Ok(None)
+        return None
     values = parameters.get("diagnostics")
     if not isinstance(values, list):
-        return Err(LspError(LspErrorCode.PROTOCOL, "invalid diagnostics payload"))
+        raise LspError(LspErrorCode.PROTOCOL, "invalid diagnostics payload")
     diagnostics: list[LspDiagnostic] = []
     for value in values:
         parsed = _parse_diagnostic(document_uri, value)
-        if isinstance(parsed, Err):
-            return parsed
-        diagnostics.append(parsed.value)
-    return Ok(tuple(diagnostics))
+        if isinstance(parsed, Failure):
+            raise parsed.failure()
+        diagnostics.append(parsed.unwrap())
+    return tuple(diagnostics)
 
 
-def _parse_diagnostic(uri: str, value: JsonValue) -> Result[LspDiagnostic, LspError]:
+@safe(exceptions=(LspError,))
+def _parse_diagnostic(uri: str, value: JsonValue) -> LspDiagnostic:
     if not isinstance(value, dict):
-        return Err(LspError(LspErrorCode.PROTOCOL, "invalid diagnostic"))
+        raise LspError(LspErrorCode.PROTOCOL, "invalid diagnostic")
     parsed_range = _parse_range(value.get("range"))
     message = value.get("message")
-    if isinstance(parsed_range, Err) or not isinstance(message, str):
-        return Err(LspError(LspErrorCode.PROTOCOL, "invalid diagnostic"))
+    if isinstance(parsed_range, Failure) or not isinstance(message, str):
+        raise LspError(LspErrorCode.PROTOCOL, "invalid diagnostic")
     severity = value.get("severity")
     code = value.get("code")
     source = value.get("source")
-    return Ok(
-        LspDiagnostic(
-            uri,
-            parsed_range.value,
-            message,
-            severity if isinstance(severity, int) else None,
-            code if isinstance(code, str | int) else None,
-            source if isinstance(source, str) else None,
-        )
+    return LspDiagnostic(
+        uri,
+        parsed_range.unwrap(),
+        message,
+        severity if isinstance(severity, int) else None,
+        code if isinstance(code, str | int) else None,
+        source if isinstance(source, str) else None,
     )
 
 
+@safe(exceptions=(LspError,))
 def _parse_diagnostic_report(
     uri: str, value: JsonValue
-) -> Result[tuple[LspDiagnostic, ...] | None, LspError]:
+) -> tuple[LspDiagnostic, ...] | None:
     if value is None:
-        return Ok(None)
+        return None
     if not isinstance(value, dict):
-        return Err(LspError(LspErrorCode.PROTOCOL, "invalid diagnostic report"))
+        raise LspError(LspErrorCode.PROTOCOL, "invalid diagnostic report")
     items = value.get("items")
     if items is None:
-        return Ok(None)
+        return None
     if not isinstance(items, list):
-        return Err(LspError(LspErrorCode.PROTOCOL, "invalid diagnostic report"))
+        raise LspError(LspErrorCode.PROTOCOL, "invalid diagnostic report")
     diagnostics: list[LspDiagnostic] = []
     for item in items:
         parsed = _parse_diagnostic(uri, item)
-        if isinstance(parsed, Err):
-            return parsed
-        diagnostics.append(parsed.value)
-    return Ok(tuple(diagnostics))
+        if isinstance(parsed, Failure):
+            raise parsed.failure()
+        diagnostics.append(parsed.unwrap())
+    return tuple(diagnostics)
 
 
-def _parse_hover(position: LspPosition, value: JsonValue) -> Result[LspHover, LspError]:
+@safe(exceptions=(LspError,))
+def _parse_hover(position: LspPosition, value: JsonValue) -> LspHover:
     if value is None:
-        return Ok(LspHover(position, None))
+        return LspHover(position, None)
     if not isinstance(value, dict):
-        return Err(LspError(LspErrorCode.PROTOCOL, "invalid hover response"))
+        raise LspError(LspErrorCode.PROTOCOL, "invalid hover response")
     contents = _hover_contents(value.get("contents"))
     if contents is None:
-        return Err(LspError(LspErrorCode.PROTOCOL, "invalid hover contents"))
+        raise LspError(LspErrorCode.PROTOCOL, "invalid hover contents")
     range_value = value.get("range")
     if range_value is None:
-        return Ok(LspHover(position, contents))
+        return LspHover(position, contents)
     parsed_range = _parse_range(range_value)
-    if isinstance(parsed_range, Err):
-        return parsed_range
-    return Ok(LspHover(position, contents, parsed_range.value))
+    if isinstance(parsed_range, Failure):
+        raise parsed_range.failure()
+    return LspHover(position, contents, parsed_range.unwrap())
 
 
 def _hover_contents(value: JsonValue) -> str | None:
@@ -546,14 +547,15 @@ def _hover_contents(value: JsonValue) -> str | None:
     return None
 
 
-def _parse_range(value: JsonValue) -> Result[LspRange, LspError]:
+@safe(exceptions=(LspError,))
+def _parse_range(value: JsonValue) -> LspRange:
     if not isinstance(value, dict):
-        return Err(LspError(LspErrorCode.PROTOCOL, "invalid range"))
+        raise LspError(LspErrorCode.PROTOCOL, "invalid range")
     start = _parse_position(value.get("start"))
     end = _parse_position(value.get("end"))
     if start is None or end is None:
-        return Err(LspError(LspErrorCode.PROTOCOL, "invalid range"))
-    return Ok(LspRange(start, end))
+        raise LspError(LspErrorCode.PROTOCOL, "invalid range")
+    return LspRange(start, end)
 
 
 def _parse_position(value: JsonValue) -> LspPosition | None:
@@ -585,7 +587,7 @@ def _answer_server_request(
     request_id = message.get("id")
     method = message.get("method")
     if not isinstance(request_id, int | str) or not isinstance(method, str):
-        return Err(LspError(LspErrorCode.PROTOCOL, "invalid server request"))
+        return Failure(LspError(LspErrorCode.PROTOCOL, "invalid server request"))
     result: JsonValue = None
     if method == "workspace/configuration":
         parameters = message.get("params")
