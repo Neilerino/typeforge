@@ -26,7 +26,6 @@ from typeforge.analysis.positions import source_position_from_utf16
 from typeforge.diagnostics.render import render_return_check
 from typeforge.documentation import DocumentationQuery
 from typeforge.overlay import transform_source
-from typeforge.proxy.framing import read_message, write_message
 from typeforge.proxy.hover import append_hover_documentation
 from typeforge.proxy.mapping import MappingDirection, map_message_payload
 from typeforge.proxy.model import (
@@ -41,6 +40,11 @@ from typeforge.proxy.model import (
     RequestId,
 )
 from typeforge.proxy.semantic_tokens import map_semantic_tokens
+from typeforge.utils.stream import (
+    LspStreamError,
+    read_lsp_message,
+    write_lsp_message,
+)
 
 
 class _Peer(Enum):
@@ -146,9 +150,9 @@ def _start_reader(
 
 def _read_loop(stream: BinaryIO, peer: _Peer, incoming: queue.Queue[_Envelope]) -> None:
     while True:
-        result = read_message(stream)
+        result = read_lsp_message(stream)
         if isinstance(result, Failure):
-            incoming.put(_Envelope(peer, error=result.failure()))
+            incoming.put(_Envelope(peer, error=ProxyError(result.failure().message)))
             return
         incoming.put(_Envelope(peer, message=result.unwrap()))
         if result.unwrap() is None:
@@ -200,7 +204,7 @@ def _handle_editor_message(
             request_uri,
             _authored_request_position(message, request_uri, documents),
         )
-    return write_message(backend_output, transformed)
+    return _write_message(backend_output, transformed)
 
 
 def _handle_backend_message(
@@ -252,7 +256,15 @@ def _handle_backend_message(
                     configuration,
                     documents,
                 )
-    return write_message(editor_output, transformed)
+    return _write_message(editor_output, transformed)
+
+
+def _write_message(stream: BinaryIO, message: JsonObject) -> Result[None, ProxyError]:
+    return write_lsp_message(stream, message).alt(_output_error)
+
+
+def _output_error(error: LspStreamError) -> ProxyError:
+    return ProxyError(error.message, ProxyErrorCode.OUTPUT)
 
 
 def _add_hover_documentation(

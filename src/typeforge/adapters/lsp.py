@@ -1,92 +1,62 @@
 from __future__ import annotations
 
-import json
 import queue
 import subprocess
 import threading
 import time
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
-from enum import StrEnum
-from pathlib import Path
 from typing import BinaryIO, cast
 
 from returns.result import Failure, Result, Success, safe
 
-type JsonValue = (
-    None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
+from pydantic import ValidationError
+from typeforge.adapters.lsp_model import (
+    DiagnosticReport,
+    HoverResultPayload,
+    LspAnalysis,
+    LspConfiguration,
+    LspDiagnostic,
+    LspDocument,
+    LspError,
+    LspErrorCode,
+    LspExitError,
+    LspHover,
+    LspPosition,
+    LspProtocolError,
+    LspRange,
+    LspServerError,
+    LspSpawnError,
+    LspTimeoutError,
+    PublishedDiagnostics,
+    Response,
+)
+from typeforge.utils.stream import (
+    JsonObject,
+    JsonValue,
+    LspStreamError,
+    read_lsp_message,
+    write_lsp_message,
 )
 
+__all__ = (
+    "LspAnalysis",
+    "LspConfiguration",
+    "LspDiagnostic",
+    "LspDocument",
+    "LspError",
+    "LspErrorCode",
+    "LspExitError",
+    "LspHover",
+    "LspPosition",
+    "LspProtocolError",
+    "LspRange",
+    "LspServerError",
+    "LspSpawnError",
+    "LspTimeoutError",
+    "analyze_document",
+)
 
-@dataclass(frozen=True, slots=True)
-class LspPosition:
-    line: int
-    character: int
-
-
-@dataclass(frozen=True, slots=True)
-class LspRange:
-    start: LspPosition
-    end: LspPosition
-
-
-@dataclass(frozen=True, slots=True)
-class LspDocument:
-    uri: str
-    text: str
-    version: int = 1
-    language_id: str = "python"
-
-
-@dataclass(frozen=True, slots=True)
-class LspDiagnostic:
-    uri: str
-    range: LspRange
-    message: str
-    severity: int | None = None
-    code: str | int | None = None
-    source: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class LspHover:
-    position: LspPosition
-    contents: str | None
-    range: LspRange | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class LspAnalysis:
-    diagnostics: tuple[LspDiagnostic, ...]
-    hovers: tuple[LspHover, ...]
-
-
-class LspErrorCode(StrEnum):
-    SPAWN = "spawn"
-    TIMEOUT = "timeout"
-    PROTOCOL = "protocol"
-    SERVER = "server"
-    EXIT = "exit"
-
-
-@dataclass(frozen=True, slots=True)
-class LspError(Exception):
-    code: LspErrorCode
-    message: str
-
-
-@dataclass(frozen=True, slots=True)
-class LspConfiguration:
-    command: tuple[str, ...]
-    root: Path
-    initialization_options: Mapping[str, JsonValue] | None = None
-    timeout_seconds: float = 10.0
-
-
-@dataclass(frozen=True, slots=True)
-class _IncomingMessage:
-    value: dict[str, JsonValue] | None
-    error: str | None = None
+type QueueMessage = Result[JsonObject | None, LspStreamError]
 
 
 @safe(exceptions=(LspError,))
@@ -104,14 +74,14 @@ def analyze_document(
             stderr=subprocess.DEVNULL,
         )
     except OSError as error:
-        raise LspError(LspErrorCode.SPAWN, str(error)) from error
+        raise LspSpawnError(str(error)) from error
     if process.stdin is None or process.stdout is None:
         process.kill()
-        raise LspError(LspErrorCode.SPAWN, "language server pipes unavailable")
+        raise LspSpawnError("language server pipes unavailable")
     writer = cast(BinaryIO, process.stdin)
     reader_stream = cast(BinaryIO, process.stdout)
 
-    messages: queue.Queue[_IncomingMessage] = queue.Queue()
+    messages: queue.Queue[QueueMessage] = queue.Queue()
     reader = threading.Thread(
         target=_read_messages,
         args=(reader_stream, messages),
@@ -161,8 +131,8 @@ def analyze_document(
         if isinstance(opened, Failure):
             raise opened.failure()
 
-        diagnostic_response: Result[_Response, LspError] = Failure(
-            LspError(LspErrorCode.SERVER, "diagnostic request was not attempted")
+        diagnostic_response: Result[Response, LspError] = Failure(
+            LspServerError("diagnostic request was not attempted")
         )
         for _ in range(3):
             pulled = _request(
@@ -188,9 +158,7 @@ def analyze_document(
             if diagnostic_response.unwrap().diagnostics is not None:
                 diagnostics = diagnostic_response.unwrap().diagnostics
             else:
-                report = _parse_diagnostic_report(
-                    document.uri, diagnostic_response.unwrap().result
-                )
+                report = _parse_diagnostic_report(diagnostic_response.unwrap().result)
                 if isinstance(report, Failure):
                     raise report.failure()
                 diagnostics = report.unwrap()
@@ -198,8 +166,8 @@ def analyze_document(
             raise diagnostic_response.failure()
 
         for position in hover_positions:
-            response: Result[_Response, LspError] = Failure(
-                LspError(LspErrorCode.SERVER, "hover request was not attempted")
+            response: Result[Response, LspError] = Failure(
+                LspServerError("hover request was not attempted")
             )
             for _ in range(3):
                 sent = _request(
@@ -249,18 +217,12 @@ def analyze_document(
         _stop_server(process, writer, next_request_id, deadline)
 
 
-@dataclass(frozen=True, slots=True)
-class _Response:
-    result: JsonValue
-    diagnostics: tuple[LspDiagnostic, ...] | None
-
-
 def _is_mutation_cancellation(
-    response: Result[_Response, LspError],
+    response: Result[Response, LspError],
 ) -> bool:
     return (
         isinstance(response, Failure)
-        and response.failure().code is LspErrorCode.SERVER
+        and isinstance(response.failure(), LspServerError)
         and "canceled due to subsequent mutation" in response.failure().message.lower()
     )
 
@@ -268,11 +230,11 @@ def _is_mutation_cancellation(
 def _await_response(
     process: subprocess.Popen[bytes],
     writer: BinaryIO,
-    messages: queue.Queue[_IncomingMessage],
+    messages: queue.Queue[QueueMessage],
     request_id: int,
     deadline: float,
     document_uri: str,
-) -> Result[_Response, LspError]:
+) -> Result[Response, LspError]:
     diagnostics: tuple[LspDiagnostic, ...] | None = None
     while True:
         received = _next_message(process, messages, deadline)
@@ -294,14 +256,14 @@ def _await_response(
             continue
         error = message.get("error")
         if isinstance(error, dict):
-            return Failure(LspError(LspErrorCode.SERVER, _server_error_message(error)))
-        return Success(_Response(message.get("result"), diagnostics))
+            return Failure(LspServerError(_server_error_message(error)))
+        return Success(Response(message.get("result"), diagnostics))
 
 
 def _await_diagnostics(
     process: subprocess.Popen[bytes],
     writer: BinaryIO,
-    messages: queue.Queue[_IncomingMessage],
+    messages: queue.Queue[QueueMessage],
     deadline: float,
     document_uri: str,
 ) -> Result[tuple[LspDiagnostic, ...], LspError]:
@@ -322,81 +284,42 @@ def _await_diagnostics(
                 return answered
 
 
-@safe(exceptions=(LspError,))
 def _next_message(
     process: subprocess.Popen[bytes],
-    messages: queue.Queue[_IncomingMessage],
+    messages: queue.Queue[QueueMessage],
     deadline: float,
-) -> dict[str, JsonValue]:
+) -> Result[JsonObject, LspError]:
     remaining = deadline - time.monotonic()
     if remaining <= 0:
-        raise LspError(LspErrorCode.TIMEOUT, "language server timed out")
+        return Failure(LspTimeoutError("language server timed out"))
     try:
         incoming = messages.get(timeout=remaining)
     except queue.Empty:
-        raise LspError(LspErrorCode.TIMEOUT, "language server timed out") from None
-    if incoming.error is not None:
-        raise LspError(LspErrorCode.PROTOCOL, incoming.error)
-    if incoming.value is None:
-        raise LspError(
-            LspErrorCode.EXIT,
-            f"language server exited with status {process.poll()}",
+        return Failure(LspTimeoutError("language server timed out"))
+    if isinstance(incoming, Failure):
+        return Failure(LspProtocolError(incoming.failure().message))
+    message = incoming.unwrap()
+    if message is None:
+        return Failure(
+            LspExitError(f"language server exited with status {process.poll()}")
         )
-    return incoming.value
+    return Success(message)
 
 
-def _read_messages(stream: BinaryIO, messages: queue.Queue[_IncomingMessage]) -> None:
+def _read_messages(stream: BinaryIO, messages: queue.Queue[QueueMessage]) -> None:
     while True:
-        message = _read_message(stream)
-        messages.put(message)
-        if message.value is None:
+        received = read_lsp_message(stream)
+        messages.put(received)
+        if isinstance(received, Failure) or received.unwrap() is None:
             return
 
 
-def _read_message(stream: BinaryIO) -> _IncomingMessage:
-    headers: dict[str, str] = {}
-    while True:
-        line = stream.readline()
-        if not line:
-            return _IncomingMessage(None)
-        if line in {b"\r\n", b"\n"}:
-            break
-        try:
-            name, value = line.decode("ascii").split(":", 1)
-        except UnicodeDecodeError, ValueError:
-            return _IncomingMessage(None, "invalid LSP header")
-        headers[name.lower()] = value.strip()
-    length_text = headers.get("content-length")
-    if length_text is None:
-        return _IncomingMessage(None, "missing Content-Length header")
-    try:
-        length = int(length_text)
-    except ValueError:
-        return _IncomingMessage(None, "invalid Content-Length header")
-    payload = stream.read(length)
-    if len(payload) != length:
-        return _IncomingMessage(None, "truncated LSP message")
-    try:
-        decoded: object = json.loads(payload)
-    except json.JSONDecodeError, UnicodeDecodeError:
-        return _IncomingMessage(None, "invalid JSON-RPC payload")
-    if not isinstance(decoded, dict):
-        return _IncomingMessage(None, "JSON-RPC payload must be an object")
-    untyped = cast(dict[object, object], decoded)
-    if any(not isinstance(key, str) for key in untyped):
-        return _IncomingMessage(None, "JSON-RPC payload must be an object")
-    return _IncomingMessage(cast(dict[str, JsonValue], decoded))
-
-
-@safe(exceptions=(LspError,))
-def _write_message(writer: BinaryIO, message: Mapping[str, JsonValue]) -> None:
-    try:
-        payload = json.dumps(message, separators=(",", ":")).encode("utf-8")
-        writer.write(f"Content-Length: {len(payload)}\r\n\r\n".encode("ascii"))
-        writer.write(payload)
-        writer.flush()
-    except OSError as error:
-        raise LspError(LspErrorCode.EXIT, str(error)) from error
+def _write_message(
+    writer: BinaryIO, message: Mapping[str, JsonValue]
+) -> Result[None, LspError]:
+    return write_lsp_message(writer, message).alt(
+        lambda error: LspExitError(error.message)
+    )
 
 
 def _request(
@@ -453,84 +376,49 @@ def _initialize_parameters(
 
 @safe(exceptions=(LspError,))
 def _published_diagnostics(
-    message: Mapping[str, JsonValue], document_uri: str
+    message: JsonObject, document_uri: str
 ) -> tuple[LspDiagnostic, ...] | None:
     if message.get("method") != "textDocument/publishDiagnostics":
         return None
-    parameters = message.get("params")
-    if not isinstance(parameters, dict) or parameters.get("uri") != document_uri:
+    try:
+        parsed = PublishedDiagnostics.model_validate(message)
+    except ValidationError as error:
+        raise LspProtocolError("invalid publishDiagnostics message") from error
+
+    if parsed.params.uri != document_uri:
         return None
-    values = parameters.get("diagnostics")
-    if not isinstance(values, list):
-        raise LspError(LspErrorCode.PROTOCOL, "invalid diagnostics payload")
-    diagnostics: list[LspDiagnostic] = []
-    for value in values:
-        parsed = _parse_diagnostic(document_uri, value)
-        if isinstance(parsed, Failure):
-            raise parsed.failure()
-        diagnostics.append(parsed.unwrap())
-    return tuple(diagnostics)
-
-
-@safe(exceptions=(LspError,))
-def _parse_diagnostic(uri: str, value: JsonValue) -> LspDiagnostic:
-    if not isinstance(value, dict):
-        raise LspError(LspErrorCode.PROTOCOL, "invalid diagnostic")
-    parsed_range = _parse_range(value.get("range"))
-    message = value.get("message")
-    if isinstance(parsed_range, Failure) or not isinstance(message, str):
-        raise LspError(LspErrorCode.PROTOCOL, "invalid diagnostic")
-    severity = value.get("severity")
-    code = value.get("code")
-    source = value.get("source")
-    return LspDiagnostic(
-        uri,
-        parsed_range.unwrap(),
-        message,
-        severity if isinstance(severity, int) else None,
-        code if isinstance(code, str | int) else None,
-        source if isinstance(source, str) else None,
-    )
+    return tuple(parsed.params.diagnostics)
 
 
 @safe(exceptions=(LspError,))
 def _parse_diagnostic_report(
-    uri: str, value: JsonValue
+    value: JsonValue,
 ) -> tuple[LspDiagnostic, ...] | None:
     if value is None:
         return None
-    if not isinstance(value, dict):
-        raise LspError(LspErrorCode.PROTOCOL, "invalid diagnostic report")
-    items = value.get("items")
-    if items is None:
+    try:
+        report = DiagnosticReport.model_validate(value)
+    except ValidationError as error:
+        raise LspProtocolError("invalid diagnostic report") from error
+    if report.items is None:
         return None
-    if not isinstance(items, list):
-        raise LspError(LspErrorCode.PROTOCOL, "invalid diagnostic report")
-    diagnostics: list[LspDiagnostic] = []
-    for item in items:
-        parsed = _parse_diagnostic(uri, item)
-        if isinstance(parsed, Failure):
-            raise parsed.failure()
-        diagnostics.append(parsed.unwrap())
-    return tuple(diagnostics)
+    return tuple(report.items)
 
 
 @safe(exceptions=(LspError,))
 def _parse_hover(position: LspPosition, value: JsonValue) -> LspHover:
     if value is None:
         return LspHover(position, None)
-    if not isinstance(value, dict):
-        raise LspError(LspErrorCode.PROTOCOL, "invalid hover response")
-    contents = _hover_contents(value.get("contents"))
+    try:
+        hover = HoverResultPayload.model_validate(value)
+    except ValidationError as error:
+        raise LspProtocolError("invalid hover response") from error
+    contents = _hover_contents(hover.contents)
     if contents is None:
-        raise LspError(LspErrorCode.PROTOCOL, "invalid hover contents")
-    range_value = value.get("range")
-    if range_value is None:
+        raise LspProtocolError("invalid hover contents")
+    if hover.range is None:
         return LspHover(position, contents)
-    parsed_range = _parse_range(range_value)
-    if isinstance(parsed_range, Failure):
-        raise parsed_range.failure()
-    return LspHover(position, contents, parsed_range.unwrap())
+    return LspHover(position, contents, hover.range)
 
 
 def _hover_contents(value: JsonValue) -> str | None:
@@ -545,27 +433,6 @@ def _hover_contents(value: JsonValue) -> str | None:
             return None
         return "\n\n".join(part for part in parts if part is not None)
     return None
-
-
-@safe(exceptions=(LspError,))
-def _parse_range(value: JsonValue) -> LspRange:
-    if not isinstance(value, dict):
-        raise LspError(LspErrorCode.PROTOCOL, "invalid range")
-    start = _parse_position(value.get("start"))
-    end = _parse_position(value.get("end"))
-    if start is None or end is None:
-        raise LspError(LspErrorCode.PROTOCOL, "invalid range")
-    return LspRange(start, end)
-
-
-def _parse_position(value: JsonValue) -> LspPosition | None:
-    if not isinstance(value, dict):
-        return None
-    line = value.get("line")
-    character = value.get("character")
-    if not isinstance(line, int) or not isinstance(character, int):
-        return None
-    return LspPosition(line, character)
 
 
 def _position_value(position: LspPosition) -> dict[str, JsonValue]:
@@ -587,7 +454,7 @@ def _answer_server_request(
     request_id = message.get("id")
     method = message.get("method")
     if not isinstance(request_id, int | str) or not isinstance(method, str):
-        return Failure(LspError(LspErrorCode.PROTOCOL, "invalid server request"))
+        return Failure(LspProtocolError("invalid server request"))
     result: JsonValue = None
     if method == "workspace/configuration":
         parameters = message.get("params")

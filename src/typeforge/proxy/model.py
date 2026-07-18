@@ -5,11 +5,11 @@ from typing import BinaryIO, Protocol
 
 from typeforge.analysis.model import SourcePosition, SourceSpan, VirtualDocument
 from typeforge.documentation import DocumentationProvider, static_documentation
+from typeforge.utils.stream import JsonObject as SharedJsonObject
+from typeforge.utils.stream import JsonValue as SharedJsonValue
 
-type JsonValue = (
-    None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
-)
-type JsonObject = dict[str, JsonValue]
+type JsonValue = SharedJsonValue
+type JsonObject = SharedJsonObject
 type RequestId = int | str
 
 

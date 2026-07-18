@@ -12,8 +12,13 @@ from typeforge.proxy import (
     pyrefly_proxy_configuration,
     run_proxy,
 )
-from typeforge.proxy.framing import read_message, write_message
 from typeforge.proxy.model import JsonObject, JsonValue
+from typeforge.utils.stream import (
+    read_lsp_message as read_message,
+)
+from typeforge.utils.stream import (
+    write_lsp_message as write_message,
+)
 
 FAKE_BACKEND = r"""
 import json
@@ -184,8 +189,9 @@ def pipe() -> tuple[BinaryIO, BinaryIO]:
 def receive(stream: BinaryIO) -> JsonObject:
     received = read_message(stream)
     assert isinstance(received, Success)
-    assert received.unwrap() is not None
-    return received.unwrap()
+    message = received.unwrap()
+    assert message is not None
+    return message
 
 
 def send(stream: BinaryIO, message: JsonObject) -> None:
