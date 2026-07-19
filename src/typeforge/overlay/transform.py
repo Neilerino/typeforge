@@ -789,11 +789,13 @@ def _typing_import(content: tuple[str, ...], has_overloads: bool) -> str:
     names.extend(
         name
         for name in ("Any", "Literal", "Never", "NotRequired", "ReadOnly", "TypedDict")
-        if re.search(rf"\b{name}\b", combined)
+        if re.search(rf"(?<!tf_typing\.)\b{name}\b", combined)
     )
-    if not names:
-        return ""
-    return f"from typing import {', '.join(names)}  {_IMPORT_MARKER}\n"
+    imports = (
+        *(("import typing as tf_typing",) if "tf_typing." in combined else ()),
+        *((f"from typing import {', '.join(names)}",) if names else ()),
+    )
+    return "".join(f"{item}  {_IMPORT_MARKER}\n" for item in imports)
 
 
 def _import_offset(source: str, tree: ast.Module) -> int:

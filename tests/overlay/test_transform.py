@@ -300,7 +300,11 @@ def test_schema_boundaries_are_erased_from_model_fields_in_overlay() -> None:
     assert isinstance(transformed, Success)
     document = transformed.unwrap()
     assert document.authored_text == source
-    assert "class Public_User(TypedDict):\n    name: str" in document.generated_text
+    assert "import typing as tf_typing" in document.generated_text
+    assert (
+        "class Public_User(tf_typing.TypedDict):\n    name: str"
+        in document.generated_text
+    )
     assert "    wire: str" in document.generated_text
     assert "    direct: str" in document.generated_text
     assert "    public: Public_User" in document.generated_text

@@ -2,7 +2,11 @@ from pathlib import Path
 
 from returns.result import Failure, Success
 
-from typeforge.compiler.pipeline import UnsupportedPublicDeclaration, generate_module
+from typeforge.compiler.pipeline import (
+    AdaptationError,
+    UnsupportedPublicDeclaration,
+    generate_module,
+)
 
 
 def test_source_is_compiled_to_portable_overloads() -> None:
@@ -57,6 +61,26 @@ def test_unsupported_public_statements_fail_instead_of_disappearing(
     assert isinstance(generated, Failure)
     assert isinstance(generated.failure(), UnsupportedPublicDeclaration)
     assert generated.failure().line == 1
+
+
+def test_nested_adaptation_failures_preserve_the_original_error(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "invalid_condition.py"
+    source.write_text(
+        "from typeforge import Equal, If\n"
+        "def choose[T](value: T) -> If[Equal[T], str, bytes]: ...\n",
+        encoding="utf-8",
+    )
+
+    generated = generate_module(source, maximum_arity=2)
+
+    assert isinstance(generated, Failure)
+    error = generated.failure()
+    assert isinstance(error, AdaptationError)
+    assert error.declaration == "choose"
+    assert error.expression == "Equal[T]"
+    assert error.message == "Equal requires two type arguments"
 
 
 def test_classes_preserve_decorators_bounds_fields_and_lowered_methods(
@@ -263,7 +287,8 @@ def test_schema_boundaries_resolve_in_model_fields_and_generated_stubs(
     assert isinstance(generated, Success)
     content = generated.unwrap().content
     assert "from typeforge.pydantic import Schema" not in content
-    assert "class Public_User(TypedDict):\n    name: str" in content
+    assert "import typing as tf_typing" in content
+    assert "class Public_User(tf_typing.TypedDict):\n    name: str" in content
     assert "    wire: str" in content
     assert "    direct: str" in content
     assert "    runtime: int | bytes" in content

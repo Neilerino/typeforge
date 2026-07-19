@@ -188,6 +188,7 @@ class FunctionDeclaration:
 class OverloadDeclaration:
     signatures: tuple[FunctionDeclaration, ...]
     fallback: FunctionDeclaration
+    decorator: str = "overload"
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,16 +222,25 @@ type Declaration = (
 
 
 @dataclass(frozen=True, slots=True, order=True)
+class Import:
+    module: str
+    alias: str | None = None
+
+
+@dataclass(frozen=True, slots=True, order=True)
 class ImportFrom:
     module: str
     names: tuple[str, ...]
+
+
+type ModuleImport = Import | ImportFrom
 
 
 @dataclass(frozen=True, slots=True)
 class StubModule:
     name: str
     declarations: tuple[Declaration, ...]
-    imports: tuple[ImportFrom, ...] = ()
+    imports: tuple[ModuleImport, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1186,12 +1196,18 @@ def _contains_literal(expression: TypeExpression) -> bool:
 
 
 def _add_import(
-    imports: tuple[ImportFrom, ...], required: ImportFrom
-) -> tuple[ImportFrom, ...]:
+    imports: tuple[ModuleImport, ...], required: ImportFrom
+) -> tuple[ModuleImport, ...]:
+    module_imports = tuple(item for item in imports if isinstance(item, Import))
     names_by_module: dict[str, set[str]] = {}
     for item in (*imports, required):
+        if isinstance(item, Import):
+            continue
         names_by_module.setdefault(item.module, set()).update(item.names)
-    return tuple(
-        ImportFrom(module, tuple(sorted(names)))
-        for module, names in sorted(names_by_module.items())
+    return (
+        *module_imports,
+        *(
+            ImportFrom(module, tuple(sorted(names)))
+            for module, names in sorted(names_by_module.items())
+        ),
     )

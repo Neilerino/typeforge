@@ -9,7 +9,10 @@ from typeforge.compiler.lowering import (
     FixedTuple,
     FunctionDeclaration,
     HomogeneousTuple,
+    Import,
+    ImportFrom,
     LiteralType,
+    OverloadDeclaration,
     Parameter,
     ParameterKind,
     StubModule,
@@ -30,8 +33,11 @@ def emit_stub_module(module: StubModule) -> Result[str, str]:
 
 def _render_stub_module(module: StubModule, declarations: tuple[str, ...]) -> str:
     imports = [
-        f"from {item.module} import {', '.join(item.names)}"
-        for item in sorted(module.imports)
+        _emit_import(item)
+        for item in sorted(
+            module.imports,
+            key=lambda item: (item.module, isinstance(item, ImportFrom)),
+        )
     ]
     sections = [
         section
@@ -39,6 +45,16 @@ def _render_stub_module(module: StubModule, declarations: tuple[str, ...]) -> st
         if section
     ]
     return "\n\n".join(sections) + "\n"
+
+
+def _emit_import(declaration: Import | ImportFrom) -> str:
+    match declaration:
+        case Import(module, None):
+            return f"import {module}"
+        case Import(module, alias):
+            return f"import {module} as {alias}"
+        case ImportFrom(module, names):
+            return f"from {module} import {', '.join(names)}"
 
 
 def emit_type_expression(expression: TypeExpression) -> Result[str, str]:
@@ -56,14 +72,16 @@ def _emit_declaration(declaration: Declaration) -> Result[str, str]:
     if isinstance(declaration, ClassDeclaration):
         return _emit_class(declaration)
 
+    assert isinstance(declaration, OverloadDeclaration)
+    overload = declaration
     signatures = _collect(
-        _emit_function(signature).map(lambda value: f"@overload\n{value}")
-        for signature in declaration.signatures
+        _emit_function(signature).map(lambda value: f"@{overload.decorator}\n{value}")
+        for signature in overload.signatures
     )
     return Result.do(
-        f"{'\n'.join(values)}\n@overload\n{fallback}"
+        f"{'\n'.join(values)}\n@{overload.decorator}\n{fallback}"
         for values in signatures
-        for fallback in _emit_function(declaration.fallback)
+        for fallback in _emit_function(overload.fallback)
     )
 
 

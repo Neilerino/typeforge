@@ -13,12 +13,13 @@ def test_conditionals_maps_and_record_maps_compile_to_portable_stubs() -> None:
     assert isinstance(generated, Success)
     assert generated.unwrap().content == (
         "from datetime import datetime\n"
+        "import typing as tf_typing\n"
         "from typing import Literal, Never, TypedDict, overload\n\n"
-        "class User(TypedDict):\n"
+        "class User(tf_typing.TypedDict):\n"
         "    name: str\n"
         "    created_at: datetime\n"
         "    attempts: int\n\n"
-        "class JsonSafe_User(TypedDict):\n"
+        "class JsonSafe_User(tf_typing.TypedDict):\n"
         "    name: str\n"
         "    created_at: str\n"
         "    attempts: int\n\n"
@@ -37,9 +38,9 @@ def test_conditionals_maps_and_record_maps_compile_to_portable_stubs() -> None:
         "@overload\n"
         "def strict_serialize[T](value: T) -> str | Never: ...\n\n"
         "type JsonSafe[T] = object\n\n"
-        "@overload\n"
+        "@tf_typing.overload\n"
         "def jsonify(value: User) -> JsonSafe_User: ...\n"
-        "@overload\n"
+        "@tf_typing.overload\n"
         "def jsonify[T](value: T) -> object: ...\n"
     )
 
@@ -87,15 +88,18 @@ def publicize[T](value: T) -> Public[T]:
     generated = generate_module(source, maximum_arity=2)
 
     assert isinstance(generated, Success)
-    assert "class Public_Credentials(TypedDict):" in generated.unwrap().content
+    assert (
+        "class Public_Credentials(tf_typing.TypedDict):" in generated.unwrap().content
+    )
     assert (
         "    password:"
         not in generated.unwrap().content.split(
-            "class Public_Credentials(TypedDict):", 1
+            "class Public_Credentials(tf_typing.TypedDict):", 1
         )[1]
     )
-    assert "    token: ReadOnly[str]" in generated.unwrap().content
-    assert "    attempts: NotRequired[int]" in generated.unwrap().content
+    assert "    token: tf_typing.ReadOnly[str]" in generated.unwrap().content
+    assert "    attempts: tf_typing.NotRequired[int]" in generated.unwrap().content
+    assert "@tf_typing.overload\ndef publicize" in generated.unwrap().content
 
 
 def test_documented_record_map_compiles_like_its_underlying_expression(
@@ -124,7 +128,8 @@ def copy[T](value: T) -> Copy[T]:
     generated = generate_module(source, maximum_arity=2)
 
     assert isinstance(generated, Success)
-    assert "class Copy_User(TypedDict):" in generated.unwrap().content
+    assert "class Copy_User(tf_typing.TypedDict):" in generated.unwrap().content
     assert "    name: str" in generated.unwrap().content
     assert "def copy(value: User) -> Copy_User: ..." in generated.unwrap().content
+    assert "@tf_typing.overload\ndef copy" in generated.unwrap().content
     assert "type Copy[T] = object" in generated.unwrap().content
