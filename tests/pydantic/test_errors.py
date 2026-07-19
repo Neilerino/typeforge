@@ -1,7 +1,7 @@
 import pytest
 
 from pydantic import TypeAdapter
-from typeforge import Case, Each, Field, Key, Map, MapFields, Value
+from typeforge import All, Any, Case, Each, Equal, Field, If, Key, Map, MapFields, Value
 from typeforge.pydantic import Input, Schema
 
 
@@ -10,6 +10,23 @@ def test_unbound_field_placeholders_fail_during_schema_generation() -> None:
         TypeAdapter(Schema[Key])
     with pytest.raises(Exception, match=r"unbound_value.*Value requires"):
         TypeAdapter(Schema[Value])
+
+
+def test_nested_schema_failure_preserves_the_original_issue() -> None:
+    with pytest.raises(Exception, match=r"unbound_key.*Key is only valid"):
+        TypeAdapter(Schema[If[Equal[Key, Key], int, str]])
+
+
+def test_schema_conditions_short_circuit_nested_failures() -> None:
+    all_adapter = TypeAdapter(
+        Schema[If[All[Equal[int, str], Equal[Key, Key]], bytes, int]]
+    )
+    any_adapter = TypeAdapter(
+        Schema[If[Any[Equal[int, int], Equal[Key, Key]], int, bytes]]
+    )
+
+    assert all_adapter.validate_python("3") == 3
+    assert any_adapter.validate_python("3") == 3
 
 
 def test_malformed_map_reports_operator_and_phase() -> None:
