@@ -5,11 +5,13 @@ from pathlib import Path
 
 from typeforge.compiler.frontend import FrontendError
 from typeforge.compiler.lowering import (
+    ClassDeclaration,
     IfType,
     LoweringError,
     MapType,
     ModuleImport,
     OverloadDeclaration,
+    VariableDeclaration,
 )
 from typeforge.compiler.records import TypedDictShape
 
@@ -62,7 +64,7 @@ class DerivedRecord:
 
 @dataclass(frozen=True, slots=True)
 class RecordMaterialization:
-    declarations: tuple[str, ...]
+    declarations: tuple[ClassDeclaration, ...]
     replacements: tuple[tuple[str, OverloadDeclaration], ...]
     imports: tuple[ModuleImport, ...]
     derived: tuple[DerivedRecord, ...] = ()
@@ -70,8 +72,8 @@ class RecordMaterialization:
 
 @dataclass(frozen=True, slots=True)
 class ModuleVariables:
-    declarations: tuple[str, ...]
-    requires_any: bool
+    declarations: tuple[VariableDeclaration, ...]
+    imports: tuple[ModuleImport, ...]
 
 
 @dataclass(frozen=True, slots=True)

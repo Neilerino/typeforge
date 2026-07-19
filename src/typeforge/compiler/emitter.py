@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from typing import assert_never
 
 from returns.result import Failure, Result, Success
 
@@ -23,6 +24,7 @@ from typeforge.compiler.lowering import (
     TypeVariable,
     UnionExpression,
     UnpackedType,
+    VariableDeclaration,
 )
 
 
@@ -62,27 +64,30 @@ def emit_type_expression(expression: TypeExpression) -> Result[str, str]:
 
 
 def _emit_declaration(declaration: Declaration) -> Result[str, str]:
-    if isinstance(declaration, FunctionDeclaration):
-        return _emit_function(declaration)
-    if isinstance(declaration, TypeAliasDeclaration):
-        type_parameters = _emit_type_parameters(declaration.type_parameters)
-        return _emit_type(declaration.value).map(
-            lambda value: f"type {declaration.name}{type_parameters} = {value}"
-        )
-    if isinstance(declaration, ClassDeclaration):
-        return _emit_class(declaration)
-
-    assert isinstance(declaration, OverloadDeclaration)
-    overload = declaration
-    signatures = _collect(
-        _emit_function(signature).map(lambda value: f"@{overload.decorator}\n{value}")
-        for signature in overload.signatures
-    )
-    return Result.do(
-        f"{'\n'.join(values)}\n@{overload.decorator}\n{fallback}"
-        for values in signatures
-        for fallback in _emit_function(overload.fallback)
-    )
+    match declaration:
+        case FunctionDeclaration():
+            return _emit_function(declaration)
+        case TypeAliasDeclaration(name, value, type_parameters):
+            rendered_parameters = _emit_type_parameters(type_parameters)
+            return _emit_type(value).map(
+                lambda rendered: f"type {name}{rendered_parameters} = {rendered}"
+            )
+        case VariableDeclaration(name, annotation):
+            return _emit_type(annotation).map(lambda rendered: f"{name}: {rendered}")
+        case ClassDeclaration():
+            return _emit_class(declaration)
+        case OverloadDeclaration(signatures, fallback, decorator):
+            rendered_signatures = _collect(
+                _emit_function(signature).map(lambda value: f"@{decorator}\n{value}")
+                for signature in signatures
+            )
+            return Result.do(
+                f"{'\n'.join(values)}\n@{decorator}\n{rendered_fallback}"
+                for values in rendered_signatures
+                for rendered_fallback in _emit_function(fallback)
+            )
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
 def _emit_function(declaration: FunctionDeclaration) -> Result[str, str]:
@@ -102,13 +107,16 @@ def _emit_function(declaration: FunctionDeclaration) -> Result[str, str]:
 
 def _emit_class(declaration: ClassDeclaration) -> Result[str, str]:
     return Result.do(
-        _render_class_body(declaration, _class_header(declaration, bases), members)
+        _render_class_body(
+            declaration,
+            _class_header(declaration, bases),
+            fields,
+            methods,
+        )
         for bases in _emit_types(declaration.bases)
-        for members in _collect(
-            (
-                *(_emit_class_field(field) for field in declaration.fields),
-                *(_emit_declaration(method) for method in declaration.methods),
-            )
+        for fields in _collect(_emit_class_field(field) for field in declaration.fields)
+        for methods in _collect(
+            _emit_declaration(method) for method in declaration.methods
         )
     )
 
@@ -121,9 +129,17 @@ def _class_header(declaration: ClassDeclaration, bases: tuple[str, ...]) -> str:
 
 
 def _render_class_body(
-    declaration: ClassDeclaration, header: str, members: tuple[str, ...]
+    declaration: ClassDeclaration,
+    header: str,
+    fields: tuple[str, ...],
+    methods: tuple[str, ...],
 ) -> str:
-    body = "\n\n".join(members) or "pass"
+    body = (
+        "\n\n".join(
+            section for section in ("\n".join(fields), "\n\n".join(methods)) if section
+        )
+        or "pass"
+    )
     indented = "\n".join(f"    {line}" if line else "" for line in body.splitlines())
     decorators = "\n".join(f"@{item}" for item in declaration.decorators)
     rendered = f"{header}:\n{indented}"

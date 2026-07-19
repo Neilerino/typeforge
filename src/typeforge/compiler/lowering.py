@@ -199,6 +199,12 @@ class TypeAliasDeclaration:
 
 
 @dataclass(frozen=True, slots=True)
+class VariableDeclaration:
+    name: str
+    annotation: TypeExpression
+
+
+@dataclass(frozen=True, slots=True)
 class ClassField:
     name: str
     annotation: TypeExpression
@@ -217,7 +223,11 @@ class ClassDeclaration:
 
 
 type Declaration = (
-    FunctionDeclaration | OverloadDeclaration | TypeAliasDeclaration | ClassDeclaration
+    FunctionDeclaration
+    | OverloadDeclaration
+    | TypeAliasDeclaration
+    | VariableDeclaration
+    | ClassDeclaration
 )
 
 
@@ -328,7 +338,10 @@ def _lower_class(
         if isinstance(lowered, Failure):
             return lowered
         lowered_method = lowered.unwrap()
-        if isinstance(lowered_method, TypeAliasDeclaration | ClassDeclaration):
+        if not isinstance(
+            lowered_method,
+            FunctionDeclaration | OverloadDeclaration,
+        ):
             raise AssertionError(
                 "function lowering produced a non-callable declaration"
             )
@@ -1154,6 +1167,8 @@ def _declaration_contains_literal(declaration: Declaration) -> bool:
         return _function_contains_literal(declaration)
     if isinstance(declaration, TypeAliasDeclaration):
         return _contains_literal(declaration.value)
+    if isinstance(declaration, VariableDeclaration):
+        return _contains_literal(declaration.annotation)
     if isinstance(declaration, ClassDeclaration):
         fields_contain_literal = any(
             _contains_literal(field.annotation) for field in declaration.fields

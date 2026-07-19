@@ -4,59 +4,61 @@ import ast
 from functools import singledispatch
 from typing import assert_never
 
-from returns.result import safe
+from returns.result import Failure, safe
 
 from typeforge.compiler import evaluator as record_evaluator
-from typeforge.compiler._pipeline_core import schema_inner_expression, substitute_type
+from typeforge.compiler._markers import (
+    AllMarker,
+    AnyMarker,
+    AssignableMarker,
+    CaseMarker,
+    DefaultMarker,
+    DropMarker,
+    EqualMarker,
+    FieldMarker,
+    IfMarker,
+    KeyMarker,
+    MapFieldsMarker,
+    MapMarker,
+    MarkerNormalizationError,
+    NormalizedMarker,
+    NotMarker,
+    OptionalFieldMarker,
+    ReadonlyFieldMarker,
+    ValueMarker,
+    normalize_marker,
+)
+from typeforge.compiler._pipeline_adaptation import (
+    schema_inner_expression,
+    substitute_type,
+)
 from typeforge.compiler._pipeline_models import (
     AdaptationError,
     DerivedRecord,
     EvaluatorAdaptationError,
     RecordMaterialization,
 )
-from typeforge.compiler._pipeline_utils import (
-    merge_imports,
-    render_typed_dict,
-)
+from typeforge.compiler._pipeline_utils import merge_imports
+from typeforge.compiler._type_tree import rewrite_type
+from typeforge.compiler.emitter import emit_stub_module
 from typeforge.compiler.lowering import (
-    AllPredicate,
-    AnyPredicate,
-    AssignablePredicate,
     ClassDeclaration,
     ClassField,
-    CollectType,
     Declaration,
-    EachType,
-    EqualPredicate,
-    FieldType,
-    FixedTuple,
     FunctionDeclaration,
-    HomogeneousTuple,
-    IfType,
     Import,
-    LiteralType,
-    MapCase,
-    MapFieldsType,
-    MapType,
-    MapValueType,
-    NotPredicate,
     OverloadDeclaration,
     Parameter,
-    Predicate,
-    RuntimeInputType,
-    SchemaType,
     StubModule,
     TypeAliasDeclaration,
     TypeApplication,
     TypeExpression,
     TypeName,
-    TypeVariable,
     UnionExpression,
-    UnpackedType,
+    VariableDeclaration,
 )
 from typeforge.compiler.model import (
     AppliedTypeExpression,
-    MarkerKind,
     MarkerTypeExpression,
     NameTypeExpression,
     RawTypeExpression,
@@ -75,8 +77,10 @@ from typeforge.compiler.model import (
 )
 from typeforge.compiler.records import (
     NamedType,
+    NeverType,
     StaticType,
     TypedDictShape,
+    UnionType,
 )
 from typeforge.compiler.records import (
     TypedDictField as StaticTypedDictField,
@@ -138,7 +142,7 @@ def materialize_record_transforms(
                 )
             )
     declarations = tuple(
-        render_typed_dict(shape)
+        typed_dict_declaration(shape)
         for shape in (*source_shapes, *(item.shape for item in derived))
     )
     return RecordMaterialization(
@@ -181,6 +185,11 @@ def replace_record_aliases_in_declaration(
                 replace_record_aliases(value, derived),
                 type_parameters,
             )
+        case VariableDeclaration(name, annotation):
+            return VariableDeclaration(
+                name,
+                replace_record_aliases(annotation, derived),
+            )
         case ClassDeclaration(
             name, bases, fields, methods, type_parameters, keywords, decorators
         ):
@@ -207,6 +216,57 @@ def replace_record_aliases_in_declaration(
             )
         case _ as unreachable:
             assert_never(unreachable)
+
+
+def typed_dict_declaration(shape: TypedDictShape) -> ClassDeclaration:
+    return ClassDeclaration(
+        name=shape.name or "AnonymousTypedDict",
+        bases=(TypeName("tf_typing.TypedDict"),),
+        fields=tuple(
+            ClassField(field.name, _typed_dict_field_type(field))
+            for field in shape.fields
+        ),
+        methods=(),
+    )
+
+
+def _typed_dict_field_type(field: StaticTypedDictField) -> TypeExpression:
+    annotation = _static_type_expression(field.value)
+    if field.readonly:
+        annotation = TypeApplication(
+            TypeName("tf_typing.ReadOnly"),
+            (annotation,),
+        )
+    if not field.required:
+        annotation = TypeApplication(
+            TypeName("tf_typing.NotRequired"),
+            (annotation,),
+        )
+    return annotation
+
+
+def _static_type_expression(value: StaticType) -> TypeExpression:
+    match value:
+        case NamedType(name):
+            return TypeName(name)
+        case NeverType():
+            return TypeName("tf_typing.Never")
+        case UnionType(members):
+            return UnionExpression(
+                tuple(_static_type_expression(member) for member in members)
+            )
+        case TypedDictShape(name):
+            return TypeName(name or "object")
+        case _ as unreachable:
+            assert_never(unreachable)
+
+
+def render_typed_dict(shape: TypedDictShape) -> str:
+    """Render one TypedDict declaration for overlay consumers."""
+    rendered = emit_stub_module(StubModule("", (typed_dict_declaration(shape),)))
+    if isinstance(rendered, Failure):
+        raise ValueError(rendered.failure())
+    return rendered.unwrap().rstrip()
 
 
 def replace_record_aliases_in_function(
@@ -249,125 +309,19 @@ def replace_record_aliases(
     expression: TypeExpression,
     derived: tuple[DerivedRecord, ...],
 ) -> TypeExpression:
-    if (
-        isinstance(expression, TypeApplication)
-        and isinstance(expression.constructor, TypeName)
-        and len(expression.arguments) == 1
-        and isinstance(expression.arguments[0], TypeName)
-    ):
-        alias = expression.constructor.name
-        input_name = expression.arguments[0].name
-        match = next(
-            (
-                item
-                for item in derived
-                if item.alias == alias and item.input_name == input_name
-            ),
-            None,
-        )
-        if match is not None:
-            return TypeName(match.shape.name or "object")
-    match expression:
-        case TypeApplication(constructor, arguments):
-            return TypeApplication(
-                replace_record_aliases(constructor, derived),
-                tuple(
-                    replace_record_aliases(argument, derived) for argument in arguments
-                ),
-            )
-        case FixedTuple(items):
-            return FixedTuple(
-                tuple(replace_record_aliases(item, derived) for item in items)
-            )
-        case HomogeneousTuple(item):
-            return HomogeneousTuple(replace_record_aliases(item, derived))
-        case EachType(item):
-            return EachType(replace_record_aliases(item, derived))
-        case CollectType(item):
-            return CollectType(replace_record_aliases(item, derived))
-        case UnpackedType(item):
-            return UnpackedType(replace_record_aliases(item, derived))
-        case UnionExpression(members):
-            return UnionExpression(
-                tuple(replace_record_aliases(member, derived) for member in members)
-            )
-        case IfType(condition, when_true, when_false):
-            return IfType(
-                _replace_record_aliases_in_predicate(condition, derived),
-                replace_record_aliases(when_true, derived),
-                replace_record_aliases(when_false, derived),
-            )
-        case MapType(subject, cases, default):
-            return MapType(
-                replace_record_aliases(subject, derived),
-                tuple(
-                    MapCase(
-                        replace_record_aliases(case.input_type, derived),
-                        replace_record_aliases(case.output_type, derived),
-                    )
-                    for case in cases
-                ),
-                replace_record_aliases(default, derived),
-            )
-        case FieldType(name, value, required, readonly):
-            return FieldType(
-                replace_record_aliases(name, derived),
-                replace_record_aliases(value, derived),
-                required,
-                readonly,
-            )
-        case MapFieldsType(record, transform):
-            return MapFieldsType(
-                replace_record_aliases(record, derived),
-                replace_record_aliases(transform, derived),
-            )
-        case SchemaType(item):
-            return SchemaType(replace_record_aliases(item, derived))
-        case (
-            TypeName()
-            | TypeVariable()
-            | LiteralType()
-            | MapValueType()
-            | RuntimeInputType()
-        ):
-            return expression
-        case _ as unreachable:
-            assert_never(unreachable)
+    replacements = {
+        (item.alias, item.input_name): TypeName(item.shape.name or "object")
+        for item in derived
+    }
 
+    def replace(current: TypeExpression) -> TypeExpression | None:
+        match current:
+            case TypeApplication(TypeName(alias), (TypeName(input_name),)):
+                return replacements.get((alias, input_name))
+            case _:
+                return None
 
-def _replace_record_aliases_in_predicate(
-    predicate: Predicate,
-    derived: tuple[DerivedRecord, ...],
-) -> Predicate:
-    match predicate:
-        case EqualPredicate(left, right):
-            return EqualPredicate(
-                replace_record_aliases(left, derived),
-                replace_record_aliases(right, derived),
-            )
-        case AssignablePredicate(source, target):
-            return AssignablePredicate(
-                replace_record_aliases(source, derived),
-                replace_record_aliases(target, derived),
-            )
-        case AllPredicate(predicates):
-            return AllPredicate(
-                tuple(
-                    _replace_record_aliases_in_predicate(item, derived)
-                    for item in predicates
-                )
-            )
-        case AnyPredicate(predicates):
-            return AnyPredicate(
-                tuple(
-                    _replace_record_aliases_in_predicate(item, derived)
-                    for item in predicates
-                )
-            )
-        case NotPredicate(item):
-            return NotPredicate(_replace_record_aliases_in_predicate(item, derived))
-        case _ as unreachable:
-            assert_never(unreachable)
+    return rewrite_type(expression, replace)
 
 
 def build_record_shapes(
@@ -411,7 +365,11 @@ def _derive_record_shapes(
         value = schema_inner_expression(alias.value)
         if not isinstance(value, MarkerTypeExpression):
             continue
-        if value.marker is not MarkerKind.MAP_FIELDS:
+        try:
+            marker = normalize_marker(value)
+        except MarkerNormalizationError:
+            continue
+        if not isinstance(marker, MapFieldsMarker):
             continue
         if len(alias.type_parameters) != 1:
             raise AdaptationError(
@@ -505,54 +463,70 @@ def _(
     environment: tuple[tuple[str, StaticType], ...],
     output_name: str | None = None,
 ) -> record_evaluator.Expression:
-    marker = expression.marker
-    if marker is MarkerKind.KEY:
-        _require_evaluator_arity(expression, 0, "no")
-        return record_evaluator.Key()
-    if marker is MarkerKind.VALUE:
-        _require_evaluator_arity(expression, 0, "no")
-        return record_evaluator.Value()
-    if marker is MarkerKind.DROP:
-        _require_evaluator_arity(expression, 0, "no")
-        return record_evaluator.Drop()
-    if marker in {
-        MarkerKind.FIELD,
-        MarkerKind.OPTIONAL_FIELD,
-        MarkerKind.READONLY_FIELD,
-    }:
-        _require_evaluator_arity(expression, 2, "two")
-        arguments = adapt_evaluator_expressions(expression.arguments, environment)
-        if marker is MarkerKind.FIELD:
-            return record_evaluator.Field(*arguments)
-        if marker is MarkerKind.OPTIONAL_FIELD:
-            return record_evaluator.OptionalField(*arguments)
-        return record_evaluator.ReadonlyField(*arguments)
-    if marker is MarkerKind.MAP_FIELDS:
-        _require_evaluator_arity(expression, 2, "two")
-        arguments = adapt_evaluator_expressions(expression.arguments, environment)
-        return record_evaluator.MapFields(arguments[0], arguments[1], output_name)
-    if marker is MarkerKind.MAP:
-        return adapt_evaluator_map(expression, environment)
-    if marker is MarkerKind.IF:
-        _require_evaluator_arity(expression, 3, "three")
-        arguments = adapt_evaluator_expressions(expression.arguments, environment)
-        return record_evaluator.If(*arguments)
-    if marker in {MarkerKind.EQUAL, MarkerKind.ASSIGNABLE}:
-        _require_evaluator_arity(expression, 2, "two")
-        arguments = adapt_evaluator_expressions(expression.arguments, environment)
-        if marker is MarkerKind.EQUAL:
-            return record_evaluator.Equal(*arguments)
-        return record_evaluator.Assignable(*arguments)
-    if marker in {MarkerKind.ALL, MarkerKind.ANY}:
-        arguments = adapt_evaluator_expressions(expression.arguments, environment)
-        if marker is MarkerKind.ALL:
-            return record_evaluator.All(arguments)
-        return record_evaluator.Any(arguments)
-    if marker is MarkerKind.NOT:
-        _require_evaluator_arity(expression, 1, "one")
-        arguments = adapt_evaluator_expressions(expression.arguments, environment)
-        return record_evaluator.Not(arguments[0])
-    raise EvaluatorAdaptationError(f"unsupported record expression {marker.value}")
+    marker = _normalize_evaluator_marker(expression)
+
+    def adapt(item: SourceTypeExpression) -> record_evaluator.Expression:
+        return adapt_evaluator_expression(item, environment)
+
+    match marker:
+        case KeyMarker():
+            return record_evaluator.Key()
+        case ValueMarker():
+            return record_evaluator.Value()
+        case DropMarker():
+            return record_evaluator.Drop()
+        case FieldMarker(key=key, value=value):
+            return record_evaluator.Field(adapt(key), adapt(value))
+        case OptionalFieldMarker(key=key, value=value):
+            return record_evaluator.OptionalField(adapt(key), adapt(value))
+        case ReadonlyFieldMarker(key=key, value=value):
+            return record_evaluator.ReadonlyField(adapt(key), adapt(value))
+        case MapFieldsMarker(record=record, transform=transform):
+            return record_evaluator.MapFields(
+                adapt(record), adapt(transform), output_name
+            )
+        case MapMarker(subject=subject, entries=entries):
+            cases = tuple(
+                record_evaluator.Case(adapt(entry.input), adapt(entry.output))
+                for entry in entries
+                if isinstance(entry, CaseMarker)
+            )
+            default = next(
+                (
+                    adapt(entry.output)
+                    for entry in entries
+                    if isinstance(entry, DefaultMarker)
+                ),
+                None,
+            )
+            return (
+                record_evaluator.Map(adapt(subject), cases)
+                if default is None
+                else record_evaluator.Map(adapt(subject), cases, default)
+            )
+        case IfMarker(
+            condition=condition,
+            when_true=when_true,
+            when_false=when_false,
+        ):
+            return record_evaluator.If(
+                adapt(condition), adapt(when_true), adapt(when_false)
+            )
+        case EqualMarker(left=left, right=right):
+            return record_evaluator.Equal(adapt(left), adapt(right))
+        case AssignableMarker(left=left, right=right):
+            return record_evaluator.Assignable(adapt(left), adapt(right))
+        case AllMarker(items=items):
+            return record_evaluator.All(tuple(adapt(item) for item in items))
+        case AnyMarker(items=items):
+            return record_evaluator.Any(tuple(adapt(item) for item in items))
+        case NotMarker(item=item):
+            return record_evaluator.Not(adapt(item))
+        case _:
+            raise EvaluatorAdaptationError(
+                f"unsupported record expression "
+                f"{type(marker).__name__.removesuffix('Marker')}"
+            )
 
 
 def adapt_evaluator_expressions(
@@ -565,43 +539,13 @@ def adapt_evaluator_expressions(
     )
 
 
-def adapt_evaluator_map(
+def _normalize_evaluator_marker(
     expression: MarkerTypeExpression,
-    environment: tuple[tuple[str, StaticType], ...],
-) -> record_evaluator.Expression:
-    if len(expression.arguments) < 2:
-        raise EvaluatorAdaptationError(
-            "Map requires a subject and at least one Case or Default"
-        )
-    subject = adapt_evaluator_expression(expression.arguments[0], environment)
-    cases: list[record_evaluator.Case] = []
-    default: record_evaluator.Expression | None = None
-    for entry in expression.arguments[1:]:
-        if not isinstance(entry, MarkerTypeExpression):
-            raise EvaluatorAdaptationError("Map entries must be Case or Default")
-        arguments = adapt_evaluator_expressions(entry.arguments, environment)
-        if entry.marker is MarkerKind.CASE and len(arguments) == 2:
-            cases.append(record_evaluator.Case(*arguments))
-        elif entry.marker is MarkerKind.DEFAULT and len(arguments) == 1:
-            default = arguments[0]
-        else:
-            raise EvaluatorAdaptationError(
-                "Map entries must be Case[Input, Output] or Default[Output]"
-            )
-    if default is None:
-        return record_evaluator.Map(subject, tuple(cases))
-    return record_evaluator.Map(subject, tuple(cases), default)
-
-
-def _require_evaluator_arity(
-    expression: MarkerTypeExpression,
-    count: int,
-    count_name: str,
-) -> None:
-    if len(expression.arguments) != count:
-        raise EvaluatorAdaptationError(
-            f"{expression.marker.value} requires {count_name} type arguments"
-        )
+) -> NormalizedMarker:
+    try:
+        return normalize_marker(expression)
+    except MarkerNormalizationError as error:
+        raise EvaluatorAdaptationError(error.message) from error
 
 
 def adapt_field_name_literal(
@@ -644,10 +588,12 @@ def map_fields_alias_reference(
 
 def is_map_fields_alias(alias: SourceTypeAlias) -> bool:
     value = schema_inner_expression(alias.value)
-    return (
-        isinstance(value, MarkerTypeExpression)
-        and value.marker is MarkerKind.MAP_FIELDS
-    )
+    if not isinstance(value, MarkerTypeExpression):
+        return False
+    try:
+        return isinstance(normalize_marker(value), MapFieldsMarker)
+    except MarkerNormalizationError:
+        return False
 
 
 def specialize_record_function(

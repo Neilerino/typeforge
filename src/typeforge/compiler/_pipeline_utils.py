@@ -1,4 +1,4 @@
-"""AST inspection, import handling, and stub-rendering pipeline utilities."""
+"""AST inspection and import-handling utilities for the compiler pipeline."""
 
 import ast
 from pathlib import Path
@@ -6,14 +6,25 @@ from typing import assert_never
 
 from returns.result import Failure, Result, Success
 
+from typeforge.compiler._markers import (
+    DefaultMarker,
+    MapMarker,
+    MarkerNormalizationError,
+    normalize_marker,
+)
 from typeforge.compiler._pipeline_models import (
     ModuleVariables,
     UnsupportedPublicDeclaration,
 )
-from typeforge.compiler.lowering import Import, ImportFrom, ModuleImport
+from typeforge.compiler.lowering import (
+    Import,
+    ImportFrom,
+    ModuleImport,
+    TypeName,
+    VariableDeclaration,
+)
 from typeforge.compiler.model import (
     AppliedTypeExpression,
-    MarkerKind,
     MarkerTypeExpression,
     NameTypeExpression,
     RawTypeExpression,
@@ -26,45 +37,6 @@ from typeforge.compiler.model import (
 from typeforge.compiler.model import (
     TypeExpression as SourceTypeExpression,
 )
-from typeforge.compiler.records import (
-    NamedType,
-    NeverType,
-    StaticType,
-    TypedDictField,
-    TypedDictShape,
-    UnionType,
-)
-
-_TYPING_ALIAS = "tf_typing"
-
-
-def render_typed_dict(shape: TypedDictShape) -> str:
-    fields = tuple(_render_typed_dict_field(field) for field in shape.fields)
-    body = "\n".join(f"    {field}" for field in fields) or "    pass"
-    return f"class {shape.name}({_TYPING_ALIAS}.TypedDict):\n{body}"
-
-
-def _render_typed_dict_field(field: TypedDictField) -> str:
-    value = render_static_type(field.value)
-    if field.readonly:
-        value = f"{_TYPING_ALIAS}.ReadOnly[{value}]"
-    if not field.required:
-        value = f"{_TYPING_ALIAS}.NotRequired[{value}]"
-    return f"{field.name}: {value}"
-
-
-def render_static_type(value: StaticType) -> str:
-    match value:
-        case NamedType(name):
-            return name
-        case NeverType():
-            return f"{_TYPING_ALIAS}.Never"
-        case UnionType(members):
-            return " | ".join(render_static_type(member) for member in members)
-        case TypedDictShape(name):
-            return name or "object"
-        case _ as unreachable:
-            assert_never(unreachable)
 
 
 def merge_imports(imports: tuple[ModuleImport, ...]) -> tuple[ModuleImport, ...]:
@@ -82,27 +54,6 @@ def merge_imports(imports: tuple[ModuleImport, ...]) -> tuple[ModuleImport, ...]
     )
 
 
-def inject_declarations(content: str, declarations: tuple[str, ...]) -> str:
-    if not declarations:
-        return content
-    if not content.strip():
-        return f"{'\n\n'.join(declarations)}\n"
-    rendered = "\n\n".join(declarations)
-    lines = content.rstrip().splitlines()
-    import_count = 0
-    for line in lines:
-        if not line.startswith(("from ", "import ")):
-            break
-        import_count += 1
-    if import_count == 0:
-        return f"{rendered}\n\n{content.lstrip()}"
-    imports = "\n".join(lines[:import_count])
-    tail = "\n".join(lines[import_count:]).lstrip()
-    if not tail:
-        return f"{imports}\n\n{rendered}\n"
-    return f"{imports}\n\n{rendered}\n\n{tail}\n"
-
-
 def annotation_contains_default_never(
     expression: SourceTypeExpression | None,
 ) -> bool:
@@ -117,16 +68,15 @@ def annotation_contains_default_never(
             SchemaTypeExpression(arguments=arguments)
             | MarkerTypeExpression(arguments=arguments)
         ):
-            if (
-                isinstance(expression, MarkerTypeExpression)
-                and expression.marker is MarkerKind.MAP
-                and not any(
-                    isinstance(argument, MarkerTypeExpression)
-                    and argument.marker is MarkerKind.DEFAULT
-                    for argument in arguments[1:]
-                )
-            ):
-                return True
+            if isinstance(expression, MarkerTypeExpression):
+                try:
+                    marker = normalize_marker(expression)
+                except MarkerNormalizationError:
+                    marker = None
+                if isinstance(marker, MapMarker) and not any(
+                    isinstance(entry, DefaultMarker) for entry in marker.entries
+                ):
+                    return True
             return any(
                 annotation_contains_default_never(argument) for argument in arguments
             )
@@ -259,7 +209,7 @@ def _is_main_literal(expression: ast.expr) -> bool:
 def collect_module_variables(path: Path) -> ModuleVariables:
     source = path.read_text(encoding="utf-8")
     module = ast.parse(source, filename=str(path), type_comments=True)
-    declarations: list[str] = []
+    declarations: list[VariableDeclaration] = []
     requires_any = False
     for statement in module.body:
         if isinstance(statement, ast.AnnAssign):
@@ -269,7 +219,8 @@ def collect_module_variables(path: Path) -> ModuleVariables:
             if name.startswith("_"):
                 continue
             annotation = ast.unparse(statement.annotation)
-            declarations.append(f"{name}: {annotation}")
+            declarations.append(VariableDeclaration(name, TypeName(annotation)))
+            requires_any = requires_any or _annotation_contains_any(annotation)
             continue
         if not isinstance(statement, ast.Assign):
             continue
@@ -285,7 +236,9 @@ def collect_module_variables(path: Path) -> ModuleVariables:
         ):
             name = statement.targets[0].id
             if not name.startswith("_"):
-                declarations.append(f"{name}: {statement.type_comment}")
+                declarations.append(
+                    VariableDeclaration(name, TypeName(statement.type_comment))
+                )
                 requires_any = requires_any or _annotation_contains_any(
                     statement.type_comment
                 )
@@ -295,9 +248,10 @@ def collect_module_variables(path: Path) -> ModuleVariables:
             for name, annotation in bindings:
                 if name.startswith("_"):
                     continue
-                declarations.append(f"{name}: {annotation}")
+                declarations.append(VariableDeclaration(name, TypeName(annotation)))
                 requires_any = requires_any or _annotation_contains_any(annotation)
-    return ModuleVariables(tuple(declarations), requires_any)
+    imports = (ImportFrom("typing", ("Any",)),) if requires_any else ()
+    return ModuleVariables(tuple(declarations), imports)
 
 
 def _infer_assignment_bindings(

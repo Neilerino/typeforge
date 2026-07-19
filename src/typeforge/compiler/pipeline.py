@@ -8,7 +8,7 @@ from pathlib import Path
 
 from returns.result import Result
 
-from typeforge.compiler._pipeline_core import (
+from typeforge.compiler._pipeline_adaptation import (
     adapt_alias,
     adapt_function,
     adapt_source_module,
@@ -33,20 +33,18 @@ from typeforge.compiler._pipeline_records import (
     build_record_shapes,
     derive_record_shapes,
     materialize_record_transforms,
+    render_typed_dict,
     replace_record_aliases,
 )
 from typeforge.compiler._pipeline_utils import (
     collect_module_variables,
-    inject_declarations,
     merge_imports,
-    render_typed_dict,
     validate_public_surface,
 )
 from typeforge.compiler.emitter import emit_stub_module
 from typeforge.compiler.frontend import parse_module
 from typeforge.compiler.lowering import (
     ArityFrontier,
-    ImportFrom,
     StubModule,
     lower_variadic_module,
 )
@@ -78,21 +76,15 @@ def _emit_generated_module(
     records: RecordMaterialization,
 ) -> Result[GeneratedModule, EmissionError]:
     variables = collect_module_variables(parsed.path)
-    if variables.requires_any:
-        lowered = StubModule(
-            lowered.name,
-            lowered.declarations,
-            merge_imports((*lowered.imports, ImportFrom("typing", ("Any",)))),
-        )
-    declarations = (*records.declarations, *variables.declarations)
+    generated = StubModule(
+        lowered.name,
+        (*records.declarations, *variables.declarations, *lowered.declarations),
+        merge_imports((*lowered.imports, *variables.imports)),
+    )
     return (
-        emit_stub_module(lowered)
+        emit_stub_module(generated)
         .alt(EmissionError)
-        .map(
-            lambda emitted: GeneratedModule(
-                path, inject_declarations(emitted, declarations)
-            )
-        )
+        .map(lambda emitted: GeneratedModule(path, emitted))
     )
 
 

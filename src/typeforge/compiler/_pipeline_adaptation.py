@@ -1,10 +1,33 @@
-"""Source-to-lowering adaptation and semantic type-expression expansion."""
+"""Adapt source syntax into lowering IR and expand semantic type relationships."""
 
 from functools import singledispatch
 from typing import assert_never
 
 from returns.result import Result, safe
 
+from typeforge.compiler._markers import (
+    AllMarker,
+    AnyMarker,
+    AssignableMarker,
+    CaseMarker,
+    CollectMarker,
+    DefaultMarker,
+    DropMarker,
+    EachMarker,
+    EqualMarker,
+    FieldMarker,
+    IfMarker,
+    KeyMarker,
+    MapFieldsMarker,
+    MapMarker,
+    MarkerNormalizationError,
+    NormalizedMarker,
+    NotMarker,
+    OptionalFieldMarker,
+    ReadonlyFieldMarker,
+    ValueMarker,
+    normalize_marker,
+)
 from typeforge.compiler._pipeline_models import (
     AdaptationError,
     SemanticRelationshipAlias,
@@ -14,6 +37,7 @@ from typeforge.compiler._pipeline_utils import (
     collect_imports,
     merge_imports,
 )
+from typeforge.compiler._type_tree import rewrite_type, rewrite_type_children, walk_type
 from typeforge.compiler.lowering import (
     AllPredicate,
     AnyPredicate,
@@ -53,7 +77,6 @@ from typeforge.compiler.lowering import (
 )
 from typeforge.compiler.model import (
     AppliedTypeExpression,
-    MarkerKind,
     MarkerTypeExpression,
     NameTypeExpression,
     RawTypeExpression,
@@ -83,111 +106,11 @@ from typeforge.compiler.model import (
 def substitute_type(
     expression: TypeExpression, variable: str, replacement: TypeExpression
 ) -> TypeExpression:
-    if expression == TypeVariable(variable):
-        return replacement
-    match expression:
-        case TypeApplication(constructor, arguments):
-            return TypeApplication(
-                substitute_type(constructor, variable, replacement),
-                tuple(
-                    substitute_type(argument, variable, replacement)
-                    for argument in arguments
-                ),
-            )
-        case FixedTuple(items):
-            return FixedTuple(
-                tuple(substitute_type(item, variable, replacement) for item in items)
-            )
-        case HomogeneousTuple(item):
-            return HomogeneousTuple(substitute_type(item, variable, replacement))
-        case EachType(item):
-            return EachType(substitute_type(item, variable, replacement))
-        case CollectType(item):
-            return CollectType(substitute_type(item, variable, replacement))
-        case UnpackedType(item):
-            return UnpackedType(substitute_type(item, variable, replacement))
-        case UnionExpression(members):
-            return UnionExpression(
-                tuple(
-                    substitute_type(member, variable, replacement) for member in members
-                )
-            )
-        case IfType(condition, when_true, when_false):
-            return IfType(
-                substitute_predicate(condition, variable, replacement),
-                substitute_type(when_true, variable, replacement),
-                substitute_type(when_false, variable, replacement),
-            )
-        case MapType(subject, cases, default):
-            return MapType(
-                substitute_type(subject, variable, replacement),
-                tuple(
-                    MapCase(
-                        substitute_type(case.input_type, variable, replacement),
-                        substitute_type(case.output_type, variable, replacement),
-                    )
-                    for case in cases
-                ),
-                substitute_type(default, variable, replacement),
-            )
-        case FieldType(name, value, required, readonly):
-            return FieldType(
-                substitute_type(name, variable, replacement),
-                substitute_type(value, variable, replacement),
-                required,
-                readonly,
-            )
-        case MapFieldsType(record, transform):
-            return MapFieldsType(
-                substitute_type(record, variable, replacement),
-                substitute_type(transform, variable, replacement),
-            )
-        case SchemaType(item):
-            return SchemaType(substitute_type(item, variable, replacement))
-        case (
-            TypeName()
-            | TypeVariable()
-            | LiteralType()
-            | MapValueType()
-            | RuntimeInputType()
-        ):
-            return expression
-        case _ as unreachable:
-            assert_never(unreachable)
-
-
-def substitute_predicate(
-    predicate: Predicate, variable: str, replacement: TypeExpression
-) -> Predicate:
-    match predicate:
-        case EqualPredicate(left, right):
-            return EqualPredicate(
-                substitute_type(left, variable, replacement),
-                substitute_type(right, variable, replacement),
-            )
-        case AssignablePredicate(source, target):
-            return AssignablePredicate(
-                substitute_type(source, variable, replacement),
-                substitute_type(target, variable, replacement),
-            )
-        case AllPredicate(predicates):
-            return AllPredicate(
-                tuple(
-                    substitute_predicate(item, variable, replacement)
-                    for item in predicates
-                )
-            )
-        case AnyPredicate(predicates):
-            return AnyPredicate(
-                tuple(
-                    substitute_predicate(item, variable, replacement)
-                    for item in predicates
-                )
-            )
-        case NotPredicate(item):
-            return NotPredicate(substitute_predicate(item, variable, replacement))
-        case _ as unreachable:
-            assert_never(unreachable)
+    target = TypeVariable(variable)
+    return rewrite_type(
+        expression,
+        lambda current: replacement if current == target else None,
+    )
 
 
 @safe(exceptions=(AdaptationError,))
@@ -272,10 +195,13 @@ def _collect_semantic_relationship_aliases(
     semantic: list[SemanticRelationshipAlias] = []
     for alias in aliases:
         value = schema_inner_expression(alias.value)
-        if not (
-            isinstance(value, MarkerTypeExpression)
-            and value.marker in {MarkerKind.MAP, MarkerKind.IF}
-        ):
+        if not isinstance(value, MarkerTypeExpression):
+            continue
+        try:
+            normalized = normalize_marker(value)
+        except MarkerNormalizationError:
+            continue
+        if not isinstance(normalized, MapMarker | IfMarker):
             continue
         if len(alias.type_parameters) != 1:
             raise AdaptationError(
@@ -356,117 +282,23 @@ def expand_map_aliases(
     expression: TypeExpression,
     aliases: tuple[SemanticRelationshipAlias, ...],
 ) -> TypeExpression:
-    if isinstance(expression, SchemaType):
-        return resolve_schema_type(expand_map_aliases(expression.item, aliases))
-    if (
-        isinstance(expression, TypeApplication)
-        and isinstance(expression.constructor, TypeName)
-        and len(expression.arguments) == 1
-    ):
-        alias = next(
-            (item for item in aliases if item.name == expression.constructor.name),
-            None,
-        )
-        if alias is not None:
-            argument = expand_map_aliases(expression.arguments[0], aliases)
-            return substitute_type(alias.relationship, alias.parameter, argument)
     match expression:
-        case TypeApplication(constructor, arguments):
-            return TypeApplication(
-                expand_map_aliases(constructor, aliases),
-                tuple(expand_map_aliases(argument, aliases) for argument in arguments),
-            )
-        case FixedTuple(items):
-            return FixedTuple(
-                tuple(expand_map_aliases(item, aliases) for item in items)
-            )
-        case HomogeneousTuple(item):
-            return HomogeneousTuple(expand_map_aliases(item, aliases))
-        case CollectType(item):
-            return CollectType(expand_map_aliases(item, aliases))
-        case EachType(item):
-            return EachType(expand_map_aliases(item, aliases))
-        case UnpackedType(item):
-            return UnpackedType(expand_map_aliases(item, aliases))
-        case UnionExpression(members):
-            return UnionExpression(
-                tuple(expand_map_aliases(member, aliases) for member in members)
-            )
-        case IfType(condition, when_true, when_false):
-            return IfType(
-                _expand_map_aliases_in_predicate(condition, aliases),
-                expand_map_aliases(when_true, aliases),
-                expand_map_aliases(when_false, aliases),
-            )
-        case MapType(subject, cases, default):
-            return MapType(
-                expand_map_aliases(subject, aliases),
-                tuple(
-                    MapCase(
-                        expand_map_aliases(case.input_type, aliases),
-                        expand_map_aliases(case.output_type, aliases),
-                    )
-                    for case in cases
-                ),
-                expand_map_aliases(default, aliases),
-            )
-        case FieldType(name, value, required, readonly):
-            return FieldType(
-                expand_map_aliases(name, aliases),
-                expand_map_aliases(value, aliases),
-                required,
-                readonly,
-            )
-        case MapFieldsType(record, transform):
-            return MapFieldsType(
-                expand_map_aliases(record, aliases),
-                expand_map_aliases(transform, aliases),
-            )
-        case (
-            TypeName()
-            | TypeVariable()
-            | LiteralType()
-            | MapValueType()
-            | RuntimeInputType()
-        ):
-            return expression
-        case _ as unreachable:
-            assert_never(unreachable)
-
-
-def _expand_map_aliases_in_predicate(
-    predicate: Predicate,
-    aliases: tuple[SemanticRelationshipAlias, ...],
-) -> Predicate:
-    match predicate:
-        case EqualPredicate(left, right):
-            return EqualPredicate(
-                expand_map_aliases(left, aliases),
-                expand_map_aliases(right, aliases),
-            )
-        case AssignablePredicate(source, target):
-            return AssignablePredicate(
-                expand_map_aliases(source, aliases),
-                expand_map_aliases(target, aliases),
-            )
-        case AllPredicate(predicates):
-            return AllPredicate(
-                tuple(
-                    _expand_map_aliases_in_predicate(item, aliases)
-                    for item in predicates
+        case SchemaType(item):
+            return resolve_schema_type(expand_map_aliases(item, aliases))
+        case TypeApplication(TypeName(name), (argument,)):
+            alias = next((item for item in aliases if item.name == name), None)
+            if alias is not None:
+                return substitute_type(
+                    alias.relationship,
+                    alias.parameter,
+                    expand_map_aliases(argument, aliases),
                 )
-            )
-        case AnyPredicate(predicates):
-            return AnyPredicate(
-                tuple(
-                    _expand_map_aliases_in_predicate(item, aliases)
-                    for item in predicates
-                )
-            )
-        case NotPredicate(item):
-            return NotPredicate(_expand_map_aliases_in_predicate(item, aliases))
-        case _ as unreachable:
-            assert_never(unreachable)
+        case _:
+            pass
+    return rewrite_type_children(
+        expression,
+        lambda child: expand_map_aliases(child, aliases),
+    )
 
 
 def resolve_schema_type(expression: TypeExpression) -> TypeExpression:
@@ -591,104 +423,14 @@ def _substitute_schema_capture(
     expression: TypeExpression,
     capture: TypeExpression | None,
 ) -> TypeExpression:
-    match expression:
-        case MapValueType():
-            return capture or TypeName("object")
-        case TypeApplication(constructor, arguments):
-            return TypeApplication(
-                _substitute_schema_capture(constructor, capture),
-                tuple(
-                    _substitute_schema_capture(argument, capture)
-                    for argument in arguments
-                ),
-            )
-        case FixedTuple(items):
-            return FixedTuple(
-                tuple(_substitute_schema_capture(item, capture) for item in items)
-            )
-        case HomogeneousTuple(item):
-            return HomogeneousTuple(_substitute_schema_capture(item, capture))
-        case EachType(item):
-            return EachType(_substitute_schema_capture(item, capture))
-        case CollectType(item):
-            return CollectType(_substitute_schema_capture(item, capture))
-        case UnpackedType(item):
-            return UnpackedType(_substitute_schema_capture(item, capture))
-        case UnionExpression(members):
-            return UnionExpression(
-                tuple(_substitute_schema_capture(member, capture) for member in members)
-            )
-        case IfType(condition, when_true, when_false):
-            return IfType(
-                _substitute_schema_capture_predicate(condition, capture),
-                _substitute_schema_capture(when_true, capture),
-                _substitute_schema_capture(when_false, capture),
-            )
-        case MapType(subject, cases, default):
-            return MapType(
-                _substitute_schema_capture(subject, capture),
-                tuple(
-                    MapCase(
-                        _substitute_schema_capture(case.input_type, capture),
-                        _substitute_schema_capture(case.output_type, capture),
-                    )
-                    for case in cases
-                ),
-                _substitute_schema_capture(default, capture),
-            )
-        case FieldType(name, value, required, readonly):
-            return FieldType(
-                _substitute_schema_capture(name, capture),
-                _substitute_schema_capture(value, capture),
-                required,
-                readonly,
-            )
-        case MapFieldsType(record, transform):
-            return MapFieldsType(
-                _substitute_schema_capture(record, capture),
-                _substitute_schema_capture(transform, capture),
-            )
-        case SchemaType(item):
-            return SchemaType(_substitute_schema_capture(item, capture))
-        case TypeName() | TypeVariable() | LiteralType() | RuntimeInputType():
-            return expression
-        case _ as unreachable:
-            assert_never(unreachable)
-
-
-def _substitute_schema_capture_predicate(
-    predicate: Predicate,
-    capture: TypeExpression | None,
-) -> Predicate:
-    match predicate:
-        case EqualPredicate(left, right):
-            return EqualPredicate(
-                _substitute_schema_capture(left, capture),
-                _substitute_schema_capture(right, capture),
-            )
-        case AssignablePredicate(source, target):
-            return AssignablePredicate(
-                _substitute_schema_capture(source, capture),
-                _substitute_schema_capture(target, capture),
-            )
-        case AllPredicate(predicates):
-            return AllPredicate(
-                tuple(
-                    _substitute_schema_capture_predicate(item, capture)
-                    for item in predicates
-                )
-            )
-        case AnyPredicate(predicates):
-            return AnyPredicate(
-                tuple(
-                    _substitute_schema_capture_predicate(item, capture)
-                    for item in predicates
-                )
-            )
-        case NotPredicate(item):
-            return NotPredicate(_substitute_schema_capture_predicate(item, capture))
-        case _ as unreachable:
-            assert_never(unreachable)
+    return rewrite_type(
+        expression,
+        lambda current: (
+            (capture or TypeName("object"))
+            if isinstance(current, MapValueType)
+            else None
+        ),
+    )
 
 
 def resolve_schema_predicate(predicate: Predicate) -> bool | None:
@@ -731,63 +473,10 @@ def _schema_assignable(source: TypeExpression, target: TypeExpression) -> bool:
 
 
 def _type_has_variable(expression: TypeExpression) -> bool:
-    match expression:
-        case TypeVariable() | RuntimeInputType():
-            return True
-        case TypeApplication(constructor, arguments):
-            return _type_has_variable(constructor) or any(
-                _type_has_variable(argument) for argument in arguments
-            )
-        case FixedTuple(items):
-            return any(_type_has_variable(item) for item in items)
-        case (
-            HomogeneousTuple(item)
-            | EachType(item)
-            | CollectType(item)
-            | UnpackedType(item)
-            | SchemaType(item)
-        ):
-            return _type_has_variable(item)
-        case UnionExpression(members):
-            return any(_type_has_variable(member) for member in members)
-        case IfType(condition, when_true, when_false):
-            return (
-                _predicate_has_variable(condition)
-                or _type_has_variable(when_true)
-                or _type_has_variable(when_false)
-            )
-        case MapType(subject, cases, default):
-            return (
-                _type_has_variable(subject)
-                or any(
-                    _type_has_variable(case.input_type)
-                    or _type_has_variable(case.output_type)
-                    for case in cases
-                )
-                or _type_has_variable(default)
-            )
-        case FieldType(name, value):
-            return _type_has_variable(name) or _type_has_variable(value)
-        case MapFieldsType(record, transform):
-            return _type_has_variable(record) or _type_has_variable(transform)
-        case TypeName() | LiteralType() | MapValueType():
-            return False
-        case _ as unreachable:
-            assert_never(unreachable)
-
-
-def _predicate_has_variable(predicate: Predicate) -> bool:
-    match predicate:
-        case EqualPredicate(left, right):
-            return _type_has_variable(left) or _type_has_variable(right)
-        case AssignablePredicate(source, target):
-            return _type_has_variable(source) or _type_has_variable(target)
-        case AllPredicate(predicates) | AnyPredicate(predicates):
-            return any(_predicate_has_variable(item) for item in predicates)
-        case NotPredicate(item):
-            return _predicate_has_variable(item)
-        case _ as unreachable:
-            assert_never(unreachable)
+    return any(
+        isinstance(node, TypeVariable | RuntimeInputType)
+        for node in walk_type(expression)
+    )
 
 
 def union_types_for_schema(expressions: tuple[TypeExpression, ...]) -> TypeExpression:
@@ -870,61 +559,40 @@ def _adapt_alias_fallback(
 ) -> TypeExpression:
     if not isinstance(expression, MarkerTypeExpression):
         return _adapt_type_expression(expression, declaration, type_parameters)
-    arguments = expression.arguments
-    marker = expression.marker
-    if marker is MarkerKind.EACH:
-        return _adapt_single_alias_argument(declaration, expression, type_parameters)
-    if marker is MarkerKind.COLLECT:
-        return HomogeneousTuple(
-            _adapt_single_alias_argument(declaration, expression, type_parameters)
-        )
-    if marker is MarkerKind.IF:
-        _require_marker_arity(declaration, expression, 3, "three")
-        return UnionExpression(
-            _adapt_type_expressions(arguments[1:], declaration, type_parameters)
-        )
-    if marker in {MarkerKind.MAP, MarkerKind.MAP_FIELDS}:
-        return TypeName("object")
-    if marker in {
-        MarkerKind.ASSIGNABLE,
-        MarkerKind.EQUAL,
-        MarkerKind.ALL,
-        MarkerKind.ANY,
-        MarkerKind.NOT,
-    }:
-        return TypeName("bool")
-    if marker in {
-        MarkerKind.CASE,
-        MarkerKind.DEFAULT,
-        MarkerKind.FIELD,
-        MarkerKind.OPTIONAL_FIELD,
-        MarkerKind.READONLY_FIELD,
-    }:
-        if not arguments:
-            raise AdaptationError(
-                declaration,
-                expression.source,
-                f"{marker.value} requires a value type",
+    marker = _normalize_marker(declaration, expression)
+    match marker:
+        case EachMarker(item=item):
+            return _adapt_alias_fallback(declaration, item, type_parameters)
+        case CollectMarker(item=item):
+            return HomogeneousTuple(
+                _adapt_alias_fallback(declaration, item, type_parameters)
             )
-        return _adapt_alias_fallback(declaration, arguments[-1], type_parameters)
-    if marker is MarkerKind.DROP:
-        return TypeName("Never")
-    if marker is MarkerKind.KEY:
-        return TypeName("str")
-    return TypeName("object")
-
-
-def _adapt_single_alias_argument(
-    declaration: str,
-    expression: MarkerTypeExpression,
-    type_parameters: tuple[str, ...],
-) -> TypeExpression:
-    _require_marker_arity(declaration, expression, 1, "one")
-    return _adapt_alias_fallback(
-        declaration,
-        expression.arguments[0],
-        type_parameters,
-    )
+        case IfMarker(when_true=when_true, when_false=when_false):
+            return UnionExpression(
+                _adapt_type_expressions(
+                    (when_true, when_false), declaration, type_parameters
+                )
+            )
+        case MapMarker() | MapFieldsMarker():
+            return TypeName("object")
+        case (
+            AssignableMarker() | EqualMarker() | AllMarker() | AnyMarker() | NotMarker()
+        ):
+            return TypeName("bool")
+        case (
+            CaseMarker(output=value)
+            | DefaultMarker(output=value)
+            | FieldMarker(value=value)
+            | OptionalFieldMarker(value=value)
+            | ReadonlyFieldMarker(value=value)
+        ):
+            return _adapt_alias_fallback(declaration, value, type_parameters)
+        case DropMarker():
+            return TypeName("Never")
+        case KeyMarker():
+            return TypeName("str")
+        case ValueMarker():
+            return TypeName("object")
 
 
 @safe(exceptions=(AdaptationError,))
@@ -1086,70 +754,57 @@ def _(
     declaration: str,
     type_parameters: tuple[str, ...],
 ) -> TypeExpression:
-    if expression.marker is MarkerKind.VALUE:
-        _require_marker_arity(declaration, expression, 0, "no")
-        return MapValueType()
-    if expression.marker is MarkerKind.IF:
-        return _adapt_if_expression(declaration, expression, type_parameters)
-    if expression.marker is MarkerKind.MAP:
-        return _adapt_map_expression(declaration, expression, type_parameters)
-    _require_marker_arity(declaration, expression, 1, "one")
-    if expression.marker not in {MarkerKind.EACH, MarkerKind.COLLECT}:
-        raise AdaptationError(
-            declaration,
-            expression.source,
-            f"unsupported marker {expression.marker.value}",
-        )
-    marker_type = EachType if expression.marker is MarkerKind.EACH else CollectType
-    return marker_type(
-        _adapt_type_expression(expression.arguments[0], declaration, type_parameters)
-    )
-
-
-def _adapt_if_expression(
-    declaration: str,
-    expression: MarkerTypeExpression,
-    type_parameters: tuple[str, ...],
-) -> TypeExpression:
-    _require_marker_arity(declaration, expression, 3, "three")
-    condition = _adapt_predicate(expression.arguments[0], declaration, type_parameters)
-    branches = _adapt_type_expressions(
-        expression.arguments[1:], declaration, type_parameters
-    )
-    return IfType(condition, branches[0], branches[1])
-
-
-def _adapt_map_expression(
-    declaration: str,
-    expression: MarkerTypeExpression,
-    type_parameters: tuple[str, ...],
-) -> TypeExpression:
-    if len(expression.arguments) < 2:
-        raise AdaptationError(
-            declaration,
-            expression.source,
-            "Map requires a subject and at least one Case or Default",
-        )
-    subject = _adapt_type_expression(
-        expression.arguments[0], declaration, type_parameters
-    )
-    cases: list[MapCase] = []
-    default: TypeExpression = TypeName("Never")
-    for entry in expression.arguments[1:]:
-        if not isinstance(entry, MarkerTypeExpression):
-            raise _invalid_map_entry(declaration, entry)
-        if entry.marker is MarkerKind.CASE and len(entry.arguments) == 2:
-            values = _adapt_type_expressions(
-                entry.arguments, declaration, type_parameters
+    marker = _normalize_marker(declaration, expression)
+    match marker:
+        case ValueMarker():
+            return MapValueType()
+        case IfMarker(
+            condition=condition,
+            when_true=when_true,
+            when_false=when_false,
+        ):
+            return IfType(
+                _adapt_predicate(condition, declaration, type_parameters),
+                _adapt_type_expression(when_true, declaration, type_parameters),
+                _adapt_type_expression(when_false, declaration, type_parameters),
             )
-            cases.append(MapCase(values[0], values[1]))
-        elif entry.marker is MarkerKind.DEFAULT and len(entry.arguments) == 1:
-            default = _adapt_type_expression(
-                entry.arguments[0], declaration, type_parameters
+        case MapMarker(subject=subject, entries=entries):
+            cases = tuple(
+                MapCase(
+                    _adapt_type_expression(entry.input, declaration, type_parameters),
+                    _adapt_type_expression(entry.output, declaration, type_parameters),
+                )
+                for entry in entries
+                if isinstance(entry, CaseMarker)
             )
-        else:
-            raise _invalid_map_entry(declaration, entry)
-    return MapType(subject, tuple(cases), default)
+            default_entry = next(
+                (entry for entry in entries if isinstance(entry, DefaultMarker)),
+                None,
+            )
+            default = (
+                TypeName("Never")
+                if default_entry is None
+                else _adapt_type_expression(
+                    default_entry.output, declaration, type_parameters
+                )
+            )
+            return MapType(
+                _adapt_type_expression(subject, declaration, type_parameters),
+                cases,
+                default,
+            )
+        case EachMarker(item=item):
+            return EachType(_adapt_type_expression(item, declaration, type_parameters))
+        case CollectMarker(item=item):
+            return CollectType(
+                _adapt_type_expression(item, declaration, type_parameters)
+            )
+        case _:
+            raise AdaptationError(
+                declaration,
+                expression.source,
+                f"unsupported marker {type(marker).__name__.removesuffix('Marker')}",
+            )
 
 
 @safe(exceptions=(AdaptationError,))
@@ -1172,56 +827,54 @@ def _adapt_predicate(
             expression.source,
             "If condition must be a Typeforge predicate",
         )
-    if expression.marker in {MarkerKind.EQUAL, MarkerKind.ASSIGNABLE}:
-        _require_marker_arity(declaration, expression, 2, "two")
-        operands = _adapt_type_expressions(
-            expression.arguments, declaration, type_parameters
-        )
-        if expression.marker is MarkerKind.EQUAL:
-            return EqualPredicate(operands[0], operands[1])
-        return AssignablePredicate(operands[0], operands[1])
-    if expression.marker in {MarkerKind.ALL, MarkerKind.ANY}:
-        predicates = tuple(
-            _adapt_predicate(argument, declaration, type_parameters)
-            for argument in expression.arguments
-        )
-        if expression.marker is MarkerKind.ALL:
-            return AllPredicate(predicates)
-        return AnyPredicate(predicates)
-    if expression.marker is MarkerKind.NOT:
-        _require_marker_arity(declaration, expression, 1, "one")
-        return NotPredicate(
-            _adapt_predicate(expression.arguments[0], declaration, type_parameters)
-        )
-    raise AdaptationError(
-        declaration,
-        expression.source,
-        f"{expression.marker.value} is not a predicate",
-    )
+    marker = _normalize_marker(declaration, expression)
+    match marker:
+        case EqualMarker(left=left, right=right):
+            return EqualPredicate(
+                _adapt_type_expression(left, declaration, type_parameters),
+                _adapt_type_expression(right, declaration, type_parameters),
+            )
+        case AssignableMarker(left=left, right=right):
+            return AssignablePredicate(
+                _adapt_type_expression(left, declaration, type_parameters),
+                _adapt_type_expression(right, declaration, type_parameters),
+            )
+        case AllMarker(items=items):
+            return AllPredicate(
+                tuple(
+                    _adapt_predicate(item, declaration, type_parameters)
+                    for item in items
+                )
+            )
+        case AnyMarker(items=items):
+            return AnyPredicate(
+                tuple(
+                    _adapt_predicate(item, declaration, type_parameters)
+                    for item in items
+                )
+            )
+        case NotMarker(item=item):
+            return NotPredicate(_adapt_predicate(item, declaration, type_parameters))
+        case _:
+            raise AdaptationError(
+                declaration,
+                expression.source,
+                f"{type(marker).__name__.removesuffix('Marker')} is not a predicate",
+            )
 
 
-def _require_marker_arity(
+def _normalize_marker(
     declaration: str,
     expression: MarkerTypeExpression,
-    count: int,
-    count_name: str,
-) -> None:
-    if len(expression.arguments) != count:
+) -> NormalizedMarker:
+    try:
+        return normalize_marker(expression)
+    except MarkerNormalizationError as error:
         raise AdaptationError(
             declaration,
-            expression.source,
-            f"{expression.marker.value} requires {count_name} type arguments",
-        )
-
-
-def _invalid_map_entry(
-    declaration: str, expression: SourceTypeExpression
-) -> AdaptationError:
-    return AdaptationError(
-        declaration,
-        expression.source,
-        "Map entries must be Case[Input, Output] or Default[Output]",
-    )
+            error.source,
+            error.message,
+        ) from error
 
 
 def _adapt_type_expressions(

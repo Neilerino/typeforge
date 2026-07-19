@@ -191,6 +191,38 @@ def test_public_module_variables_are_preserved(tmp_path: Path) -> None:
     )
 
 
+def test_generated_declarations_share_one_ordered_emission_path(tmp_path: Path) -> None:
+    source = tmp_path / "ordered.py"
+    source.write_text(
+        "from typing import TypedDict\n"
+        "class User(TypedDict):\n"
+        "    name: str\n"
+        "value = 1\n"
+        "def read() -> User: ...\n",
+        encoding="utf-8",
+    )
+
+    generated = generate_module(source, maximum_arity=2)
+
+    assert isinstance(generated, Success)
+    content = generated.unwrap().content
+    assert content.index("class User") < content.index("value: int")
+    assert content.index("value: int") < content.index("def read")
+
+
+def test_empty_typed_dict_uses_the_normal_class_body_emitter(tmp_path: Path) -> None:
+    source = tmp_path / "empty_record.py"
+    source.write_text(
+        "from typing import TypedDict\nclass Empty(TypedDict):\n    pass\n",
+        encoding="utf-8",
+    )
+
+    generated = generate_module(source, maximum_arity=2)
+
+    assert isinstance(generated, Success)
+    assert "class Empty(tf_typing.TypedDict):\n    pass" in generated.unwrap().content
+
+
 def test_runtime_main_guard_is_ignored(tmp_path: Path) -> None:
     source = tmp_path / "application.py"
     source.write_text(
