@@ -6,6 +6,7 @@ from typeforge.compiler.evaluator import (
     Assignable,
     Case,
     Drop,
+    DroppedField,
     Equal,
     EvaluationErrorCode,
     Field,
@@ -19,7 +20,6 @@ from typeforge.compiler.evaluator import (
     ReadonlyField,
     Value,
     evaluate,
-    evaluate_map_fields,
 )
 from typeforge.compiler.records import (
     NEVER,
@@ -47,6 +47,12 @@ def test_conditions_compose() -> None:
 
     assert evaluate(expression) == Success(True)
     assert evaluate(If(expression, STR, BYTES)) == Success(STR)
+
+
+def test_all_returns_false_and_short_circuits() -> None:
+    expression = All((Equal(INT, STR), Key()))
+
+    assert evaluate(expression) == Success(False)
 
 
 def test_assignable_understands_union_sources_and_targets() -> None:
@@ -83,7 +89,7 @@ def test_map_fields_transforms_typed_dict_values() -> None:
         Map(Value(), (Case(DATETIME, STR),), Value()),
     )
 
-    result = evaluate_map_fields(MapFields(source, transform, "JsonUser"))
+    result = evaluate(MapFields(source, transform, "JsonUser"))
 
     assert result == Success(
         TypedDictShape(
@@ -116,7 +122,7 @@ def test_map_fields_can_drop_and_change_field_modifiers() -> None:
         ),
     )
 
-    result = evaluate_map_fields(MapFields(source, transform))
+    result = evaluate(MapFields(source, transform))
 
     assert result == Success(
         TypedDictShape(
@@ -129,6 +135,10 @@ def test_map_fields_can_drop_and_change_field_modifiers() -> None:
     )
 
 
+def test_drop_is_an_explicit_evaluation_value() -> None:
+    assert evaluate(Drop()) == Success(DroppedField())
+
+
 def test_unbound_field_placeholders_are_typed_failures() -> None:
     key_result = evaluate(Key())
     value_result = evaluate(Value())
@@ -139,8 +149,22 @@ def test_unbound_field_placeholders_are_typed_failures() -> None:
     assert value_result.failure().code is EvaluationErrorCode.UNBOUND_VALUE
 
 
+def test_nested_failures_preserve_the_original_typed_error() -> None:
+    result = evaluate(Equal(Key(), Key()))
+
+    assert isinstance(result, Failure)
+    assert result.failure().code is EvaluationErrorCode.UNBOUND_KEY
+
+
+def test_invalid_field_name_has_the_specific_error_code() -> None:
+    result = evaluate(Field(INT, STR))
+
+    assert isinstance(result, Failure)
+    assert result.failure().code is EvaluationErrorCode.EXPECTED_FIELD_NAME
+
+
 def test_map_fields_rejects_non_record_input() -> None:
-    result = evaluate_map_fields(MapFields(INT, Field(Key(), Value())))
+    result = evaluate(MapFields(INT, Field(Key(), Value())))
 
     assert isinstance(result, Failure)
     assert result.failure().code is EvaluationErrorCode.EXPECTED_TYPED_DICT

@@ -15,6 +15,8 @@ from typeforge.compiler.model import (
     Parameter,
     ParameterKind,
     RawTypeExpression,
+    RuntimeInputTypeExpression,
+    SchemaTypeExpression,
     SourceModule,
     SourcePosition,
     SourceSpan,
@@ -609,6 +611,8 @@ def _parse_annotation(
             name=name,
             qualified_name=_resolve_name(name, bindings),
         )
+        if _is_runtime_input(name_expression):
+            return RuntimeInputTypeExpression(rendered, span)
         marker = _marker_kind(name_expression)
         if marker is not None:
             return MarkerTypeExpression(
@@ -631,6 +635,12 @@ def _parse_annotation(
             if argument is not None:
                 argument_values.append(argument)
         arguments = tuple(argument_values)
+        if _is_schema_boundary(constructor):
+            return SchemaTypeExpression(
+                source=rendered,
+                span=span,
+                arguments=arguments,
+            )
         marker = _marker_kind(constructor)
         if marker is not None:
             return MarkerTypeExpression(
@@ -710,6 +720,22 @@ def _marker_kind(expression: TypeExpression) -> MarkerKind | None:
     }:
         return None
     return marker_names.get(qualified_name[-1])
+
+
+def _is_schema_boundary(expression: TypeExpression) -> bool:
+    return isinstance(expression, NameTypeExpression) and expression.qualified_name == (
+        "typeforge",
+        "pydantic",
+        "Schema",
+    )
+
+
+def _is_runtime_input(expression: TypeExpression) -> bool:
+    return isinstance(expression, NameTypeExpression) and expression.qualified_name == (
+        "typeforge",
+        "pydantic",
+        "Input",
+    )
 
 
 def _span(

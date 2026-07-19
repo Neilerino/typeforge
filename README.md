@@ -164,6 +164,48 @@ def update_user(changes: Patch[User]) -> None:
 # Hovering over `Patch` shows its documentation.
 ```
 
+## Pydantic integration
+
+Install the optional Pydantic extra, then wrap a Typeforge expression in
+`Schema[...]`:
+
+```console
+pip install "typeforge[pydantic]"
+```
+
+```python
+from typing import Literal, TypedDict
+
+from pydantic import BaseModel
+from typeforge import Drop, Equal, Field, If, Key, MapFields, Value
+from typeforge.pydantic import Schema
+
+
+class User(TypedDict):
+    name: str
+    password: str
+
+
+type Public[T] = MapFields[
+    T,
+    If[
+        Equal[Key, Literal["password"]],
+        Drop,
+        Field[Key, Value],
+    ],
+]
+
+
+class Response(BaseModel):
+    user: Schema[Public[User]]
+```
+
+Pydantic compiles this to a native typed-dictionary core schema, and validation
+returns an ordinary `dict`; `Schema` is not a value wrapper. Schema-time `Map`
+and `If` expressions add no Typeforge Python calls during validation. Expressions
+using `typeforge.pydantic.Input` intentionally dispatch on each raw input value
+before letting the selected Pydantic schema validate it.
+
 ## Setup
 
 **Note:** This package isn't published on PyPI (it's not ready yet). There's already a project on PyPI called `typeforge`. It is NOT this one. I might need to pick a new name before I release this
@@ -224,6 +266,7 @@ Typeforge proxies Pyrefly's diagnostics, hover, completion, navigation, rename, 
 
 
 ## Important
-This is not released. There are at least 15 different things I need to complete before I'd consider actually releasing this like changing the name, a pydantic integration, cleaning uo the LLM slop code, etc.
+This is not released. There are still several things to complete before a
+release, including settling the project name and hardening the integrations.
 
 See [DESIGN.md](DESIGN.md) for the project's durable design constraints.

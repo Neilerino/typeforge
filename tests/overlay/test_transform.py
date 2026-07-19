@@ -273,3 +273,37 @@ def test_mypy_consumes_bounded_structural_map_overlay(tmp_path: Path) -> None:
     )
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def test_schema_boundaries_are_erased_from_model_fields_in_overlay() -> None:
+    source = (
+        "from pydantic import BaseModel\n"
+        "from typing import TypedDict\n"
+        "from typeforge import (\n"
+        "    Case, Default, Equal, Field, If, Key, Map, MapFields, Value,\n"
+        ")\n"
+        "from typeforge.pydantic import Schema\n\n"
+        "type Wire[T] = Map[T, Case[bytes, str], Default[int]]\n\n"
+        "class User(TypedDict):\n"
+        "    name: str\n\n"
+        "type Public[T] = MapFields[T, Field[Key, Value]]\n\n"
+        "class Payload(BaseModel):\n"
+        "    wire: Schema[Wire[bytes]]\n"
+        "    direct: Schema[If[Equal[int, int], str, bytes]]\n"
+        "    public: Schema[Public[User]]\n\n"
+        "    def parse(self, value: Schema[Wire[bytes]]) "
+        "-> Schema[If[Equal[int, int], str, bytes]]: ...\n"
+    )
+
+    transformed = transform_source(source, Path("models.py"))
+
+    assert isinstance(transformed, Success)
+    document = transformed.unwrap()
+    assert document.authored_text == source
+    assert "class Public_User(TypedDict):\n    name: str" in document.generated_text
+    assert "    wire: str" in document.generated_text
+    assert "    direct: str" in document.generated_text
+    assert "    public: Public_User" in document.generated_text
+    assert "def parse(self, value: str) -> str" in document.generated_text
+    assert "Schema[" not in document.generated_text
+    ast.parse(document.generated_text, filename="models.py", type_comments=True)

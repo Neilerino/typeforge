@@ -227,3 +227,47 @@ def test_main_guard_else_branch_fails_instead_of_hiding_public_api(
     assert isinstance(generated, Failure)
     assert isinstance(generated.failure(), UnsupportedPublicDeclaration)
     assert generated.failure().line == 1
+
+
+def test_schema_boundaries_resolve_in_model_fields_and_generated_stubs(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "models.py"
+    source.write_text(
+        "from pydantic import BaseModel\n"
+        "from typing import TypedDict\n"
+        "from typeforge import (\n"
+        "    Case, Default, Equal, Field, If, Key, Map, MapFields, Value,\n"
+        ")\n"
+        "from typeforge.pydantic import Input, Schema\n\n"
+        "type Wire[T] = Map[T, Case[bytes, str], Default[int]]\n\n"
+        "class User(TypedDict):\n"
+        "    name: str\n\n"
+        "type Public[T] = MapFields[T, Field[Key, Value]]\n\n"
+        "class Payload(BaseModel):\n"
+        "    wire: Schema[Wire[bytes]]\n"
+        "    direct: Schema[If[Equal[int, int], str, bytes]]\n"
+        "    runtime: Schema[Map[Input, Case[int, int], Case[str, bytes]]]\n"
+        "    runtime_if: Schema[If[Equal[Input, str], int, float]]\n"
+        "    structural: Schema[Map["
+        "list[int], Case[list[Value], Value], Default[bytes]]]\n"
+        "    nested_capture: Schema[Map["
+        "list[int], Case[list[Value], Map[Value, Case[int, str], Default[bytes]]], "
+        "Default[float]]]\n"
+        "    public: Schema[Public[User]]\n",
+        encoding="utf-8",
+    )
+
+    generated = generate_module(source, maximum_arity=2)
+
+    assert isinstance(generated, Success)
+    content = generated.unwrap().content
+    assert "from typeforge.pydantic import Schema" not in content
+    assert "class Public_User(TypedDict):\n    name: str" in content
+    assert "    wire: str" in content
+    assert "    direct: str" in content
+    assert "    runtime: int | bytes" in content
+    assert "    runtime_if: int | float" in content
+    assert "    structural: int" in content
+    assert "    nested_capture: str" in content
+    assert "    public: Public_User" in content

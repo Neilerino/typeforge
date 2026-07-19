@@ -1,6 +1,6 @@
 # Typeforge Pydantic Integration
 
-Status: Draft  
+Status: Initial implementation complete; follow-ups remain
 Audience: Typeforge maintainers and contributors  
 Scope: Pydantic v2 integration
 
@@ -53,8 +53,38 @@ The integration supports two kinds of evaluation:
    use callable discriminators or validators when they materially improve the
    authoring experience.
 
-The public boundary name `Schema` and the availability of value-time execution
-are accepted directions. The exact value-time expression syntax remains open.
+The public boundary name is `Schema`. Value-time execution uses the explicit
+`Input` controller described below.
+
+## Implementation status
+
+The initial integration implements:
+
+- the optional `typeforge.pydantic` package and `Schema[T]` boundary;
+- schema-time `Equal`, `Assignable`, `All`, `Any`, `Not`, `If`, and `Map`;
+- structural schema-time `Map` patterns with `Value` capture;
+- `TypedDict` `MapFields`, including renaming, optional, readonly, and dropped
+  fields;
+- strict raw-input dispatch with `Input` for value-time `Map` and `If`;
+- Pydantic validation, serialization, JSON Schema, stable synthesized record
+  definitions, and `Doc` descriptions;
+- static compiler and overlay erasure of `Schema`, including value-time output
+  unions; and
+- dependency isolation: base Typeforge does not import Pydantic.
+
+Current follow-ups are intentionally explicit:
+
+- recursive aliases containing Typeforge operators report a schema-generation
+  error; ordinary recursive aliases are delegated to Pydantic;
+- static record materialization currently requires a named generic
+  `MapFields` alias, while runtime validation also accepts the inline form;
+- value-time generic pattern capture and nested field access are not defined;
+- validation-mode JSON Schema for value-time dispatch is deliberately `{}`
+  until its raw input language can be represented faithfully;
+- the shared source/runtime semantic protocol remains an architectural
+  extraction rather than a completed package split; and
+- plan explanation, benchmarks, wrap-validator fallback cases, and a
+  `BaseModel` record adapter remain follow-up work.
 
 ## Goals
 
@@ -150,8 +180,7 @@ generic marker class whose hook reads `get_args(source_type)`.
 
 ### Value-time input
 
-Value-time evaluation needs an explicit controller. `Input` is the current
-working name, not an accepted API:
+Value-time evaluation uses the explicit `Input` controller:
 
 ```python
 from uuid import UUID
@@ -172,20 +201,13 @@ type Identifier = Schema[
 This example intends to preserve integer inputs and parse string inputs as
 UUIDs. Its output type is `int | UUID`.
 
-The value-time syntax must not silently change the existing static meanings of
-`Equal` or `Assignable`. An explicit runtime controller allows the evaluator to
-distinguish a static type relationship from one involving the incoming value.
-
-Before accepting `Input`, the design must define:
-
-- whether matching observes raw input or partially validated input;
-- how JSON input types map to Python type expressions;
-- whether `Case[int, ...]` means exact `type(value) is int`, `isinstance`, or
-  Pydantic-compatible coercibility;
-- how structural and generic patterns match;
-- how overlapping cases are diagnosed and ordered;
-- whether the syntax can inspect a discriminator or nested field without adding
-  a separate field-access expression.
+`Input` observes the raw Python value before branch validation. Python and JSON
+inputs use the Python type produced by `pydantic-core` at the dispatch boundary.
+`Case[int, ...]` means `type(value) is int`, so `bool` does not match `int` and
+case selection never performs coercion. Cases are ordered and the first exact
+match wins; the selected output schema then applies normal Pydantic validation.
+Generic value-time patterns and nested field access remain undefined and fail
+rather than silently changing the static meanings of `Equal` or `Assignable`.
 
 ## Semantic model
 
@@ -380,10 +402,12 @@ itself mutate the input. The selected output schema then performs normal
 Pydantic validation and coercion. This recommendation remains open until the
 `Input` design is accepted.
 
-The preferred backend is a tagged union whose discriminator returns the first
-matching case tag. This executes one Python dispatch function and leaves branch
-validation to `pydantic-core`. A wrap validator remains available when patterns
-cannot be represented as discriminator decisions.
+The implemented backend uses a Python before-validator to attach an internal
+case tag, a native tagged union for branch validation, and an after-validator to
+remove the internal envelope. Serialization classifies the validated output
+separately, avoiding the ambiguity between a raw input type and another case's
+output type. A wrap validator remains an accepted future fallback when a
+condition cannot be represented faithfully with this plan.
 
 The static output type of a value-time `Map` is the union of all reachable case
 outputs and its default. An omitted default makes unmatched input a validation
@@ -529,7 +553,7 @@ validators and serializers.
 Value-time plans should document their expected Python call count:
 
 - resolved or native plan: zero Typeforge Python calls per validation;
-- callable discriminator: normally one call plus core validation;
+- tagged input dispatch: two validation calls plus core validation;
 - before/after/plain validator: normally one call;
 - wrap validator: one or more calls depending on nested handler use.
 
@@ -537,9 +561,9 @@ Value-time plans should document their expected Python call count:
 
 ```text
 Schema: Identifier
-Plan: callable discriminator
+Plan: tagged input dispatch
 Cases: int -> int, str -> UUID
-Typeforge Python calls per validation: 1
+Typeforge Python calls per validation: 2
 Branch validation: pydantic-core
 Output: int | UUID
 ```

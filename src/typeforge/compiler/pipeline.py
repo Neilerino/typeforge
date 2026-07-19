@@ -1,6 +1,7 @@
 import ast
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from returns.result import Failure, Result, Success
 
@@ -18,6 +19,7 @@ from typeforge.compiler.lowering import (
     Declaration,
     EachType,
     EqualPredicate,
+    FixedTuple,
     FunctionDeclaration,
     HomogeneousTuple,
     IfType,
@@ -31,6 +33,8 @@ from typeforge.compiler.lowering import (
     Parameter,
     ParameterKind,
     Predicate,
+    RuntimeInputType,
+    SchemaType,
     StubModule,
     TypeAliasDeclaration,
     TypeApplication,
@@ -47,6 +51,8 @@ from typeforge.compiler.model import (
     MarkerTypeExpression,
     NameTypeExpression,
     RawTypeExpression,
+    RuntimeInputTypeExpression,
+    SchemaTypeExpression,
     SourceModule,
     StarredTypeExpression,
     UnionTypeExpression,
@@ -116,7 +122,7 @@ class GeneratedModule:
 
 
 @dataclass(frozen=True, slots=True)
-class _DerivedRecord:
+class DerivedRecord:
     alias: str
     input_name: str
     shape: TypedDictShape
@@ -127,6 +133,7 @@ class _RecordMaterialization:
     declarations: tuple[str, ...]
     replacements: tuple[tuple[str, OverloadDeclaration], ...]
     imports: tuple[ImportFrom, ...]
+    derived: tuple[DerivedRecord, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,6 +266,7 @@ def materialize_record_transforms(
             declarations=declarations,
             replacements=tuple(replacements),
             imports=(ImportFrom("typing", tuple(sorted(typing_names))),),
+            derived=derived,
         )
     )
 
@@ -268,13 +276,141 @@ def apply_record_materialization(
 ) -> StubModule:
     replacements = dict(materialization.replacements)
     declarations = tuple(
-        replacements.get(declaration.name, declaration)
-        if isinstance(declaration, FunctionDeclaration)
-        else declaration
+        replace_record_aliases_in_declaration(
+            replacements.get(declaration.name, declaration)
+            if isinstance(declaration, FunctionDeclaration)
+            else declaration,
+            materialization.derived,
+        )
         for declaration in module.declarations
     )
     imports = merge_imports((*module.imports, *materialization.imports))
     return StubModule(module.name, declarations, imports)
+
+
+def replace_record_aliases_in_declaration(
+    declaration: Declaration,
+    derived: tuple[DerivedRecord, ...],
+) -> Declaration:
+    if isinstance(declaration, FunctionDeclaration):
+        return replace_record_aliases_in_function(declaration, derived)
+    if isinstance(declaration, OverloadDeclaration):
+        return replace_record_aliases_in_overload(declaration, derived)
+    if isinstance(declaration, TypeAliasDeclaration):
+        return TypeAliasDeclaration(
+            declaration.name,
+            replace_record_aliases(declaration.value, derived),
+            declaration.type_parameters,
+        )
+    return ClassDeclaration(
+        declaration.name,
+        tuple(replace_record_aliases(base, derived) for base in declaration.bases),
+        tuple(
+            ClassField(
+                field.name,
+                replace_record_aliases(field.annotation, derived),
+                field.default,
+            )
+            for field in declaration.fields
+        ),
+        tuple(
+            replace_record_aliases_in_function(method, derived)
+            if isinstance(method, FunctionDeclaration)
+            else replace_record_aliases_in_overload(method, derived)
+            for method in declaration.methods
+        ),
+        declaration.type_parameters,
+        declaration.keywords,
+        declaration.decorators,
+    )
+
+
+def replace_record_aliases_in_function(
+    declaration: FunctionDeclaration,
+    derived: tuple[DerivedRecord, ...],
+) -> FunctionDeclaration:
+    return FunctionDeclaration(
+        declaration.name,
+        tuple(
+            Parameter(
+                parameter.name,
+                replace_record_aliases(parameter.annotation, derived),
+                parameter.kind,
+                parameter.default,
+            )
+            for parameter in declaration.parameters
+        ),
+        replace_record_aliases(declaration.return_type, derived),
+        declaration.type_parameters,
+        declaration.is_async,
+        declaration.decorators,
+    )
+
+
+def replace_record_aliases_in_overload(
+    declaration: OverloadDeclaration,
+    derived: tuple[DerivedRecord, ...],
+) -> OverloadDeclaration:
+    return OverloadDeclaration(
+        tuple(
+            replace_record_aliases_in_function(signature, derived)
+            for signature in declaration.signatures
+        ),
+        replace_record_aliases_in_function(declaration.fallback, derived),
+    )
+
+
+def replace_record_aliases(
+    expression: TypeExpression,
+    derived: tuple[DerivedRecord, ...],
+) -> TypeExpression:
+    if (
+        isinstance(expression, TypeApplication)
+        and isinstance(expression.constructor, TypeName)
+        and len(expression.arguments) == 1
+        and isinstance(expression.arguments[0], TypeName)
+    ):
+        alias = expression.constructor.name
+        input_name = expression.arguments[0].name
+        match = next(
+            (
+                item
+                for item in derived
+                if item.alias == alias and item.input_name == input_name
+            ),
+            None,
+        )
+        if match is not None:
+            return TypeName(match.shape.name or "object")
+    if isinstance(expression, TypeApplication):
+        return TypeApplication(
+            replace_record_aliases(expression.constructor, derived),
+            tuple(
+                replace_record_aliases(argument, derived)
+                for argument in expression.arguments
+            ),
+        )
+    if isinstance(expression, FixedTuple):
+        return FixedTuple(
+            tuple(replace_record_aliases(item, derived) for item in expression.items)
+        )
+    if isinstance(expression, HomogeneousTuple):
+        return HomogeneousTuple(replace_record_aliases(expression.item, derived))
+    if isinstance(expression, EachType):
+        return EachType(replace_record_aliases(expression.item, derived))
+    if isinstance(expression, CollectType):
+        return CollectType(replace_record_aliases(expression.item, derived))
+    if isinstance(expression, SchemaType):
+        return SchemaType(replace_record_aliases(expression.item, derived))
+    if isinstance(expression, UnpackedType):
+        return UnpackedType(replace_record_aliases(expression.item, derived))
+    if isinstance(expression, UnionExpression):
+        return UnionExpression(
+            tuple(
+                replace_record_aliases(member, derived) for member in expression.members
+            )
+        )
+    return expression
 
 
 def build_record_shapes(
@@ -305,12 +441,13 @@ def build_record_shapes(
 
 def derive_record_shapes(
     aliases: tuple[SourceTypeAlias, ...], source_shapes: tuple[TypedDictShape, ...]
-) -> Result[tuple[_DerivedRecord, ...], AdaptationError]:
-    derived: list[_DerivedRecord] = []
+) -> Result[tuple[DerivedRecord, ...], AdaptationError]:
+    derived: list[DerivedRecord] = []
     for alias in aliases:
-        if not isinstance(alias.value, MarkerTypeExpression):
+        value = schema_inner_expression(alias.value)
+        if not isinstance(value, MarkerTypeExpression):
             continue
-        if alias.value.marker is not MarkerKind.MAP_FIELDS:
+        if value.marker is not MarkerKind.MAP_FIELDS:
             continue
         if len(alias.type_parameters) != 1:
             return Failure(
@@ -324,7 +461,7 @@ def derive_record_shapes(
         for source_shape in source_shapes:
             output_name = f"{alias.name}_{source_shape.name}"
             expression = adapt_evaluator_expression(
-                alias.value, ((parameter, source_shape),), output_name
+                value, ((parameter, source_shape),), output_name
             )
             if isinstance(expression, Failure):
                 return Failure(
@@ -341,7 +478,7 @@ def derive_record_shapes(
                         "alias must evaluate to MapFields",
                     )
                 )
-            evaluated = record_evaluator.evaluate_map_fields(evaluator_expression)
+            evaluated = record_evaluator.evaluate(evaluator_expression)
             if isinstance(evaluated, Failure):
                 return Failure(
                     AdaptationError(
@@ -351,7 +488,12 @@ def derive_record_shapes(
                     )
                 )
             derived.append(
-                _DerivedRecord(alias.name, source_shape.name or "", evaluated.unwrap())
+                DerivedRecord(
+                    alias.name,
+                    source_shape.name or "",
+                    # Remove cast w pyrefly 1.2 release
+                    cast(TypedDictShape, evaluated.unwrap()),
+                )
             )
     return Success(tuple(derived))
 
@@ -515,13 +657,18 @@ def map_fields_alias_reference(
         return None
     alias_name = expression.constructor.source
     if any(
-        alias.name == alias_name
-        and isinstance(alias.value, MarkerTypeExpression)
-        and alias.value.marker is MarkerKind.MAP_FIELDS
-        for alias in aliases
+        alias.name == alias_name and is_map_fields_alias(alias) for alias in aliases
     ):
         return alias_name, argument.source
     return None
+
+
+def is_map_fields_alias(alias: SourceTypeAlias) -> bool:
+    value = schema_inner_expression(alias.value)
+    return (
+        isinstance(value, MarkerTypeExpression)
+        and value.marker is MarkerKind.MAP_FIELDS
+    )
 
 
 def specialize_record_function(
@@ -569,6 +716,8 @@ def substitute_type(
         return EachType(substitute_type(expression.item, variable, replacement))
     if isinstance(expression, CollectType):
         return CollectType(substitute_type(expression.item, variable, replacement))
+    if isinstance(expression, SchemaType):
+        return SchemaType(substitute_type(expression.item, variable, replacement))
     if isinstance(expression, UnionExpression):
         return UnionExpression(
             tuple(
@@ -702,6 +851,11 @@ def annotation_contains_default_never(
             annotation_contains_default_never(argument)
             for argument in expression.arguments
         )
+    if isinstance(expression, SchemaTypeExpression):
+        return any(
+            annotation_contains_default_never(argument)
+            for argument in expression.arguments
+        )
     if not isinstance(expression, MarkerTypeExpression):
         return False
     if expression.marker is MarkerKind.MAP:
@@ -732,7 +886,17 @@ def adapt_source_module(
         adapted_alias = adapt_alias(alias)
         if isinstance(adapted_alias, Failure):
             return adapted_alias
-        declarations.append((alias.span.start.line, adapted_alias.unwrap()))
+        lowered_alias = adapted_alias.unwrap()
+        declarations.append(
+            (
+                alias.span.start.line,
+                TypeAliasDeclaration(
+                    lowered_alias.name,
+                    expand_map_aliases(lowered_alias.value, semantic_aliases),
+                    lowered_alias.type_parameters,
+                ),
+            )
+        )
     for source_class in module.classes:
         adapted_class = adapt_class(source_class)
         if isinstance(adapted_class, Failure):
@@ -785,9 +949,10 @@ def collect_semantic_relationship_aliases(
 ) -> Result[tuple[SemanticRelationshipAlias, ...], AdaptationError]:
     semantic: list[SemanticRelationshipAlias] = []
     for alias in aliases:
+        value = schema_inner_expression(alias.value)
         if not (
-            isinstance(alias.value, MarkerTypeExpression)
-            and alias.value.marker in {MarkerKind.MAP, MarkerKind.IF}
+            isinstance(value, MarkerTypeExpression)
+            and value.marker in {MarkerKind.MAP, MarkerKind.IF}
         ):
             continue
         if len(alias.type_parameters) != 1:
@@ -799,7 +964,7 @@ def collect_semantic_relationship_aliases(
                 )
             )
         parameter = alias.type_parameters[0].name
-        adapted = adapt_type_expression(alias.name, alias.value, (parameter,))
+        adapted = adapt_type_expression(alias.name, value, (parameter,))
         if isinstance(adapted, Failure):
             return adapted
         relationship = adapted.unwrap()
@@ -807,6 +972,12 @@ def collect_semantic_relationship_aliases(
             raise AssertionError("relationship adaptation produced a plain type")
         semantic.append(SemanticRelationshipAlias(alias.name, parameter, relationship))
     return Success(tuple(semantic))
+
+
+def schema_inner_expression(expression: SourceTypeExpression) -> SourceTypeExpression:
+    if isinstance(expression, SchemaTypeExpression) and len(expression.arguments) == 1:
+        return expression.arguments[0]
+    return expression
 
 
 def collect_semantic_map_aliases(
@@ -868,6 +1039,8 @@ def expand_map_aliases(
     expression: TypeExpression,
     aliases: tuple[SemanticRelationshipAlias, ...],
 ) -> TypeExpression:
+    if isinstance(expression, SchemaType):
+        return resolve_schema_type(expand_map_aliases(expression.item, aliases))
     if (
         isinstance(expression, TypeApplication)
         and isinstance(expression.constructor, TypeName)
@@ -899,6 +1072,252 @@ def expand_map_aliases(
             tuple(expand_map_aliases(member, aliases) for member in expression.members)
         )
     return expression
+
+
+def resolve_schema_type(expression: TypeExpression) -> TypeExpression:
+    if isinstance(expression, TypeApplication):
+        return TypeApplication(
+            resolve_schema_type(expression.constructor),
+            tuple(resolve_schema_type(argument) for argument in expression.arguments),
+        )
+    if isinstance(expression, UnionExpression):
+        return union_types_for_schema(
+            tuple(resolve_schema_type(member) for member in expression.members)
+        )
+    if isinstance(expression, MapType):
+        subject = resolve_schema_type(expression.subject)
+        if isinstance(expression.subject, RuntimeInputType):
+            return union_types_for_schema(
+                (
+                    *(
+                        resolve_schema_type(case.output_type)
+                        for case in expression.cases
+                    ),
+                    resolve_schema_type(expression.default),
+                )
+            )
+        members = (
+            subject.members if isinstance(subject, UnionExpression) else (subject,)
+        )
+        outputs: list[TypeExpression] = []
+        for member in members:
+            output = _resolve_schema_map_member(
+                member, expression.cases, expression.default
+            )
+            outputs.append(output)
+        return union_types_for_schema(tuple(outputs))
+    if isinstance(expression, IfType):
+        condition = resolve_schema_predicate(expression.condition)
+        if condition is True:
+            return resolve_schema_type(expression.when_true)
+        if condition is False:
+            return resolve_schema_type(expression.when_false)
+        return union_types_for_schema(
+            (
+                resolve_schema_type(expression.when_true),
+                resolve_schema_type(expression.when_false),
+            )
+        )
+    return expression
+
+
+def _resolve_schema_map_member(
+    subject: TypeExpression,
+    cases: tuple[MapCase, ...],
+    default: TypeExpression,
+) -> TypeExpression:
+    for case in cases:
+        matched, capture = _match_schema_pattern(case.input_type, subject, None)
+        if matched:
+            return resolve_schema_type(
+                _substitute_schema_capture(case.output_type, capture)
+            )
+    return resolve_schema_type(default)
+
+
+def _match_schema_pattern(
+    pattern: TypeExpression,
+    subject: TypeExpression,
+    capture: TypeExpression | None,
+) -> tuple[bool, TypeExpression | None]:
+    if isinstance(pattern, MapValueType):
+        if capture is not None and capture != subject:
+            return False, capture
+        return True, subject
+    if isinstance(pattern, TypeApplication) and isinstance(subject, TypeApplication):
+        if resolve_schema_type(pattern.constructor) != resolve_schema_type(
+            subject.constructor
+        ) or len(pattern.arguments) != len(subject.arguments):
+            return False, capture
+        current = capture
+        for nested_pattern, nested_subject in zip(
+            pattern.arguments, subject.arguments, strict=True
+        ):
+            matched, current = _match_schema_pattern(
+                nested_pattern, nested_subject, current
+            )
+            if not matched:
+                return False, current
+        return True, current
+    return resolve_schema_type(pattern) == subject, capture
+
+
+def _substitute_schema_capture(
+    expression: TypeExpression,
+    capture: TypeExpression | None,
+) -> TypeExpression:
+    if isinstance(expression, MapValueType):
+        return capture or TypeName("object")
+    if isinstance(expression, TypeApplication):
+        return TypeApplication(
+            _substitute_schema_capture(expression.constructor, capture),
+            tuple(
+                _substitute_schema_capture(argument, capture)
+                for argument in expression.arguments
+            ),
+        )
+    if isinstance(expression, FixedTuple):
+        return FixedTuple(
+            tuple(
+                _substitute_schema_capture(item, capture) for item in expression.items
+            )
+        )
+    if isinstance(expression, HomogeneousTuple):
+        return HomogeneousTuple(_substitute_schema_capture(expression.item, capture))
+    if isinstance(expression, EachType):
+        return EachType(_substitute_schema_capture(expression.item, capture))
+    if isinstance(expression, CollectType):
+        return CollectType(_substitute_schema_capture(expression.item, capture))
+    if isinstance(expression, UnpackedType):
+        return UnpackedType(_substitute_schema_capture(expression.item, capture))
+    if isinstance(expression, UnionExpression):
+        return UnionExpression(
+            tuple(
+                _substitute_schema_capture(member, capture)
+                for member in expression.members
+            )
+        )
+    if isinstance(expression, IfType):
+        return IfType(
+            _substitute_schema_capture_predicate(expression.condition, capture),
+            _substitute_schema_capture(expression.when_true, capture),
+            _substitute_schema_capture(expression.when_false, capture),
+        )
+    if isinstance(expression, MapType):
+        return MapType(
+            _substitute_schema_capture(expression.subject, capture),
+            tuple(
+                MapCase(
+                    _substitute_schema_capture(case.input_type, capture),
+                    _substitute_schema_capture(case.output_type, capture),
+                )
+                for case in expression.cases
+            ),
+            _substitute_schema_capture(expression.default, capture),
+        )
+    if isinstance(expression, SchemaType):
+        return SchemaType(_substitute_schema_capture(expression.item, capture))
+    return expression
+
+
+def _substitute_schema_capture_predicate(
+    predicate: Predicate,
+    capture: TypeExpression | None,
+) -> Predicate:
+    if isinstance(predicate, EqualPredicate):
+        return EqualPredicate(
+            _substitute_schema_capture(predicate.left, capture),
+            _substitute_schema_capture(predicate.right, capture),
+        )
+    if isinstance(predicate, AssignablePredicate):
+        return AssignablePredicate(
+            _substitute_schema_capture(predicate.source, capture),
+            _substitute_schema_capture(predicate.target, capture),
+        )
+    if isinstance(predicate, AllPredicate):
+        return AllPredicate(
+            tuple(
+                _substitute_schema_capture_predicate(item, capture)
+                for item in predicate.predicates
+            )
+        )
+    if isinstance(predicate, AnyPredicate):
+        return AnyPredicate(
+            tuple(
+                _substitute_schema_capture_predicate(item, capture)
+                for item in predicate.predicates
+            )
+        )
+    return NotPredicate(
+        _substitute_schema_capture_predicate(predicate.predicate, capture)
+    )
+
+
+def resolve_schema_predicate(predicate: Predicate) -> bool | None:
+    if isinstance(predicate, EqualPredicate):
+        if _type_has_variable(predicate.left) or _type_has_variable(predicate.right):
+            return None
+        return resolve_schema_type(predicate.left) == resolve_schema_type(
+            predicate.right
+        )
+    if isinstance(predicate, AssignablePredicate):
+        if _type_has_variable(predicate.source) or _type_has_variable(predicate.target):
+            return None
+        return _schema_assignable(
+            resolve_schema_type(predicate.source), resolve_schema_type(predicate.target)
+        )
+    if isinstance(predicate, AllPredicate):
+        values = tuple(resolve_schema_predicate(item) for item in predicate.predicates)
+        if False in values:
+            return False
+        return True if all(value is True for value in values) else None
+    if isinstance(predicate, AnyPredicate):
+        values = tuple(resolve_schema_predicate(item) for item in predicate.predicates)
+        if True in values:
+            return True
+        return False if all(value is False for value in values) else None
+    value = resolve_schema_predicate(predicate.predicate)
+    return None if value is None else not value
+
+
+def _schema_assignable(source: TypeExpression, target: TypeExpression) -> bool:
+    if source == target or target == TypeName("object"):
+        return True
+    if isinstance(source, UnionExpression):
+        return all(_schema_assignable(member, target) for member in source.members)
+    if isinstance(target, UnionExpression):
+        return any(_schema_assignable(source, member) for member in target.members)
+    return False
+
+
+def _type_has_variable(expression: TypeExpression) -> bool:
+    if isinstance(expression, TypeVariable | RuntimeInputType):
+        return True
+    if isinstance(expression, TypeApplication):
+        return _type_has_variable(expression.constructor) or any(
+            _type_has_variable(argument) for argument in expression.arguments
+        )
+    if isinstance(expression, UnionExpression):
+        return any(_type_has_variable(member) for member in expression.members)
+    return False
+
+
+def union_types_for_schema(expressions: tuple[TypeExpression, ...]) -> TypeExpression:
+    members: list[TypeExpression] = []
+    for expression in expressions:
+        candidates = (
+            expression.members
+            if isinstance(expression, UnionExpression)
+            else (expression,)
+        )
+        for candidate in candidates:
+            if candidate != TypeName("Never") and candidate not in members:
+                members.append(candidate)
+    if not members:
+        return TypeName("Never")
+    if len(members) == 1:
+        return members[0]
+    return UnionExpression(tuple(members))
 
 
 def adapt_alias(
@@ -1201,6 +1620,20 @@ def adapt_type_expression(
     expression: SourceTypeExpression,
     type_parameters: tuple[str, ...],
 ) -> Result[TypeExpression, AdaptationError]:
+    if isinstance(expression, SchemaTypeExpression):
+        if len(expression.arguments) != 1:
+            return Failure(
+                AdaptationError(
+                    declaration,
+                    expression.source,
+                    "Schema requires one type argument",
+                )
+            )
+        return adapt_type_expression(
+            declaration, expression.arguments[0], type_parameters
+        ).map(SchemaType)
+    if isinstance(expression, RuntimeInputTypeExpression):
+        return Success(RuntimeInputType())
     if isinstance(expression, NameTypeExpression):
         if expression.source in type_parameters:
             return Success(TypeVariable(expression.source))

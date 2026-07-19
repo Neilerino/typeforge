@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import TypeIs
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,3 +50,7 @@ def union_of(*members: StaticType) -> StaticType:
     if len(flattened) == 1:
         return flattened[0]
     return UnionType(tuple(flattened))
+
+
+def is_static(value: object) -> TypeIs[StaticType]:
+    return isinstance(value, (NamedType, NeverType, UnionType, TypedDictShape))

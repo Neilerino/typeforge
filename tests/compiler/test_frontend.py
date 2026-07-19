@@ -13,6 +13,8 @@ from typeforge.compiler.model import (
     MarkerKind,
     MarkerTypeExpression,
     ParameterKind,
+    RuntimeInputTypeExpression,
+    SchemaTypeExpression,
     StarredTypeExpression,
     TypeParameterKind,
     UnionTypeExpression,
@@ -78,6 +80,19 @@ def test_unimported_marker_names_are_not_treated_as_typeforge_markers() -> None:
 
     assert isinstance(result, Success)
     assert enriched_functions(result.unwrap()) == ()
+
+
+def test_pydantic_input_is_distinct_from_an_unrelated_input_type() -> None:
+    result = parse_source(
+        "from typeforge.pydantic import Input\n"
+        "type Runtime = Input\n"
+        "type Ordinary = other.Input\n"
+    )
+
+    assert isinstance(result, Success)
+    runtime, ordinary = result.unwrap().aliases
+    assert isinstance(runtime.value, RuntimeInputTypeExpression)
+    assert not isinstance(ordinary.value, RuntimeInputTypeExpression)
 
 
 def test_parses_markers_inside_unpacked_tuple_union() -> None:
@@ -226,3 +241,20 @@ def test_ordinary_classes_preserve_generic_structure_and_members() -> None:
     assert world.decorators == ("dataclass(frozen=True)",)
     assert world.fields[0].annotation.source == "set[E]"
     assert world.methods[0].decorators == ("classmethod",)
+
+
+def test_qualified_pydantic_schema_is_a_distinct_source_boundary() -> None:
+    result = parse_source(
+        "from typeforge.pydantic import Schema as RuntimeSchema\n"
+        "from typeforge import Equal, If\n"
+        "class Model:\n"
+        "    value: RuntimeSchema[If[Equal[int, int], str, bytes]]\n"
+        "    ordinary: Schema[int]\n"
+    )
+
+    assert isinstance(result, Success)
+    value, ordinary = result.unwrap().classes[0].fields
+    assert isinstance(value.annotation, SchemaTypeExpression)
+    assert value.annotation.source.startswith("RuntimeSchema[")
+    assert contains_marker(value.annotation, MarkerKind.IF)
+    assert isinstance(ordinary.annotation, AppliedTypeExpression)

@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 from enum import StrEnum
+from functools import singledispatch
+from typing import ClassVar
 
-from returns.result import Failure, Result, Success
+from returns.result import safe
 
 from typeforge.compiler.records import (
     NEVER,
@@ -11,8 +13,10 @@ from typeforge.compiler.records import (
     TypedDictField,
     TypedDictShape,
     UnionType,
+    is_static,
     union_of,
 )
+from typeforge.utils.error_handling import ok
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,257 +156,251 @@ class EvaluationErrorCode(StrEnum):
     EXPECTED_FIELD_NAME = "expected_field_name"
     EXPECTED_FIELD = "expected_field"
     EXPECTED_TYPED_DICT = "expected_typed_dict"
+    UNSUPPORTED_EXPRESSION = "unsupported_expression"
+    DEFAULT = "evaluator_base_error_inherit_me"
 
 
-@dataclass(frozen=True, slots=True)
-class EvaluationError:
-    code: EvaluationErrorCode
+@dataclass(frozen=True)
+class EvaluationError(Exception):
     message: str
+    code: ClassVar[EvaluationErrorCode] = EvaluationErrorCode.DEFAULT
 
 
+class UnboundKeyError(EvaluationError):
+    code = EvaluationErrorCode.UNBOUND_KEY
+
+
+class UnboundValueError(EvaluationError):
+    code = EvaluationErrorCode.UNBOUND_VALUE
+
+
+class ExpectedTypeError(EvaluationError):
+    code = EvaluationErrorCode.EXPECTED_TYPE
+
+
+class ExpectedConditionError(EvaluationError):
+    code = EvaluationErrorCode.EXPECTED_CONDITION
+
+
+class ExpectedFieldNameError(EvaluationError):
+    code = EvaluationErrorCode.EXPECTED_FIELD_NAME
+
+
+class ExpectedFieldError(EvaluationError):
+    code = EvaluationErrorCode.EXPECTED_FIELD
+
+
+class ExpectedTypedDictError(EvaluationError):
+    code = EvaluationErrorCode.EXPECTED_TYPED_DICT
+
+
+class UnsupportedExpressionError(EvaluationError):
+    code = EvaluationErrorCode.UNSUPPORTED_EXPRESSION
+
+
+@singledispatch
+@safe(exceptions=(EvaluationError,))
 def evaluate(
     expression: Expression, context: EvaluationContext = EMPTY_CONTEXT
-) -> Result[EvaluationValue, EvaluationError]:
-    if isinstance(expression, (NamedType, NeverType, UnionType, TypedDictShape)):
-        return Success(expression)
-    if isinstance(expression, FieldName):
-        return Success(expression)
-    if isinstance(expression, Key):
-        if context.key is None:
-            return _error(EvaluationErrorCode.UNBOUND_KEY, "Key requires MapFields")
-        return Success(FieldName(context.key))
-    if isinstance(expression, Value):
-        if context.value is None:
-            return _error(EvaluationErrorCode.UNBOUND_VALUE, "Value requires MapFields")
-        return Success(context.value)
-    if isinstance(expression, Equal):
-        return _evaluate_equal(expression, context)
-    if isinstance(expression, Assignable):
-        return _evaluate_assignable(expression, context)
-    if isinstance(expression, All):
-        return _evaluate_all(expression, context)
-    if isinstance(expression, Any):
-        return _evaluate_any(expression, context)
-    if isinstance(expression, Not):
-        return _evaluate_not(expression, context)
-    if isinstance(expression, If):
-        return _evaluate_if(expression, context)
-    if isinstance(expression, Map):
-        return _evaluate_map(expression, context)
-    if isinstance(expression, (Field, OptionalField, ReadonlyField)):
-        return _evaluate_field(expression, context)
-    if isinstance(expression, MapFields):
-        mapped = evaluate_map_fields(expression, context)
-        return mapped
-    return Success(DroppedField())
-
-
-def evaluate_map_fields(
-    expression: MapFields, context: EvaluationContext = EMPTY_CONTEXT
-) -> Result[TypedDictShape, EvaluationError]:
-    record_result = evaluate(expression.record, context)
-    if isinstance(record_result, Failure):
-        return record_result
-    record = record_result.unwrap()
-    if not isinstance(record, TypedDictShape):
-        return _error(
-            EvaluationErrorCode.EXPECTED_TYPED_DICT,
-            "MapFields record must evaluate to a TypedDictShape",
-        )
-
-    fields: list[TypedDictField] = []
-    for source_field in record.fields:
-        field_context = EvaluationContext(source_field.name, source_field.value)
-        field_result = evaluate(expression.transform, field_context)
-        if isinstance(field_result, Failure):
-            return field_result
-        field = field_result.unwrap()
-        if isinstance(field, DroppedField):
-            continue
-        if not isinstance(field, TypedDictField):
-            return _error(
-                EvaluationErrorCode.EXPECTED_FIELD,
-                "MapFields transform must evaluate to a field or Drop",
-            )
-        fields.append(field)
-    return Success(
-        TypedDictShape(
-            expression.output_name or record.name,
-            tuple(fields),
-        )
+) -> EvaluationValue:
+    raise UnsupportedExpressionError(
+        f"unsupported expression {type(expression).__name__}"
     )
 
 
-def _evaluate_equal(
-    expression: Equal, context: EvaluationContext
-) -> Result[EvaluationValue, EvaluationError]:
-    return Result.do(
-        left_value == right_value
-        for left_value in evaluate(expression.left, context)
-        for right_value in evaluate(expression.right, context)
+@evaluate.register
+@safe(exceptions=(EvaluationError,))
+def _(expression: Drop, context: EvaluationContext = EMPTY_CONTEXT) -> EvaluationValue:
+    return DroppedField()
+
+
+@evaluate.register
+@safe(exceptions=(EvaluationError,))
+def _(
+    expression: NamedType | NeverType | UnionType | TypedDictShape | FieldName,
+    context: EvaluationContext = EMPTY_CONTEXT,
+) -> EvaluationValue:
+    return expression
+
+
+@evaluate.register
+@safe(exceptions=(EvaluationError,))
+def _(expression: Key, context: EvaluationContext = EMPTY_CONTEXT) -> EvaluationValue:
+    if context.key is None:
+        raise UnboundKeyError("Key requires MapFields")
+    return FieldName(context.key)
+
+
+@evaluate.register
+@safe(exceptions=(EvaluationError,))
+def _(expression: Value, context: EvaluationContext = EMPTY_CONTEXT) -> EvaluationValue:
+    if context.value is None:
+        raise UnboundValueError("Value requires MapFields")
+    return context.value
+
+
+@evaluate.register
+@safe(exceptions=(EvaluationError,))
+def _(expression: Equal, context: EvaluationContext = EMPTY_CONTEXT) -> EvaluationValue:
+    return ok(evaluate(expression.left, context)) == ok(
+        evaluate(expression.right, context)
     )
 
 
-def _evaluate_assignable(
-    expression: Assignable, context: EvaluationContext
-) -> Result[EvaluationValue, EvaluationError]:
-    return Result.do(
-        _is_assignable(source_type, target_type)
-        for source_type in _evaluate_type(expression.source, context)
-        for target_type in _evaluate_type(expression.target, context)
-    )
+@evaluate.register
+@safe(exceptions=(EvaluationError,))
+def _(
+    expression: Assignable, context: EvaluationContext = EMPTY_CONTEXT
+) -> EvaluationValue:
+    source_type = ok(evaluate(expression.source, context))
+    target_type = ok(evaluate(expression.target, context))
+
+    if not is_static(source_type) or not is_static(target_type):
+        raise ExpectedTypeError("Assignable requires static types")
+
+    return _is_assignable(source_type, target_type)
 
 
-def _evaluate_all(
-    expression: All, context: EvaluationContext
-) -> Result[EvaluationValue, EvaluationError]:
+@evaluate.register
+@safe(exceptions=(EvaluationError,))
+def _(expression: All | Any, context: EvaluationContext = EMPTY_CONTEXT) -> bool:
     for condition in expression.conditions:
-        result = _evaluate_condition(condition, context)
-        if isinstance(result, Failure):
-            return result
-        if not result.unwrap():
-            return Success(False)
-    return Success(True)
+        match expression, ok(evaluate(condition, context)):
+            case All(), False:
+                return False
+            case Any(), True:
+                return True
+            case _, bool():
+                continue
+            case _:
+                raise ExpectedConditionError("condition must evaluate to bool")
+
+    return isinstance(expression, All)
 
 
-def _evaluate_any(
-    expression: Any, context: EvaluationContext
-) -> Result[EvaluationValue, EvaluationError]:
-    for condition in expression.conditions:
-        result = _evaluate_condition(condition, context)
-        if isinstance(result, Failure):
-            return result
-        if result.unwrap():
-            return Success(True)
-    return Success(False)
+@evaluate.register
+@safe(exceptions=(EvaluationError,))
+def _(expression: Not, context: EvaluationContext = EMPTY_CONTEXT) -> bool:
+    result = ok(evaluate(expression.condition, context))
+    if not isinstance(result, bool):
+        raise ExpectedConditionError("condition must evaluate to bool")
+
+    return not result
 
 
-def _evaluate_not(
-    expression: Not, context: EvaluationContext
-) -> Result[EvaluationValue, EvaluationError]:
-    return _evaluate_condition(expression.condition, context).map(
-        lambda value: not value
-    )
+@evaluate.register
+@safe(exceptions=(EvaluationError,))
+def _(expression: If, context: EvaluationContext = EMPTY_CONTEXT) -> EvaluationValue:
+    value = ok(evaluate(expression.condition, context))
+    if not isinstance(value, bool):
+        raise ExpectedConditionError("condition must evaluate to bool")
 
-
-def _evaluate_if(
-    expression: If, context: EvaluationContext
-) -> Result[EvaluationValue, EvaluationError]:
-    return Result.do(
-        result
-        for value in _evaluate_condition(expression.condition, context)
-        for result in evaluate(
+    return ok(
+        evaluate(
             expression.when_true if value else expression.when_false,
             context,
         )
     )
 
 
-def _evaluate_map(
-    expression: Map, context: EvaluationContext
-) -> Result[EvaluationValue, EvaluationError]:
-    subject = _evaluate_type(expression.subject, context)
-    if isinstance(subject, Failure):
-        return subject
-    subject_type = subject.unwrap()
+@evaluate.register
+@safe(exceptions=(EvaluationError,))
+def _(expression: Map, context: EvaluationContext = EMPTY_CONTEXT) -> EvaluationValue:
+    if not is_static(subject_type := ok(evaluate(expression.subject, context))):
+        raise ExpectedTypeError("subject must evaluate to a static type")
+
     members = (
         subject_type.members if isinstance(subject_type, UnionType) else (subject_type,)
     )
     outputs: list[StaticType] = []
     for member in members:
-        output = _map_member(member, expression.cases, expression.default, context)
-        if isinstance(output, Failure):
-            return output
-        outputs.append(output.unwrap())
-    return Success(union_of(*outputs))
+        output_expression = expression.default
+        for case in expression.cases:
+            if not is_static(input_type := ok(evaluate(case.input_type, context))):
+                raise ExpectedTypeError(
+                    "case input type must evaluate to a static type"
+                )
+
+            if member == input_type:
+                output_expression = case.output_type
+                break
+
+        if not is_static(output_type := ok(evaluate(output_expression, context))):
+            raise ExpectedTypeError("Map output must evaluate to a static type")
+        outputs.append(output_type)
+
+    return union_of(*outputs)
 
 
-def _map_member(
-    subject: StaticType,
-    cases: tuple[Case, ...],
-    default: Expression,
-    context: EvaluationContext,
-) -> Result[StaticType, EvaluationError]:
-    for case in cases:
-        input_type = _evaluate_type(case.input_type, context)
-        if isinstance(input_type, Failure):
-            return input_type
-        if subject == input_type.unwrap():
-            return _evaluate_type(case.output_type, context)
-    return _evaluate_type(default, context)
-
-
-def _evaluate_field(
+@evaluate.register
+@safe(exceptions=(EvaluationError,))
+def _(
     expression: Field | OptionalField | ReadonlyField,
-    context: EvaluationContext,
-) -> Result[EvaluationValue, EvaluationError]:
-    name = evaluate(expression.name, context)
-    if isinstance(name, Failure):
-        return name
-    field_name = name.unwrap()
+    context: EvaluationContext = EMPTY_CONTEXT,
+) -> TypedDictField:
+    field_name = ok(evaluate(expression.name, context))
     if not isinstance(field_name, FieldName):
-        return _error(
-            EvaluationErrorCode.EXPECTED_FIELD_NAME,
-            "field name must evaluate to FieldName",
-        )
-    value = _evaluate_type(expression.value, context)
-    if isinstance(value, Failure):
-        return value
-    return Success(
-        TypedDictField(
+        raise ExpectedFieldNameError("field name must evaluate to FieldName")
+
+    if is_static(value := ok(evaluate(expression.value, context))):
+        return TypedDictField(
             field_name.value,
-            value.unwrap(),
+            value,
             required=not isinstance(expression, OptionalField),
             readonly=isinstance(expression, ReadonlyField),
         )
+
+    raise ExpectedTypeError("field value must evaluate to a static type")
+
+
+@evaluate.register
+@safe(exceptions=(EvaluationError,))
+def _(
+    expression: MapFields, context: EvaluationContext = EMPTY_CONTEXT
+) -> TypedDictShape:
+    record = ok(evaluate(expression.record, context))
+    if not isinstance(record, TypedDictShape):
+        raise ExpectedTypedDictError(
+            "MapFields record must evaluate to a TypedDictShape"
+        )
+
+    fields: list[TypedDictField] = []
+    for source_field in record.fields:
+        eval_context = EvaluationContext(source_field.name, source_field.value)
+
+        match f := ok(evaluate(expression.transform, eval_context)):
+            case TypedDictField():
+                fields.append(f)
+            case DroppedField():
+                continue
+            case _:
+                raise ExpectedFieldError(
+                    "MapFields transform must evaluate to a field or Drop"
+                )
+
+    return TypedDictShape(
+        expression.output_name or record.name,
+        tuple(fields),
     )
 
 
-def _evaluate_condition(
-    expression: Expression, context: EvaluationContext
-) -> Result[bool, EvaluationError]:
-    result = evaluate(expression, context)
-    if isinstance(result, Failure):
-        return result
-    value = result.unwrap()
-    if not isinstance(value, bool):
-        return _error(
-            EvaluationErrorCode.EXPECTED_CONDITION,
-            "condition must evaluate to bool",
-        )
-    return Success(value)
-
-
-def _evaluate_type(
-    expression: Expression, context: EvaluationContext
-) -> Result[StaticType, EvaluationError]:
-    result = evaluate(expression, context)
-    if isinstance(result, Failure):
-        return result
-    value = result.unwrap()
-    if not isinstance(value, (NamedType, NeverType, UnionType, TypedDictShape)):
-        return _error(
-            EvaluationErrorCode.EXPECTED_TYPE,
-            "expression must evaluate to a static type",
-        )
-    return Success(value)
-
-
 def _is_assignable(source: StaticType, target: StaticType) -> bool:
-    if isinstance(source, NeverType):
-        return True
-    if isinstance(source, UnionType):
-        return all(_is_assignable(member, target) for member in source.members)
-    if isinstance(target, UnionType):
-        return any(_is_assignable(source, member) for member in target.members)
-    if isinstance(source, NamedType) and isinstance(target, NamedType):
-        return (
-            source.name == target.name
-            or target.name == "object"
-            or target.name in source.bases
-        )
-    return source == target
+    match source, target:
+        case NeverType(), _:
+            return True
 
+        case UnionType(), _:
+            return all(_is_assignable(member, target) for member in source.members)
 
-def _error(code: EvaluationErrorCode, message: str) -> Failure[EvaluationError]:
-    return Failure(EvaluationError(code, message))
+        case _, UnionType():
+            return any(_is_assignable(source, member) for member in target.members)
+
+        case NamedType(), NamedType():
+            return (
+                source.name == target.name
+                or target.name == "object"
+                or target.name in source.bases
+            )
+
+        case _:
+            return source == target

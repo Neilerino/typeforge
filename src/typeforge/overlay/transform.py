@@ -40,19 +40,34 @@ from typeforge.compiler.lowering import (
     lower_variadic_module,
 )
 from typeforge.compiler.model import (
+    AppliedTypeExpression,
+    MarkerTypeExpression,
+    SchemaTypeExpression,
+    SourceModule,
+    StarredTypeExpression,
+    UnionTypeExpression,
+    contains_marker,
+)
+from typeforge.compiler.model import (
     FunctionDeclaration as SourceFunction,
 )
 from typeforge.compiler.model import (
-    SourceModule,
-    contains_marker,
+    TypeExpression as SourceTypeExpression,
 )
 from typeforge.compiler.pipeline import (
     AdaptationError,
+    DerivedRecord,
     SemanticRelationshipAlias,
     adapt_alias,
     adapt_function,
+    adapt_type_expression,
+    build_record_shapes,
     collect_semantic_relationship_aliases,
+    derive_record_shapes,
     expand_function_map_aliases,
+    expand_map_aliases,
+    render_typed_dict,
+    replace_record_aliases,
 )
 from typeforge.verification.contracts import union_types
 from typeforge.verification.model import ReturnObligation, VerificationPlan
@@ -124,6 +139,12 @@ def transform_source(
     if isinstance(aliases, Failure):
         return Failure(_adaptation_error(module.path, aliases.failure()))
     relationships = aliases.unwrap()
+    derived_result = derive_record_shapes(
+        module.aliases, build_record_shapes(module.typed_dicts)
+    )
+    if isinstance(derived_result, Failure):
+        return Failure(_adaptation_error(module.path, derived_result.failure()))
+    derived = derived_result.unwrap()
     generated = _generate_overloads(source, module, maximum_arity, relationships)
     if isinstance(generated, Failure):
         return generated
@@ -141,9 +162,12 @@ def transform_source(
         for item in generated.unwrap()
         if (item.qualified_name, item.source_span.start.line + 1) in nodes
     )
-    alias_edits = _alias_edits(source, module, relationships)
+    alias_edits = _alias_edits(source, module, relationships, derived)
     if isinstance(alias_edits, Failure):
         return alias_edits
+    schema_edits = _schema_edits(source, module, relationships, derived)
+    if isinstance(schema_edits, Failure):
+        return schema_edits
     verification = plan_implementation_verification(
         source,
         path,
@@ -162,8 +186,22 @@ def transform_source(
                 verification_edits.failure(),
             )
         )
-    content = tuple(item.text for item in generated.unwrap()) + tuple(
-        item.text for item in (*alias_edits.unwrap(), *verification_edits.unwrap())
+    record_declarations = (
+        tuple(render_typed_dict(item.shape) for item in derived)
+        if schema_edits.unwrap()
+        else ()
+    )
+    content = (
+        tuple(item.text for item in generated.unwrap())
+        + tuple(
+            item.text
+            for item in (
+                *alias_edits.unwrap(),
+                *schema_edits.unwrap(),
+                *verification_edits.unwrap(),
+            )
+        )
+        + record_declarations
     )
     import_text = _typing_import(content, has_overloads=bool(generated.unwrap()))
     import_offset = _import_offset(source, tree)
@@ -173,9 +211,23 @@ def transform_source(
         if import_text
         else ()
     )
+    record_edit = (
+        (
+            _Edit(
+                import_offset,
+                import_offset,
+                f"{'\n\n'.join(record_declarations)}\n\n",
+                import_anchor,
+            ),
+        )
+        if record_declarations
+        else ()
+    )
     edits = (
         *import_edit,
+        *record_edit,
         *alias_edits.unwrap(),
+        *schema_edits.unwrap(),
         *blocks,
         *verification_edits.unwrap(),
     )
@@ -454,10 +506,13 @@ def _alias_edits(
     source: str,
     module: SourceModule,
     semantic_aliases: tuple[SemanticRelationshipAlias, ...],
+    derived: tuple[DerivedRecord, ...],
 ) -> Result[tuple[_Edit, ...], OverlayError]:
     edits: list[_Edit] = []
     for alias in module.aliases:
-        if len(alias.qualified_name) != 1 or not contains_marker(alias.value):
+        if len(alias.qualified_name) != 1 or not (
+            contains_marker(alias.value) or _contains_schema(alias.value)
+        ):
             continue
         relationship = next(
             (item for item in semantic_aliases if item.name == alias.name),
@@ -474,7 +529,16 @@ def _alias_edits(
                 )
             )
             if relationship is not None
-            else adapt_alias(alias)
+            else adapt_alias(alias).map(
+                lambda declaration: TypeAliasDeclaration(
+                    declaration.name,
+                    replace_record_aliases(
+                        expand_map_aliases(declaration.value, semantic_aliases),
+                        derived,
+                    ),
+                    declaration.type_parameters,
+                )
+            )
         )
         if isinstance(adapted, Failure):
             return Failure(_adaptation_error(module.path, adapted.failure()))
@@ -496,6 +560,114 @@ def _alias_edits(
             )
         )
     return Success(tuple(edits))
+
+
+def _schema_edits(
+    source: str,
+    module: SourceModule,
+    semantic_aliases: tuple[SemanticRelationshipAlias, ...],
+    derived: tuple[DerivedRecord, ...],
+) -> Result[tuple[_Edit, ...], OverlayError]:
+    alias_spans = {alias.span for alias in module.aliases}
+    expressions = (
+        *(
+            annotation
+            for function in module.functions
+            for annotation in (
+                *(parameter.annotation for parameter in function.parameters),
+                function.returns,
+            )
+            if annotation is not None
+        ),
+        *(
+            field.annotation
+            for declaration in module.typed_dicts
+            for field in declaration.fields
+        ),
+        *(base for declaration in module.classes for base in declaration.bases),
+        *(
+            field.annotation
+            for declaration in module.classes
+            for field in declaration.fields
+        ),
+        *(
+            annotation
+            for declaration in module.classes
+            for method in declaration.methods
+            for annotation in (
+                *(parameter.annotation for parameter in method.parameters),
+                method.returns,
+            )
+            if annotation is not None
+        ),
+    )
+    boundaries: dict[tuple[int, int, int, int], SchemaTypeExpression] = {}
+    for expression in expressions:
+        for boundary in _outer_schema_boundaries(expression):
+            if boundary.span in alias_spans:
+                continue
+            key = (
+                boundary.span.start.line,
+                boundary.span.start.column,
+                boundary.span.end.line,
+                boundary.span.end.column,
+            )
+            boundaries[key] = boundary
+
+    edits: list[_Edit] = []
+    for boundary in boundaries.values():
+        adapted = adapt_type_expression("Schema", boundary, ())
+        if isinstance(adapted, Failure):
+            return Failure(_adaptation_error(module.path, adapted.failure()))
+        resolved = replace_record_aliases(
+            expand_map_aliases(adapted.unwrap(), semantic_aliases),
+            derived,
+        )
+        emitted = emit_type_expression(resolved)
+        if isinstance(emitted, Failure):
+            return Failure(
+                OverlayError(OverlayErrorCode.EMISSION, module.path, emitted.failure())
+            )
+        start = (
+            _line_offset(source, boundary.span.start.line - 1)
+            + boundary.span.start.column
+        )
+        end = (
+            _line_offset(source, boundary.span.end.line - 1) + boundary.span.end.column
+        )
+        edits.append(
+            _Edit(
+                start,
+                end,
+                emitted.unwrap(),
+                _offset_span(module.path, source, start, end),
+            )
+        )
+    return Success(tuple(edits))
+
+
+def _contains_schema(expression: SourceTypeExpression) -> bool:
+    return bool(_outer_schema_boundaries(expression))
+
+
+def _outer_schema_boundaries(
+    expression: SourceTypeExpression,
+) -> tuple[SchemaTypeExpression, ...]:
+    if isinstance(expression, SchemaTypeExpression):
+        return (expression,)
+    if isinstance(expression, AppliedTypeExpression):
+        children = (expression.constructor, *expression.arguments)
+    elif isinstance(expression, UnionTypeExpression):
+        children = expression.members
+    elif isinstance(expression, StarredTypeExpression):
+        children = (expression.item,)
+    elif isinstance(expression, MarkerTypeExpression):
+        children = expression.arguments
+    else:
+        children = ()
+    return tuple(
+        boundary for child in children for boundary in _outer_schema_boundaries(child)
+    )
 
 
 def _relationship_fallback(expression: MapType | IfType) -> TypeExpression:
@@ -616,7 +788,7 @@ def _typing_import(content: tuple[str, ...], has_overloads: bool) -> str:
     names = ["TYPE_CHECKING", "overload"] if has_overloads else []
     names.extend(
         name
-        for name in ("Any", "Literal", "Never")
+        for name in ("Any", "Literal", "Never", "NotRequired", "ReadOnly", "TypedDict")
         if re.search(rf"\b{name}\b", combined)
     )
     if not names:

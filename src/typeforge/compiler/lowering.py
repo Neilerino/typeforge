@@ -127,6 +127,16 @@ class MapFieldsType:
     transform: TypeExpression
 
 
+@dataclass(frozen=True, slots=True)
+class SchemaType:
+    item: TypeExpression
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeInputType:
+    pass
+
+
 type TypeExpression = (
     TypeName
     | TypeVariable
@@ -143,6 +153,8 @@ type TypeExpression = (
     | MapValueType
     | FieldType
     | MapFieldsType
+    | SchemaType
+    | RuntimeInputType
 )
 
 
@@ -958,7 +970,9 @@ def _collect_variable_names(expression: TypeExpression) -> tuple[str, ...]:
         elif isinstance(current, UnionExpression):
             for member in current.members:
                 visit(member)
-        elif isinstance(current, HomogeneousTuple | EachType | CollectType):
+        elif isinstance(
+            current, HomogeneousTuple | EachType | CollectType | SchemaType
+        ):
             visit(current.item)
 
     visit(expression)
@@ -984,6 +998,8 @@ def _substitute(
         )
     if isinstance(expression, HomogeneousTuple):
         return HomogeneousTuple(_substitute(expression.item, variable, replacement))
+    if isinstance(expression, SchemaType):
+        return SchemaType(_substitute(expression.item, variable, replacement))
     if isinstance(expression, UnionExpression):
         return UnionExpression(
             tuple(
@@ -1064,6 +1080,10 @@ def _erase_markers(
         if isinstance(item, TypeVariable) and item.name in type_var_tuples:
             return FixedTuple((UnpackedType(item),))
         return HomogeneousTuple(item)
+    if isinstance(expression, SchemaType):
+        return _erase_markers(expression.item, type_var_tuples, broad_type_var_tuples)
+    if isinstance(expression, RuntimeInputType):
+        return TypeName("object")
     if isinstance(expression, MapType):
         return TypeName("object")
     if isinstance(expression, TypeApplication):

@@ -76,6 +76,19 @@ class MarkerTypeExpression:
 
 
 @dataclass(frozen=True, slots=True)
+class SchemaTypeExpression:
+    source: str
+    span: SourceSpan
+    arguments: tuple[TypeExpression, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeInputTypeExpression:
+    source: str
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
 class RawTypeExpression:
     source: str
     span: SourceSpan
@@ -87,6 +100,8 @@ type TypeExpression = (
     | UnionTypeExpression
     | StarredTypeExpression
     | MarkerTypeExpression
+    | SchemaTypeExpression
+    | RuntimeInputTypeExpression
     | RawTypeExpression
 )
 
@@ -198,6 +213,10 @@ def contains_marker(
     if isinstance(expression, MarkerTypeExpression):
         if marker is None or expression.marker is marker:
             return True
+        return any(
+            contains_marker(argument, marker) for argument in expression.arguments
+        )
+    if isinstance(expression, SchemaTypeExpression):
         return any(
             contains_marker(argument, marker) for argument in expression.arguments
         )
