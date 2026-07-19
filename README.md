@@ -50,7 +50,7 @@ Python source
 
 `typeforge generate` writes complete `.pyi` interfaces. `typeforge check` and the language-server proxy keep transformed source in memory, map results back to the authored file, and never rewrite application code.
 
-For local `Map` and `If` implementations, Typeforge also verifies return expressions after recognizable `type`, `isinstance`, literal, `None`, boolean, and `match` guards. It emits ordinary typed assignments in memory and lets the configured checker infer the expression type. Unrecognized flow falls back to the safe aggregate return type.
+For local `Map` implementations, Typeforge also verifies return expressions after recognizable `type`, `isinstance`, literal, `None`, boolean, and `match` guards. It emits ordinary typed assignments in memory and lets the configured checker infer the expression type. Unrecognized flow falls back to the safe aggregate return type.
 
 ## Examples
 
@@ -87,18 +87,23 @@ result_2 = serialize("test") # bytes
 result_3 = serialize([123]) # list[int]
 ```
 
+Each `Case` test can be an exact or structural type pattern or a boolean
+predicate composed with `Equal`, `Assignable`, `All`, `Any`, and `Not`. Cases
+share one declaration order, and the first matching pattern or true predicate
+wins.
+
 Choose a return type from a boolean flag:
 
 ```python
 from typing import Literal
 
-from typeforge import Equal, If
+from typeforge import Case, Default, Equal, Map
 
 
-type FetchResult[T: bool] = If[
-    Equal[T, Literal[True]],
-    dict[str, object],
-    bytes,
+type FetchResult[T: bool] = Map[
+    T,
+    Case[Equal[T, Literal[True]], dict[str, object]],
+    Default[bytes],
 ]
 
 def fetch[T: bool](
@@ -177,7 +182,7 @@ pip install "typeforge[pydantic]"
 from typing import Literal, TypedDict
 
 from pydantic import BaseModel
-from typeforge import Drop, Equal, Field, If, Key, MapFields, Value
+from typeforge import Case, Default, Drop, Equal, Field, Key, Map, MapFields, Value
 from typeforge.pydantic import Schema
 
 
@@ -188,10 +193,10 @@ class User(TypedDict):
 
 type Public[T] = MapFields[
     T,
-    If[
-        Equal[Key, Literal["password"]],
-        Drop,
-        Field[Key, Value],
+    Map[
+        Key,
+        Case[Equal[Key, Literal["password"]], Drop],
+        Default[Field[Key, Value]],
     ],
 ]
 
@@ -202,7 +207,7 @@ class Response(BaseModel):
 
 Pydantic compiles this to a native typed-dictionary core schema, and validation
 returns an ordinary `dict`; `Schema` is not a value wrapper. Schema-time `Map`
-and `If` expressions add no Typeforge Python calls during validation. Expressions
+expressions add no Typeforge Python calls during validation. Expressions
 using `typeforge.pydantic.Input` intentionally dispatch on each raw input value
 before letting the selected Pydantic schema validate it.
 

@@ -9,7 +9,6 @@ from typeforge import (
     Drop,
     Equal,
     Field,
-    If,
     Key,
     Map,
     MapFields,
@@ -31,13 +30,16 @@ type JsonValue[T] = Map[
 
 type PublicRecord[T] = MapFields[
     T,
-    If[
-        AnyCondition[
-            Equal[Key, Literal["password"]],
-            Not[Assignable[Value, object]],
+    Map[
+        Key,
+        Case[
+            AnyCondition[
+                Equal[Key, Literal["password"]],
+                Not[Assignable[Value, object]],
+            ],
+            Drop,
         ],
-        Drop,
-        Field[Key, JsonValue[Value]],
+        Default[Field[Key, JsonValue[Value]]],
     ],
 ]
 

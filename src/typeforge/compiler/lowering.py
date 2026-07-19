@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 from itertools import product
+from typing import TypeIs
 
 from returns.result import Failure, Result, Success
 
@@ -88,16 +89,20 @@ type Predicate = (
 )
 
 
-@dataclass(frozen=True, slots=True)
-class IfType:
-    condition: Predicate
-    when_true: TypeExpression
-    when_false: TypeExpression
+def is_predicate(value: object) -> TypeIs[Predicate]:
+    return isinstance(
+        value,
+        EqualPredicate
+        | AssignablePredicate
+        | AllPredicate
+        | AnyPredicate
+        | NotPredicate,
+    )
 
 
 @dataclass(frozen=True, slots=True)
 class MapCase:
-    input_type: TypeExpression
+    test: TypeExpression | Predicate
     output_type: TypeExpression
 
 
@@ -148,7 +153,6 @@ type TypeExpression = (
     | UnpackedType
     | LiteralType
     | UnionExpression
-    | IfType
     | MapType
     | MapValueType
     | FieldType
@@ -366,8 +370,6 @@ def _lower_class(
 def _lower_function(
     declaration: FunctionDeclaration, frontier: ArityFrontier
 ) -> Result[Declaration, LoweringError]:
-    if isinstance(declaration.return_type, IfType):
-        return _lower_if_function(declaration, declaration.return_type)
     if isinstance(declaration.return_type, MapType):
         return _lower_map_function(declaration, declaration.return_type)
     return _lower_each_function(declaration, frontier)
@@ -436,55 +438,6 @@ class PredicateMatch:
     result: bool
 
 
-def _lower_if_function(
-    declaration: FunctionDeclaration, conditional: IfType
-) -> Result[Declaration, LoweringError]:
-    controller = predicate_controller(conditional.condition)
-    if isinstance(controller, Failure):
-        return Failure(
-            LoweringError(
-                controller.failure(),
-                declaration.name,
-                "conditional predicate must compare one type parameter "
-                "to a concrete type",
-            )
-        )
-    controller_name = controller.unwrap()
-    if not _function_has_controller(declaration, controller_name):
-        return Failure(
-            LoweringError(
-                LoweringErrorCode.MISSING_CONTROLLER,
-                declaration.name,
-                f"no parameter is controlled by {controller_name}",
-            )
-        )
-    if not predicate_is_supported(conditional.condition, controller_name):
-        return Failure(
-            LoweringError(
-                LoweringErrorCode.UNSUPPORTED_PREDICATE,
-                declaration.name,
-                "predicate cannot be represented at a callable boundary",
-            )
-        )
-    matches = predicate_matches(conditional.condition, controller_name)
-    signatures = tuple(
-        _specialized_signature(
-            declaration,
-            controller_name,
-            match.input_type,
-            conditional.when_true if match.result else conditional.when_false,
-        )
-        for match in matches
-    )
-    fallback = _replace_return(
-        declaration,
-        _union((conditional.when_true, conditional.when_false)),
-    )
-    if not signatures:
-        return Success(fallback)
-    return Success(OverloadDeclaration(signatures, fallback))
-
-
 def _lower_map_function(
     declaration: FunctionDeclaration, mapping: MapType
 ) -> Result[Declaration, LoweringError]:
@@ -505,25 +458,42 @@ def _lower_map_function(
                 f"no parameter is controlled by {controller}",
             )
         )
-    seen: set[TypeExpression] = set()
+    seen: set[TypeExpression | Predicate] = set()
     for case in mapping.cases:
-        if case.input_type in seen:
+        if case.test in seen:
             return Failure(
                 LoweringError(
                     LoweringErrorCode.DUPLICATE_MAP_CASE,
                     declaration.name,
-                    "Map input types must be unique",
+                    "Map case tests must be unique",
                 )
             )
-        seen.add(case.input_type)
+        seen.add(case.test)
+        if is_predicate(case.test):
+            predicate_controller_result = predicate_controller(case.test)
+            if (
+                isinstance(predicate_controller_result, Failure)
+                or predicate_controller_result.unwrap() != controller
+                or not predicate_is_supported(case.test, controller)
+            ):
+                return Failure(
+                    LoweringError(
+                        LoweringErrorCode.UNSUPPORTED_PREDICATE,
+                        declaration.name,
+                        "Map predicate cases must compare the subject type parameter "
+                        "to concrete types at a callable boundary",
+                    )
+                )
+    specializations = map_specializations(mapping, controller)
     signatures = tuple(
         _specialized_signature(
             declaration,
             controller,
-            case.input_type,
-            _substitute(case.output_type, controller, case.input_type),
+            case.test,
+            _substitute(case.output_type, controller, case.test),
         )
-        for case in mapping.cases
+        for case in specializations
+        if not is_predicate(case.test)
     )
     fallback = _replace_return(
         declaration,
@@ -532,6 +502,149 @@ def _lower_map_function(
     if not signatures:
         return Success(fallback)
     return Success(OverloadDeclaration(signatures, fallback))
+
+
+def map_specializations(mapping: MapType, controller: str) -> tuple[MapCase, ...]:
+    candidates: list[TypeExpression] = []
+    for case in mapping.cases:
+        tests = (
+            tuple(
+                match.input_type for match in predicate_matches(case.test, controller)
+            )
+            if is_predicate(case.test)
+            else (case.test,)
+        )
+        for test in tests:
+            if test not in candidates:
+                candidates.append(test)
+    return tuple(
+        MapCase(candidate, _map_output_for_input(mapping, controller, candidate))
+        for candidate in candidates
+    )
+
+
+def map_default_output(mapping: MapType, controller: str) -> TypeExpression:
+    return next(
+        (
+            case.output_type
+            for case in mapping.cases
+            if is_predicate(case.test)
+            and _predicate_result_for_input(
+                case.test,
+                controller,
+                TypeVariable(controller),
+            )
+        ),
+        mapping.default,
+    )
+
+
+def _map_output_for_input(
+    mapping: MapType,
+    controller: str,
+    input_type: TypeExpression,
+) -> TypeExpression:
+    for case in mapping.cases:
+        matched = (
+            _predicate_result_for_input(case.test, controller, input_type)
+            if is_predicate(case.test)
+            else case.test == input_type
+        )
+        if matched:
+            return case.output_type
+    return mapping.default
+
+
+def _predicate_result_for_input(
+    predicate: Predicate,
+    controller: str,
+    input_type: TypeExpression,
+) -> bool:
+    resolved = _resolve_predicate_for_input(predicate, controller, input_type)
+    if resolved is not None:
+        return resolved
+    match = next(
+        (
+            candidate
+            for candidate in predicate_matches(predicate, controller)
+            if candidate.input_type == input_type
+        ),
+        None,
+    )
+    return predicate_default(predicate) if match is None else match.result
+
+
+def _resolve_predicate_for_input(
+    predicate: Predicate,
+    controller: str,
+    input_type: TypeExpression,
+) -> bool | None:
+    match predicate:
+        case EqualPredicate(left, right):
+            return _substitute(left, controller, input_type) == _substitute(
+                right, controller, input_type
+            )
+        case AssignablePredicate(source, target):
+            return _known_assignability(
+                _substitute(source, controller, input_type),
+                _substitute(target, controller, input_type),
+            )
+        case AllPredicate(predicates):
+            values = tuple(
+                _resolve_predicate_for_input(item, controller, input_type)
+                for item in predicates
+            )
+            if False in values:
+                return False
+            return True if all(value is True for value in values) else None
+        case AnyPredicate(predicates):
+            values = tuple(
+                _resolve_predicate_for_input(item, controller, input_type)
+                for item in predicates
+            )
+            if True in values:
+                return True
+            return False if all(value is False for value in values) else None
+        case NotPredicate(item):
+            value = _resolve_predicate_for_input(item, controller, input_type)
+            return None if value is None else not value
+
+
+def _known_assignability(
+    source: TypeExpression,
+    target: TypeExpression,
+) -> bool | None:
+    if source == target or target == TypeName("object"):
+        return True
+    if isinstance(source, UnionExpression):
+        values = tuple(
+            _known_assignability(member, target) for member in source.members
+        )
+        if False in values:
+            return False
+        return True if all(value is True for value in values) else None
+    if isinstance(target, UnionExpression):
+        values = tuple(
+            _known_assignability(source, member) for member in target.members
+        )
+        if True in values:
+            return True
+        return False if all(value is False for value in values) else None
+    return (
+        None
+        if _collect_variable_names(source) or _collect_variable_names(target)
+        else False
+    )
+
+
+def predicate_default(predicate: Predicate) -> bool:
+    if isinstance(predicate, NotPredicate):
+        return not predicate_default(predicate.predicate)
+    if isinstance(predicate, AllPredicate):
+        return all(predicate_default(item) for item in predicate.predicates)
+    if isinstance(predicate, AnyPredicate):
+        return any(predicate_default(item) for item in predicate.predicates)
+    return False
 
 
 def _specialized_signature(
@@ -854,13 +967,15 @@ def _find_collected_map(
 def _structural_map_choices(
     mapping: MapType, generated_type: TypeVariable
 ) -> tuple[_StructuralMapChoice, ...]:
+    controller = _map_subject_name(mapping)
     cases = tuple(
         _StructuralMapChoice(
-            _replace_map_value(case.input_type, generated_type),
+            _replace_map_value(case.test, generated_type),
             _replace_map_value(case.output_type, generated_type),
             False,
         )
-        for case in mapping.cases
+        for case in map_specializations(mapping, controller)
+        if not is_predicate(case.test)
     )
     return (
         *cases,

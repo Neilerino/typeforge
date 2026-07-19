@@ -16,7 +16,6 @@ from typeforge import (
     Each,
     Equal,
     Field,
-    If,
     Key,
     Map,
     MapFields,
@@ -33,11 +32,6 @@ def test_variadic_markers_preserve_arguments() -> None:
 
 
 def test_condition_markers_preserve_arguments() -> None:
-    assert get_args(If[Assignable[int, object], str, bytes]) == (
-        Assignable[int, object],
-        str,
-        bytes,
-    )
     assert get_args(Equal[int, str]) == (int, str)
     assert get_args(All[Equal[int, int], Assignable[int, object]]) == (
         Equal[int, int],
@@ -53,6 +47,16 @@ def test_condition_markers_preserve_arguments() -> None:
 def test_map_markers_preserve_arguments() -> None:
     mapping = Map[int, Case[int, str], Default[bytes]]
     assert get_args(mapping) == (int, Case[int, str], Default[bytes])
+    conditional = Map[
+        int,
+        Case[Assignable[int, object], str],
+        Default[bytes],
+    ]
+    assert get_args(conditional) == (
+        int,
+        Case[Assignable[int, object], str],
+        Default[bytes],
+    )
 
 
 def test_field_markers_preserve_arguments() -> None:
@@ -69,7 +73,6 @@ def test_every_marker_carries_markdown_documentation() -> None:
     markers = (
         Each,
         Collect,
-        If,
         Assignable,
         Equal,
         All,

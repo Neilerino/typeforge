@@ -3,6 +3,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+import typeforge
+
+
+def test_map_is_the_only_public_branching_marker() -> None:
+    assert "Map" in typeforge.__all__
+    assert "If" not in typeforge.__all__
+    assert not hasattr(typeforge, "If")
+
 
 def test_importing_typeforge_does_not_import_pydantic() -> None:
     completed = subprocess.run(

@@ -21,7 +21,6 @@ class MarkerArity:
 MARKER_SIGNATURES = {
     MarkerKind.EACH: MarkerArity(1, 1, "one type argument"),
     MarkerKind.COLLECT: MarkerArity(1, 1, "one type argument"),
-    MarkerKind.IF: MarkerArity(3, 3, "three type arguments"),
     MarkerKind.ASSIGNABLE: MarkerArity(2, 2, "two type arguments"),
     MarkerKind.EQUAL: MarkerArity(2, 2, "two type arguments"),
     MarkerKind.ALL: MarkerArity(0, None, "zero or more type arguments"),
@@ -63,14 +62,6 @@ class CollectMarker:
 
 
 @dataclass(frozen=True, slots=True)
-class IfMarker:
-    source: str
-    condition: SourceTypeExpression
-    when_true: SourceTypeExpression
-    when_false: SourceTypeExpression
-
-
-@dataclass(frozen=True, slots=True)
 class AssignableMarker:
     source: str
     left: SourceTypeExpression
@@ -105,7 +96,7 @@ class NotMarker:
 @dataclass(frozen=True, slots=True)
 class CaseMarker:
     source: str
-    input: SourceTypeExpression
+    test: SourceTypeExpression
     output: SourceTypeExpression
 
 
@@ -171,7 +162,6 @@ class ValueMarker:
 type NormalizedMarker = (
     EachMarker
     | CollectMarker
-    | IfMarker
     | AssignableMarker
     | EqualMarker
     | AllMarker
@@ -199,9 +189,6 @@ def normalize_marker(expression: MarkerTypeExpression) -> NormalizedMarker:
             return EachMarker(source, arguments[0])
         case MarkerKind.COLLECT:
             return CollectMarker(source, arguments[0])
-        case MarkerKind.IF:
-            _validate_predicate_role(arguments[0])
-            return IfMarker(source, arguments[0], arguments[1], arguments[2])
         case MarkerKind.ASSIGNABLE:
             return AssignableMarker(source, arguments[0], arguments[1])
         case MarkerKind.EQUAL:
@@ -220,6 +207,16 @@ def normalize_marker(expression: MarkerTypeExpression) -> NormalizedMarker:
         case MarkerKind.MAP:
             return _normalize_map(source, arguments)
         case MarkerKind.CASE:
+            if isinstance(arguments[0], MarkerTypeExpression) and arguments[
+                0
+            ].marker in {
+                MarkerKind.ASSIGNABLE,
+                MarkerKind.EQUAL,
+                MarkerKind.ALL,
+                MarkerKind.ANY,
+                MarkerKind.NOT,
+            }:
+                _validate_predicate_role(arguments[0])
             return CaseMarker(source, arguments[0], arguments[1])
         case MarkerKind.DEFAULT:
             return DefaultMarker(source, arguments[0])
@@ -259,13 +256,13 @@ def _normalize_map(
         if not isinstance(expression, MarkerTypeExpression):
             raise MarkerNormalizationError(
                 expression.source,
-                "Map entries must be Case[Input, Output] or Default[Output]",
+                "Map entries must be Case[Test, Output] or Default[Output]",
             )
         entry = normalize_marker(expression)
         if not isinstance(entry, CaseMarker | DefaultMarker):
             raise MarkerNormalizationError(
                 expression.source,
-                "Map entries must be Case[Input, Output] or Default[Output]",
+                "Map entries must be Case[Test, Output] or Default[Output]",
             )
         if isinstance(entry, DefaultMarker):
             if default_seen:
@@ -282,7 +279,7 @@ def _validate_predicate_role(expression: SourceTypeExpression) -> None:
     if not isinstance(expression, MarkerTypeExpression):
         raise MarkerNormalizationError(
             expression.source,
-            "If condition must be a Typeforge predicate",
+            "condition must be a Typeforge predicate",
         )
     marker = normalize_marker(expression)
     if not isinstance(

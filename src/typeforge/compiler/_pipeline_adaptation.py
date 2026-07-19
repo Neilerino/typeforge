@@ -16,7 +16,6 @@ from typeforge.compiler._markers import (
     EachMarker,
     EqualMarker,
     FieldMarker,
-    IfMarker,
     KeyMarker,
     MapFieldsMarker,
     MapMarker,
@@ -52,7 +51,6 @@ from typeforge.compiler.lowering import (
     FixedTuple,
     FunctionDeclaration,
     HomogeneousTuple,
-    IfType,
     ImportFrom,
     LiteralType,
     MapCase,
@@ -74,6 +72,7 @@ from typeforge.compiler.lowering import (
     TypeVariable,
     UnionExpression,
     UnpackedType,
+    is_predicate,
 )
 from typeforge.compiler.model import (
     AppliedTypeExpression,
@@ -201,7 +200,7 @@ def _collect_semantic_relationship_aliases(
             normalized = normalize_marker(value)
         except MarkerNormalizationError:
             continue
-        if not isinstance(normalized, MapMarker | IfMarker):
+        if not isinstance(normalized, MapMarker):
             continue
         if len(alias.type_parameters) != 1:
             raise AdaptationError(
@@ -211,7 +210,7 @@ def _collect_semantic_relationship_aliases(
             )
         parameter = alias.type_parameters[0].name
         relationship = _adapt_type_expression(value, alias.name, (parameter,))
-        if not isinstance(relationship, MapType | IfType):
+        if not isinstance(relationship, MapType):
             raise AssertionError("relationship adaptation produced a plain type")
         semantic.append(SemanticRelationshipAlias(alias.name, parameter, relationship))
     return tuple(semantic)
@@ -340,18 +339,6 @@ def resolve_schema_type(expression: TypeExpression) -> TypeExpression:
                     for member in members
                 )
             )
-        case IfType(condition, when_true, when_false):
-            resolved = resolve_schema_predicate(condition)
-            if resolved is True:
-                return resolve_schema_type(when_true)
-            if resolved is False:
-                return resolve_schema_type(when_false)
-            return union_types_for_schema(
-                (
-                    resolve_schema_type(when_true),
-                    resolve_schema_type(when_false),
-                )
-            )
         case FieldType(name, value, required, readonly):
             return FieldType(
                 resolve_schema_type(name),
@@ -383,8 +370,22 @@ def _resolve_schema_map_member(
     cases: tuple[MapCase, ...],
     default: TypeExpression,
 ) -> TypeExpression:
-    for case in cases:
-        matched, capture = _match_schema_pattern(case.input_type, subject, None)
+    for index, case in enumerate(cases):
+        if is_predicate(case.test):
+            result = resolve_schema_predicate(case.test)
+            if result is True:
+                return resolve_schema_type(case.output_type)
+            if result is None:
+                return union_types_for_schema(
+                    (
+                        resolve_schema_type(case.output_type),
+                        _resolve_schema_map_member(
+                            subject, cases[index + 1 :], default
+                        ),
+                    )
+                )
+            continue
+        matched, capture = _match_schema_pattern(case.test, subject, None)
         if matched:
             return resolve_schema_type(
                 _substitute_schema_capture(case.output_type, capture)
@@ -566,12 +567,6 @@ def _adapt_alias_fallback(
         case CollectMarker(item=item):
             return HomogeneousTuple(
                 _adapt_alias_fallback(declaration, item, type_parameters)
-            )
-        case IfMarker(when_true=when_true, when_false=when_false):
-            return UnionExpression(
-                _adapt_type_expressions(
-                    (when_true, when_false), declaration, type_parameters
-                )
             )
         case MapMarker() | MapFieldsMarker():
             return TypeName("object")
@@ -758,20 +753,10 @@ def _(
     match marker:
         case ValueMarker():
             return MapValueType()
-        case IfMarker(
-            condition=condition,
-            when_true=when_true,
-            when_false=when_false,
-        ):
-            return IfType(
-                _adapt_predicate(condition, declaration, type_parameters),
-                _adapt_type_expression(when_true, declaration, type_parameters),
-                _adapt_type_expression(when_false, declaration, type_parameters),
-            )
         case MapMarker(subject=subject, entries=entries):
             cases = tuple(
                 MapCase(
-                    _adapt_type_expression(entry.input, declaration, type_parameters),
+                    _adapt_map_test(entry.test, declaration, type_parameters),
                     _adapt_type_expression(entry.output, declaration, type_parameters),
                 )
                 for entry in entries
@@ -816,6 +801,21 @@ def adapt_predicate(
     return _adapt_predicate(expression, declaration, type_parameters)
 
 
+def _adapt_map_test(
+    expression: SourceTypeExpression,
+    declaration: str,
+    type_parameters: tuple[str, ...],
+) -> TypeExpression | Predicate:
+    if isinstance(expression, MarkerTypeExpression):
+        marker = _normalize_marker(declaration, expression)
+        if isinstance(
+            marker,
+            EqualMarker | AssignableMarker | AllMarker | AnyMarker | NotMarker,
+        ):
+            return _adapt_predicate(expression, declaration, type_parameters)
+    return _adapt_type_expression(expression, declaration, type_parameters)
+
+
 def _adapt_predicate(
     expression: SourceTypeExpression,
     declaration: str,
@@ -825,7 +825,7 @@ def _adapt_predicate(
         raise AdaptationError(
             declaration,
             expression.source,
-            "If condition must be a Typeforge predicate",
+            "condition must be a Typeforge predicate",
         )
     marker = _normalize_marker(declaration, expression)
     match marker:

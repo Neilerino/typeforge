@@ -68,8 +68,9 @@ def test_nested_adaptation_failures_preserve_the_original_error(
 ) -> None:
     source = tmp_path / "invalid_condition.py"
     source.write_text(
-        "from typeforge import Equal, If\n"
-        "def choose[T](value: T) -> If[Equal[T], str, bytes]: ...\n",
+        "from typeforge import Case, Default, Equal, Map\n"
+        "def choose[T](value: T) -> "
+        "Map[T, Case[Equal[T], str], Default[bytes]]: ...\n",
         encoding="utf-8",
     )
 
@@ -293,7 +294,7 @@ def test_schema_boundaries_resolve_in_model_fields_and_generated_stubs(
         "from pydantic import BaseModel\n"
         "from typing import TypedDict\n"
         "from typeforge import (\n"
-        "    Case, Default, Equal, Field, If, Key, Map, MapFields, Value,\n"
+        "    Case, Default, Equal, Field, Key, Map, MapFields, Value,\n"
         ")\n"
         "from typeforge.pydantic import Input, Schema\n\n"
         "type Wire[T] = Map[T, Case[bytes, str], Default[int]]\n\n"
@@ -302,9 +303,11 @@ def test_schema_boundaries_resolve_in_model_fields_and_generated_stubs(
         "type Public[T] = MapFields[T, Field[Key, Value]]\n\n"
         "class Payload(BaseModel):\n"
         "    wire: Schema[Wire[bytes]]\n"
-        "    direct: Schema[If[Equal[int, int], str, bytes]]\n"
+        "    direct: Schema[Map["
+        "int, Case[Equal[int, int], str], Default[bytes]]]\n"
         "    runtime: Schema[Map[Input, Case[int, int], Case[str, bytes]]]\n"
-        "    runtime_if: Schema[If[Equal[Input, str], int, float]]\n"
+        "    runtime_if: Schema[Map[Input, "
+        "Case[Equal[Input, str], int], Default[float]]]\n"
         "    structural: Schema[Map["
         "list[int], Case[list[Value], Value], Default[bytes]]]\n"
         "    nested_capture: Schema[Map["

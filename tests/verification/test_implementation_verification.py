@@ -683,9 +683,11 @@ def test_structural_capture_returns_degrade_without_losing_the_overlay() -> None
 
 def test_conditional_aliases_are_verified_inside_implementations() -> None:
     body = """
-    from typeforge import Equal, If
+    from typeforge import Case, Default, Equal, Map
 
-    type Conditional[T] = If[Equal[T, int], str, bytes]
+    type Conditional[T] = Map[
+        T, Case[Equal[T, int], str], Default[bytes]
+    ]
 
     def convert[T](value: T) -> Conditional[T]:
         if type(value) is int:
@@ -702,9 +704,11 @@ def test_conditional_aliases_are_verified_inside_implementations() -> None:
 
 def test_direct_conditional_annotations_are_verified() -> None:
     body = """
-    from typeforge import Equal, If
+    from typeforge import Case, Default, Equal, Map
 
-    def convert[T](value: T) -> If[Equal[T, int], str, bytes]:
+    def convert[T](value: T) -> Map[
+        T, Case[Equal[T, int], str], Default[bytes]
+    ]:
         if type(value) is int:
             return flag()
         return binary()

@@ -280,7 +280,7 @@ def test_schema_boundaries_are_erased_from_model_fields_in_overlay() -> None:
         "from pydantic import BaseModel\n"
         "from typing import TypedDict\n"
         "from typeforge import (\n"
-        "    Case, Default, Equal, Field, If, Key, Map, MapFields, Value,\n"
+        "    Case, Default, Equal, Field, Key, Map, MapFields, Value,\n"
         ")\n"
         "from typeforge.pydantic import Schema\n\n"
         "type Wire[T] = Map[T, Case[bytes, str], Default[int]]\n\n"
@@ -289,10 +289,12 @@ def test_schema_boundaries_are_erased_from_model_fields_in_overlay() -> None:
         "type Public[T] = MapFields[T, Field[Key, Value]]\n\n"
         "class Payload(BaseModel):\n"
         "    wire: Schema[Wire[bytes]]\n"
-        "    direct: Schema[If[Equal[int, int], str, bytes]]\n"
+        "    direct: Schema[Map["
+        "int, Case[Equal[int, int], str], Default[bytes]]]\n"
         "    public: Schema[Public[User]]\n\n"
         "    def parse(self, value: Schema[Wire[bytes]]) "
-        "-> Schema[If[Equal[int, int], str, bytes]]: ...\n"
+        "-> Schema[Map["
+        "int, Case[Equal[int, int], str], Default[bytes]]]: ...\n"
     )
 
     transformed = transform_source(source, Path("models.py"))

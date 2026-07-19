@@ -16,7 +16,6 @@ from typeforge.compiler._markers import (
     DropMarker,
     EqualMarker,
     FieldMarker,
-    IfMarker,
     KeyMarker,
     MapFieldsMarker,
     MapMarker,
@@ -487,7 +486,7 @@ def _(
             )
         case MapMarker(subject=subject, entries=entries):
             cases = tuple(
-                record_evaluator.Case(adapt(entry.input), adapt(entry.output))
+                record_evaluator.Case(adapt(entry.test), adapt(entry.output))
                 for entry in entries
                 if isinstance(entry, CaseMarker)
             )
@@ -503,14 +502,6 @@ def _(
                 record_evaluator.Map(adapt(subject), cases)
                 if default is None
                 else record_evaluator.Map(adapt(subject), cases, default)
-            )
-        case IfMarker(
-            condition=condition,
-            when_true=when_true,
-            when_false=when_false,
-        ):
-            return record_evaluator.If(
-                adapt(condition), adapt(when_true), adapt(when_false)
             )
         case EqualMarker(left=left, right=right):
             return record_evaluator.Equal(adapt(left), adapt(right))

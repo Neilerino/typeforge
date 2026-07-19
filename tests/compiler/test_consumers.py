@@ -41,7 +41,6 @@ from typeforge import (
     Each,
     Equal,
     Field,
-    If,
     Key,
     Map,
     MapFields,
@@ -54,31 +53,37 @@ def combine[T](*parsers: Each[Parser[T]]) -> Parser[Collect[T]]:
     raise NotImplementedError
 
 
-def read[M](mode: M) -> If[Equal[M, Literal["text"]], str, bytes]:
-    raise NotImplementedError
-
-
-def normalize[T](value: T) -> If[Assignable[T, str], str, bytes]:
-    raise NotImplementedError
-
-
-def choose_all[T](value: T) -> If[
-    All[Equal[T, str], Assignable[T, str]],
-    str,
-    bytes,
+def read[M](mode: M) -> Map[
+    M, Case[Equal[M, Literal["text"]], str], Default[bytes]
 ]:
     raise NotImplementedError
 
 
-def choose_any[T](value: T) -> If[
-    Any[Equal[T, Literal["text"]], Equal[T, bytes]],
-    str,
-    float,
+def normalize[T](value: T) -> Map[
+    T, Case[Assignable[T, str], str], Default[bytes]
 ]:
     raise NotImplementedError
 
 
-def reject_bytes[T](value: T) -> If[Not[Equal[T, bytes]], str, bytes]:
+def choose_all[T](value: T) -> Map[
+    T,
+    Case[All[Equal[T, str], Assignable[T, str]], str],
+    Default[bytes],
+]:
+    raise NotImplementedError
+
+
+def choose_any[T](value: T) -> Map[
+    T,
+    Case[Any[Equal[T, Literal["text"]], Equal[T, bytes]], str],
+    Default[float],
+]:
+    raise NotImplementedError
+
+
+def reject_bytes[T](value: T) -> Map[
+    T, Case[Not[Equal[T, bytes]], str], Default[bytes]
+]:
     raise NotImplementedError
 
 
@@ -292,7 +297,7 @@ assert_type(
 
 
 STRUCTURAL_MAP_MARKER_STUB = """
-type Case[Input, Output] = Output
+type Case[Test, Output] = Output
 type Collect[T] = tuple[T, ...]
 type Default[Output] = Output
 type Each[T] = T

@@ -11,7 +11,6 @@ from typeforge.compiler.evaluator import (
     EvaluationErrorCode,
     Field,
     FieldName,
-    If,
     Key,
     Map,
     MapFields,
@@ -46,7 +45,7 @@ def test_conditions_compose() -> None:
     )
 
     assert evaluate(expression) == Success(True)
-    assert evaluate(If(expression, STR, BYTES)) == Success(STR)
+    assert evaluate(Map(INT, (Case(expression, STR),), BYTES)) == Success(STR)
 
 
 def test_all_returns_false_and_short_circuits() -> None:
@@ -112,14 +111,16 @@ def test_map_fields_can_drop_and_change_field_modifiers() -> None:
             TypedDictField("attempts", INT),
         ),
     )
-    transform = If(
-        Equal(Key(), FieldName("password")),
-        Drop(),
-        If(
-            Equal(Key(), FieldName("token")),
-            ReadonlyField(Key(), Value()),
-            OptionalField(Key(), Value()),
+    transform = Map(
+        Key(),
+        (
+            Case(Equal(Key(), FieldName("password")), Drop()),
+            Case(
+                Equal(Key(), FieldName("token")),
+                ReadonlyField(Key(), Value()),
+            ),
         ),
+        OptionalField(Key(), Value()),
     )
 
     result = evaluate(MapFields(source, transform))

@@ -1,20 +1,16 @@
 from returns.result import Failure, Result, Success
 
 from typeforge.compiler.lowering import (
-    AllPredicate,
-    AnyPredicate,
-    IfType,
-    MapCase,
     MapType,
-    NotPredicate,
-    Predicate,
     TypeExpression,
     TypeName,
     TypeVariable,
     UnionExpression,
+    is_predicate,
+    map_default_output,
+    map_specializations,
     predicate_controller,
     predicate_is_supported,
-    predicate_matches,
 )
 from typeforge.compiler.model import FunctionDeclaration as SourceFunction
 from typeforge.compiler.pipeline import (
@@ -37,16 +33,26 @@ def build_return_contract(
         return adapted
     expanded = expand_function_map_aliases(adapted.unwrap(), aliases)
     relationship = expanded.return_type
-    mapping = (
-        relationship
-        if isinstance(relationship, MapType)
-        else _conditional_mapping(relationship)
-        if isinstance(relationship, IfType)
-        else None
-    )
-    if mapping is None or not isinstance(mapping.subject, TypeVariable):
+    if not isinstance(relationship, MapType) or not isinstance(
+        relationship.subject, TypeVariable
+    ):
         return Success(None)
-    controller = mapping.subject.name
+    controller = relationship.subject.name
+    for case in relationship.cases:
+        if not is_predicate(case.test):
+            continue
+        predicate_controller_result = predicate_controller(case.test)
+        if (
+            isinstance(predicate_controller_result, Failure)
+            or predicate_controller_result.unwrap() != controller
+            or not predicate_is_supported(case.test, controller)
+        ):
+            return Success(None)
+    mapping = MapType(
+        relationship.subject,
+        map_specializations(relationship, controller),
+        map_default_output(relationship, controller),
+    )
     controller_parameters = tuple(
         parameter.name
         for parameter in expanded.parameters
@@ -57,14 +63,15 @@ def build_return_contract(
     alternatives = tuple(
         Alternative(
             index=index,
-            input_type=case.input_type,
+            input_type=case.test,
             output_type=substitute_type(
                 case.output_type,
                 controller,
-                case.input_type,
+                case.test,
             ),
         )
         for index, case in enumerate(mapping.cases)
+        if not is_predicate(case.test)
     )
     alternatives += (
         Alternative(
@@ -86,38 +93,6 @@ def build_return_contract(
             alternatives=alternatives,
         )
     )
-
-
-def _conditional_mapping(conditional: IfType) -> MapType | None:
-    controller = predicate_controller(conditional.condition)
-    if isinstance(controller, Failure) or not predicate_is_supported(
-        conditional.condition, controller.unwrap()
-    ):
-        return None
-    matches = predicate_matches(conditional.condition, controller.unwrap())
-    cases = tuple(
-        MapCase(
-            match.input_type,
-            conditional.when_true if match.result else conditional.when_false,
-        )
-        for match in matches
-    )
-    default = (
-        conditional.when_true
-        if _predicate_default(conditional.condition)
-        else conditional.when_false
-    )
-    return MapType(TypeVariable(controller.unwrap()), cases, default)
-
-
-def _predicate_default(predicate: Predicate) -> bool:
-    if isinstance(predicate, NotPredicate):
-        return not _predicate_default(predicate.predicate)
-    if isinstance(predicate, AllPredicate):
-        return all(_predicate_default(item) for item in predicate.predicates)
-    if isinstance(predicate, AnyPredicate):
-        return any(_predicate_default(item) for item in predicate.predicates)
-    return False
 
 
 def aggregate_output(contract: ReturnContract) -> TypeExpression:

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 from functools import singledispatch
-from typing import ClassVar
+from typing import ClassVar, TypeIs
 
 from returns.result import safe
 
@@ -62,15 +62,8 @@ class Not:
 
 
 @dataclass(frozen=True, slots=True)
-class If:
-    condition: Expression
-    when_true: Expression
-    when_false: Expression
-
-
-@dataclass(frozen=True, slots=True)
 class Case:
-    input_type: Expression
+    test: Expression
     output_type: Expression
 
 
@@ -121,7 +114,6 @@ type Expression = (
     | All
     | Any
     | Not
-    | If
     | Map
     | Field
     | OptionalField
@@ -290,46 +282,37 @@ def _(expression: Not, context: EvaluationContext = EMPTY_CONTEXT) -> bool:
 
 @evaluate.register
 @safe(exceptions=(EvaluationError,))
-def _(expression: If, context: EvaluationContext = EMPTY_CONTEXT) -> EvaluationValue:
-    value = ok(evaluate(expression.condition, context))
-    if not isinstance(value, bool):
-        raise ExpectedConditionError("condition must evaluate to bool")
-
-    return ok(
-        evaluate(
-            expression.when_true if value else expression.when_false,
-            context,
-        )
-    )
-
-
-@evaluate.register
-@safe(exceptions=(EvaluationError,))
 def _(expression: Map, context: EvaluationContext = EMPTY_CONTEXT) -> EvaluationValue:
-    if not is_static(subject_type := ok(evaluate(expression.subject, context))):
-        raise ExpectedTypeError("subject must evaluate to a static type")
-
-    members = (
-        subject_type.members if isinstance(subject_type, UnionType) else (subject_type,)
+    subject = ok(evaluate(expression.subject, context))
+    members: tuple[EvaluationValue, ...] = (
+        subject.members if isinstance(subject, UnionType) else (subject,)
     )
-    outputs: list[StaticType] = []
+    outputs: list[EvaluationValue] = []
     for member in members:
         output_expression = expression.default
         for case in expression.cases:
-            if not is_static(input_type := ok(evaluate(case.input_type, context))):
-                raise ExpectedTypeError(
-                    "case input type must evaluate to a static type"
-                )
-
-            if member == input_type:
+            if _is_condition(case.test):
+                matched = ok(evaluate(case.test, context))
+                if not isinstance(matched, bool):
+                    raise ExpectedConditionError("condition must evaluate to bool")
+            else:
+                matched = member == ok(evaluate(case.test, context))
+            if matched:
                 output_expression = case.output_type
                 break
+        outputs.append(ok(evaluate(output_expression, context)))
 
-        if not is_static(output_type := ok(evaluate(output_expression, context))):
-            raise ExpectedTypeError("Map output must evaluate to a static type")
-        outputs.append(output_type)
+    if len(outputs) == 1:
+        return outputs[0]
+    if all(is_static(output) for output in outputs):
+        return union_of(*(output for output in outputs if is_static(output)))
+    raise ExpectedTypeError("Map outputs for a union subject must be static types")
 
-    return union_of(*outputs)
+
+def _is_condition(
+    expression: Expression,
+) -> TypeIs[Equal | Assignable | All | Any | Not]:
+    return isinstance(expression, Equal | Assignable | All | Any | Not)
 
 
 @evaluate.register

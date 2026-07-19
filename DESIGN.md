@@ -20,6 +20,18 @@ Some relationships can be expressed directly with standard generics. Others can 
 
 Finite specialization must remain explicit. Typeforge should provide a documented fallback, require local specialization, or report that a relationship cannot be represented portably. It must not present a configured finite frontier as an open-ended generic capability.
 
+## Unified type mapping
+
+`Map` is Typeforge's central input/output type machine. Its ordered `Case`
+branches accept either exact or structural type patterns or boolean predicates;
+the first matching pattern or true predicate selects the output. `Default`
+handles the unmatched path and omission means `Never`.
+
+Pattern and predicate cases share one ordering model. Structural patterns may
+capture `Value`, while predicates may compose `Equal`, `Assignable`, `All`,
+`Any`, and `Not` and may inspect contextual `Key` and `Value` bindings inside
+`MapFields`.
+
 ## Library and project output
 
 Published library stubs must be deterministic from library source and configuration. Consumer call sites must never influence them, and consumers should not need to run the Typeforge compiler.

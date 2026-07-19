@@ -3,7 +3,7 @@ from uuid import UUID
 import pytest
 
 from pydantic import TypeAdapter, ValidationError
-from typeforge import Case, Default, Equal, If, Map
+from typeforge import Case, Default, Equal, Map
 from typeforge.pydantic import Input, Schema
 
 
@@ -56,8 +56,8 @@ def test_input_map_serializes_selected_output() -> None:
     assert adapter.dump_json(value) == b'"12345678-1234-5678-1234-567812345678"'
 
 
-def test_input_if_dispatches() -> None:
-    type Identifier = Schema[If[Equal[Input, str], UUID, int]]
+def test_input_predicate_case_dispatches() -> None:
+    type Identifier = Schema[Map[Input, Case[Equal[Input, str], UUID], Default[int]]]
     adapter = TypeAdapter(Identifier)
     identifier = UUID("12345678-1234-5678-1234-567812345678")
 
@@ -83,8 +83,8 @@ def test_input_map_selects_from_raw_input_when_outputs_overlap_inputs() -> None:
     assert adapter.dump_python(3.0) == 3.0
 
 
-def test_input_if_selects_from_condition_when_outputs_overlap_inputs() -> None:
-    type Swapped = Schema[If[Equal[Input, str], int, float]]
+def test_input_predicate_case_selects_when_outputs_overlap_inputs() -> None:
+    type Swapped = Schema[Map[Input, Case[Equal[Input, str], int], Default[float]]]
     adapter = TypeAdapter(Swapped)
 
     assert adapter.validate_python("3") == 3

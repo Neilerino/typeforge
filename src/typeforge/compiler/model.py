@@ -19,7 +19,6 @@ class SourceSpan:
 class MarkerKind(Enum):
     EACH = "Each"
     COLLECT = "Collect"
-    IF = "If"
     ASSIGNABLE = "Assignable"
     EQUAL = "Equal"
     ALL = "All"

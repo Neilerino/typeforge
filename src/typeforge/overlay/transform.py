@@ -22,7 +22,6 @@ from typeforge.compiler.lowering import (
     FixedTuple,
     FunctionDeclaration,
     HomogeneousTuple,
-    IfType,
     LoweringError,
     MapType,
     MapValueType,
@@ -670,18 +669,11 @@ def _outer_schema_boundaries(
     )
 
 
-def _relationship_fallback(expression: MapType | IfType) -> TypeExpression:
-    if isinstance(expression, MapType):
-        return union_types(
-            (
-                *(_checker_type(case.output_type) for case in expression.cases),
-                _checker_type(expression.default),
-            )
-        )
+def _relationship_fallback(expression: MapType) -> TypeExpression:
     return union_types(
         (
-            _checker_type(expression.when_true),
-            _checker_type(expression.when_false),
+            *(_checker_type(case.output_type) for case in expression.cases),
+            _checker_type(expression.default),
         )
     )
 
@@ -689,7 +681,7 @@ def _relationship_fallback(expression: MapType | IfType) -> TypeExpression:
 def _checker_type(expression: TypeExpression) -> TypeExpression:
     if isinstance(expression, MapValueType):
         return TypeName("object")
-    if isinstance(expression, MapType | IfType):
+    if isinstance(expression, MapType):
         return _relationship_fallback(expression)
     if isinstance(expression, TypeApplication):
         return TypeApplication(

@@ -29,8 +29,6 @@ def test_every_marker_has_one_authoritative_valid_arity(kind: MarkerKind) -> Non
     )
     if kind is MarkerKind.MAP:
         arguments = (ITEM, marker(MarkerKind.CASE, ITEM, ITEM))
-    elif kind is MarkerKind.IF:
-        arguments = (marker(MarkerKind.EQUAL, ITEM, ITEM), ITEM, ITEM)
     elif kind is MarkerKind.NOT:
         arguments = (marker(MarkerKind.EQUAL, ITEM, ITEM),)
 
@@ -43,7 +41,6 @@ def test_every_marker_has_one_authoritative_valid_arity(kind: MarkerKind) -> Non
         (MarkerKind.KEY, (ITEM,), "no type arguments"),
         (MarkerKind.EACH, (), "one type argument"),
         (MarkerKind.EQUAL, (ITEM,), "two type arguments"),
-        (MarkerKind.IF, (ITEM, ITEM), "three type arguments"),
         (
             MarkerKind.MAP,
             (ITEM,),
@@ -83,19 +80,16 @@ def test_map_normalization_validates_entry_roles_and_duplicate_defaults() -> Non
 
 
 def test_condition_markers_validate_nested_predicate_roles() -> None:
-    with pytest.raises(
-        MarkerNormalizationError,
-        match="If condition must be a Typeforge predicate",
-    ):
-        normalize_marker(marker(MarkerKind.IF, ITEM, ITEM, ITEM))
-
     with pytest.raises(MarkerNormalizationError, match="Key is not a predicate"):
         normalize_marker(
             marker(
-                MarkerKind.IF,
-                marker(MarkerKind.ALL, marker(MarkerKind.KEY)),
+                MarkerKind.MAP,
                 ITEM,
-                ITEM,
+                marker(
+                    MarkerKind.CASE,
+                    marker(MarkerKind.ALL, marker(MarkerKind.KEY)),
+                    ITEM,
+                ),
             )
         )
 

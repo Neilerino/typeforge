@@ -6,7 +6,6 @@ from pathlib import Path
 from typeforge.compiler.frontend import FrontendError
 from typeforge.compiler.lowering import (
     ClassDeclaration,
-    IfType,
     LoweringError,
     MapType,
     ModuleImport,
@@ -80,4 +79,4 @@ class ModuleVariables:
 class SemanticRelationshipAlias:
     name: str
     parameter: str
-    relationship: MapType | IfType
+    relationship: MapType

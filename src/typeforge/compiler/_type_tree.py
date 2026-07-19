@@ -13,7 +13,6 @@ from typeforge.compiler.lowering import (
     FieldType,
     FixedTuple,
     HomogeneousTuple,
-    IfType,
     LiteralType,
     MapCase,
     MapFieldsType,
@@ -29,6 +28,7 @@ from typeforge.compiler.lowering import (
     TypeVariable,
     UnionExpression,
     UnpackedType,
+    is_predicate,
 )
 
 type TypeTransform = Callable[[TypeExpression], TypeExpression | None]
@@ -71,18 +71,14 @@ def rewrite_type_children(
             return UnpackedType(rewrite(item))
         case UnionExpression(members):
             return UnionExpression(tuple(rewrite(member) for member in members))
-        case IfType(condition, when_true, when_false):
-            return IfType(
-                _rewrite_predicate(condition, rewrite),
-                rewrite(when_true),
-                rewrite(when_false),
-            )
         case MapType(subject, cases, default):
             return MapType(
                 rewrite(subject),
                 tuple(
                     MapCase(
-                        rewrite(case.input_type),
+                        _rewrite_predicate(case.test, rewrite)
+                        if is_predicate(case.test)
+                        else rewrite(case.test),
                         rewrite(case.output_type),
                     )
                     for case in cases
@@ -160,14 +156,13 @@ def walk_type(expression: TypeExpression) -> Iterator[TypeExpression]:
         case UnionExpression(members):
             for member in members:
                 yield from walk_type(member)
-        case IfType(condition, when_true, when_false):
-            yield from _walk_predicate_types(condition)
-            yield from walk_type(when_true)
-            yield from walk_type(when_false)
         case MapType(subject, cases, default):
             yield from walk_type(subject)
             for case in cases:
-                yield from walk_type(case.input_type)
+                if is_predicate(case.test):
+                    yield from _walk_predicate_types(case.test)
+                else:
+                    yield from walk_type(case.test)
                 yield from walk_type(case.output_type)
             yield from walk_type(default)
         case FieldType(name, value):

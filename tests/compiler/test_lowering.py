@@ -10,7 +10,6 @@ from typeforge.compiler.lowering import (
     EachType,
     EqualPredicate,
     FunctionDeclaration,
-    IfType,
     ImportFrom,
     LiteralType,
     LoweringErrorCode,
@@ -175,9 +174,14 @@ def test_lowers_literal_conditional_to_precise_and_conservative_overloads() -> N
                     Parameter("path", TypeName("str")),
                     Parameter("mode", mode),
                 ),
-                IfType(
-                    EqualPredicate(mode, LiteralType("text")),
-                    TypeName("str"),
+                MapType(
+                    mode,
+                    (
+                        MapCase(
+                            EqualPredicate(mode, LiteralType("text")),
+                            TypeName("str"),
+                        ),
+                    ),
                     TypeName("bytes"),
                 ),
                 ("M",),
@@ -205,9 +209,14 @@ def test_lowers_assignable_conditional_for_an_ordinary_type() -> None:
             FunctionDeclaration(
                 "normalize",
                 (Parameter("value", item),),
-                IfType(
-                    AssignablePredicate(item, TypeName("str")),
-                    TypeName("str"),
+                MapType(
+                    item,
+                    (
+                        MapCase(
+                            AssignablePredicate(item, TypeName("str")),
+                            TypeName("str"),
+                        ),
+                    ),
                     TypeName("bytes"),
                 ),
                 ("T",),
@@ -241,7 +250,11 @@ def test_lowers_any_and_not_predicates_in_stable_order() -> None:
             FunctionDeclaration(
                 "choose",
                 (Parameter("kind", item),),
-                IfType(choice, TypeName("str"), TypeName("bytes")),
+                MapType(
+                    item,
+                    (MapCase(choice, TypeName("str")),),
+                    TypeName("bytes"),
+                ),
                 ("T",),
             ),
         ),
@@ -267,9 +280,14 @@ def test_lowers_known_false_not_predicate_case() -> None:
             FunctionDeclaration(
                 "choose",
                 (Parameter("kind", item),),
-                IfType(
-                    NotPredicate(EqualPredicate(item, TypeName("bytes"))),
-                    TypeName("str"),
+                MapType(
+                    item,
+                    (
+                        MapCase(
+                            NotPredicate(EqualPredicate(item, TypeName("bytes"))),
+                            TypeName("str"),
+                        ),
+                    ),
                     TypeName("bytes"),
                 ),
                 ("T",),
@@ -303,7 +321,11 @@ def test_lowers_known_true_all_predicate_case() -> None:
             FunctionDeclaration(
                 "choose",
                 (Parameter("kind", item),),
-                IfType(condition, TypeName("str"), TypeName("bytes")),
+                MapType(
+                    item,
+                    (MapCase(condition, TypeName("str")),),
+                    TypeName("bytes"),
+                ),
                 ("T",),
             ),
         ),
@@ -329,9 +351,14 @@ def test_rejects_assignability_with_an_unrepresentable_controller_position() -> 
             FunctionDeclaration(
                 "normalize",
                 (Parameter("value", item),),
-                IfType(
-                    AssignablePredicate(TypeName("str"), item),
-                    TypeName("str"),
+                MapType(
+                    item,
+                    (
+                        MapCase(
+                            AssignablePredicate(TypeName("str"), item),
+                            TypeName("str"),
+                        ),
+                    ),
                     TypeName("bytes"),
                 ),
                 ("T",),
@@ -377,6 +404,40 @@ def test_lowers_finite_map_in_declared_case_order() -> None:
         "def serialize(value: bytes) -> str: ...\n"
         "@overload\n"
         "def serialize[T](value: T) -> float | str | T: ...\n"
+    )
+
+
+def test_predicate_and_pattern_cases_share_first_match_order() -> None:
+    item = TypeVariable("T")
+    mapping = MapType(
+        item,
+        (
+            MapCase(EqualPredicate(item, TypeName("int")), TypeName("str")),
+            MapCase(TypeName("int"), TypeName("bytes")),
+        ),
+        TypeName("float"),
+    )
+    module = StubModule(
+        "chooser",
+        (
+            FunctionDeclaration(
+                "choose",
+                (Parameter("value", item),),
+                mapping,
+                ("T",),
+            ),
+        ),
+    )
+
+    lowered = lower_variadic_module(module, ArityFrontier())
+
+    assert isinstance(lowered, Success)
+    assert emit_stub_module(lowered.unwrap()) == Success(
+        "from typing import overload\n\n"
+        "@overload\n"
+        "def choose(value: int) -> str: ...\n"
+        "@overload\n"
+        "def choose[T](value: T) -> str | bytes | float: ...\n"
     )
 
 

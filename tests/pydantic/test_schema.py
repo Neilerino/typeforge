@@ -3,7 +3,7 @@ from typing import Annotated
 import pytest
 
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
-from typeforge import All, Any, Assignable, Case, Default, Equal, If, Map, Not
+from typeforge import All, Any, Assignable, Case, Default, Equal, Map, Not
 from typeforge.pydantic import Schema
 
 
@@ -18,7 +18,7 @@ def test_schema_is_not_a_value_wrapper() -> None:
 
 def test_schema_works_as_base_model_field() -> None:
     class Model(BaseModel):
-        value: Schema[If[Equal[int, int], int, bytes]]
+        value: Schema[Map[int, Case[Equal[int, int], int], Default[bytes]]]
 
     model = Model(value="3")
 
@@ -37,14 +37,17 @@ def test_schema_preserves_ordinary_pydantic_metadata() -> None:
 
 def test_schema_time_conditions_compose() -> None:
     type Selected = Schema[
-        If[
-            All[
-                Equal[int, int],
-                Assignable[int, object],
-                Not[Any[Equal[int, str], Equal[int, bytes]]],
+        Map[
+            int,
+            Case[
+                All[
+                    Equal[int, int],
+                    Assignable[int, object],
+                    Not[Any[Equal[int, str], Equal[int, bytes]]],
+                ],
+                list[int],
             ],
-            list[int],
-            dict[str, int],
+            Default[dict[str, int]],
         ]
     ]
     adapter = TypeAdapter(Selected)
@@ -90,7 +93,9 @@ def test_schema_time_map_without_a_match_resolves_to_never() -> None:
 
 
 def test_schema_time_resolution_emits_no_python_validator() -> None:
-    adapter = TypeAdapter(Schema[If[Equal[int, int], list[int], bytes]])
+    adapter = TypeAdapter(
+        Schema[Map[int, Case[Equal[int, int], list[int]], Default[bytes]]]
+    )
 
     def contains_function_schema(value: object) -> bool:
         if isinstance(value, dict):

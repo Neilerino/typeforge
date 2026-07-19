@@ -1,7 +1,19 @@
 import pytest
 
 from pydantic import TypeAdapter
-from typeforge import All, Any, Case, Each, Equal, Field, If, Key, Map, MapFields, Value
+from typeforge import (
+    All,
+    Any,
+    Case,
+    Default,
+    Each,
+    Equal,
+    Field,
+    Key,
+    Map,
+    MapFields,
+    Value,
+)
 from typeforge.pydantic import Input, Schema
 
 
@@ -14,15 +26,27 @@ def test_unbound_field_placeholders_fail_during_schema_generation() -> None:
 
 def test_nested_schema_failure_preserves_the_original_issue() -> None:
     with pytest.raises(Exception, match=r"unbound_key.*Key is only valid"):
-        TypeAdapter(Schema[If[Equal[Key, Key], int, str]])
+        TypeAdapter(Schema[Map[int, Case[Equal[Key, Key], int], Default[str]]])
 
 
 def test_schema_conditions_short_circuit_nested_failures() -> None:
     all_adapter = TypeAdapter(
-        Schema[If[All[Equal[int, str], Equal[Key, Key]], bytes, int]]
+        Schema[
+            Map[
+                int,
+                Case[All[Equal[int, str], Equal[Key, Key]], bytes],
+                Default[int],
+            ]
+        ]
     )
     any_adapter = TypeAdapter(
-        Schema[If[Any[Equal[int, int], Equal[Key, Key]], int, bytes]]
+        Schema[
+            Map[
+                int,
+                Case[Any[Equal[int, int], Equal[Key, Key]], int],
+                Default[bytes],
+            ]
+        ]
     )
 
     assert all_adapter.validate_python("3") == 3
@@ -72,9 +96,11 @@ def test_value_time_map_rejects_undefined_generic_patterns() -> None:
 
 
 def test_recursive_typeforge_alias_fails_instead_of_delegating_inert_markers() -> None:
-    from typeforge import Equal, If
-
-    type Recursive = If[Equal[int, int], int | list[Recursive], bytes]
+    type Recursive = Map[
+        int,
+        Case[Equal[int, int], int | list[Recursive]],
+        Default[bytes],
+    ]
 
     with pytest.raises(Exception, match=r"alias_cycle.*recursive aliases"):
         TypeAdapter(Schema[Recursive])

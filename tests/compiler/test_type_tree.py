@@ -2,7 +2,6 @@ from typeforge.compiler._type_tree import rewrite_type, walk_type
 from typeforge.compiler.lowering import (
     AllPredicate,
     EqualPredicate,
-    IfType,
     MapCase,
     MapType,
     NotPredicate,
@@ -31,17 +30,24 @@ def test_rewrite_is_top_down_and_does_not_rewrite_replacements() -> None:
 
 
 def test_rewrite_and_walk_include_predicate_and_map_operands() -> None:
-    expression = IfType(
-        AllPredicate(
-            (
-                EqualPredicate(TypeVariable("T"), TypeName("int")),
-                NotPredicate(EqualPredicate(TypeName("str"), TypeVariable("T"))),
-            )
-        ),
-        MapType(
-            TypeVariable("T"),
-            (MapCase(TypeName("int"), TypeVariable("T")),),
-            TypeVariable("T"),
+    expression = MapType(
+        TypeVariable("T"),
+        (
+            MapCase(
+                AllPredicate(
+                    (
+                        EqualPredicate(TypeVariable("T"), TypeName("int")),
+                        NotPredicate(
+                            EqualPredicate(TypeName("str"), TypeVariable("T"))
+                        ),
+                    )
+                ),
+                MapType(
+                    TypeVariable("T"),
+                    (MapCase(TypeName("int"), TypeVariable("T")),),
+                    TypeVariable("T"),
+                ),
+            ),
         ),
         TypeVariable("T"),
     )
@@ -52,4 +58,4 @@ def test_rewrite_and_walk_include_predicate_and_map_operands() -> None:
     )
 
     assert TypeVariable("T") not in tuple(walk_type(rewritten))
-    assert sum(item == TypeName("bytes") for item in walk_type(rewritten)) == 6
+    assert sum(item == TypeName("bytes") for item in walk_type(rewritten)) == 7

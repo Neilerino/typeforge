@@ -58,7 +58,8 @@ def test_field_maps_can_drop_fields_and_change_modifiers(tmp_path: Path) -> None
         """
 from typing import Literal, TypedDict
 from typeforge import (
-    Drop, Equal, If, Key, MapFields, OptionalField, ReadonlyField, Value
+    Case, Default, Drop, Equal, Key, Map, MapFields, OptionalField,
+    ReadonlyField, Value
 )
 
 class Credentials(TypedDict):
@@ -68,14 +69,14 @@ class Credentials(TypedDict):
 
 type Public[T] = MapFields[
     T,
-    If[
-        Equal[Key, Literal[\"password\"]],
-        Drop,
-        If[
+    Map[
+        Key,
+        Case[Equal[Key, Literal[\"password\"]], Drop],
+        Case[
             Equal[Key, Literal[\"token\"]],
             ReadonlyField[Key, Value],
-            OptionalField[Key, Value],
         ],
+        Default[OptionalField[Key, Value]],
     ],
 ]
 

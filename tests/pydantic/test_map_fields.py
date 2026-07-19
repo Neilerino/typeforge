@@ -10,7 +10,6 @@ from typeforge import (
     Drop,
     Equal,
     Field,
-    If,
     Key,
     Map,
     MapFields,
@@ -29,12 +28,14 @@ class User(TypedDict):
 
 type Public[T] = MapFields[
     T,
-    If[
-        Equal[Key, Literal["password"]],
-        Drop,
-        Field[
-            Key,
-            Map[Value, Case[int, str], Default[Value]],
+    Map[
+        Key,
+        Case[Equal[Key, Literal["password"]], Drop],
+        Default[
+            Field[
+                Key,
+                Map[Value, Case[int, str], Default[Value]],
+            ]
         ],
     ],
 ]
@@ -64,10 +65,13 @@ def test_map_fields_preserves_nested_error_location() -> None:
 def test_map_fields_can_rename_and_make_fields_optional() -> None:
     type Renamed[T] = MapFields[
         T,
-        If[
-            Equal[Key, Literal["name"]],
-            OptionalField[Literal["display_name"], Value],
-            Drop,
+        Map[
+            Key,
+            Case[
+                Equal[Key, Literal["name"]],
+                OptionalField[Literal["display_name"], Value],
+            ],
+            Default[Drop],
         ],
     ]
     adapter = TypeAdapter(Schema[Renamed[User]])

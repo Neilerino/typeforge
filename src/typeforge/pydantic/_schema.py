@@ -41,7 +41,6 @@ from typeforge import (
     Each,
     Equal,
     Field,
-    If,
     Key,
     Map,
     MapFields,
@@ -230,15 +229,8 @@ class NotExpression:
 
 
 @dataclass(frozen=True, slots=True)
-class IfExpression:
-    condition: RuntimeExpression
-    when_true: RuntimeExpression
-    when_false: RuntimeExpression
-
-
-@dataclass(frozen=True, slots=True)
 class CaseExpression:
-    input_type: RuntimeExpression
+    test: RuntimeExpression
     output_type: RuntimeExpression
 
 
@@ -304,7 +296,6 @@ type RuntimeExpression = (
     | AllExpression
     | AnyExpression
     | NotExpression
-    | IfExpression
     | CaseExpression
     | DefaultExpression
     | MapExpression
@@ -370,7 +361,7 @@ def _map_expression(arguments: tuple[RuntimeExpression, ...]) -> RuntimeExpressi
             )
         return MalformedMarkerExpression(
             "Map",
-            "Map entries must be Case[Input, Output] or Default[Output]",
+            "Map entries must be Case[Test, Output] or Default[Output]",
         )
     return MapExpression(arguments[0], tuple(cases), default)
 
@@ -396,7 +387,6 @@ _MARKER_FACTORIES: dict[
     Field: lambda arguments: _fixed_arity(
         "Field", arguments, 2, "two", FieldExpression
     ),
-    If: lambda arguments: _fixed_arity("If", arguments, 3, "three", IfExpression),
     Key: lambda arguments: _fixed_arity("Key", arguments, 0, "no", KeyExpression),
     Map: _map_expression,
     MapFields: lambda arguments: _fixed_arity(
@@ -446,7 +436,7 @@ class DroppedValue:
 
 @dataclass(frozen=True, slots=True)
 class RuntimeCase:
-    pattern: RuntimeExpression
+    test: RuntimeExpression
     output: RuntimeExpression
     tag: str
 
@@ -458,15 +448,7 @@ class RuntimeMapPlan:
     context: EvaluationContext
 
 
-@dataclass(frozen=True, slots=True)
-class RuntimeIfPlan:
-    condition: RuntimeExpression
-    when_true: RuntimeExpression
-    when_false: RuntimeExpression
-    context: EvaluationContext
-
-
-type EvaluatedType = ResolvedType | RecordShape | RuntimeMapPlan | RuntimeIfPlan
+type EvaluatedType = ResolvedType | RecordShape | RuntimeMapPlan
 type EvaluationValue = (
     EvaluatedType | bool | FieldNameValue | RecordField | DroppedValue
 )
@@ -857,27 +839,6 @@ def _(
 @evaluate_runtime_expression.register
 @safe(exceptions=(SchemaIssue,))
 def _(
-    expression: IfExpression,
-    context: EvaluationContext = _EMPTY_EVALUATION_CONTEXT,
-) -> EvaluationValue:
-    if _contains_input(expression.condition) and context.input_type is None:
-        return RuntimeIfPlan(
-            expression.condition,
-            expression.when_true,
-            expression.when_false,
-            context,
-        )
-    branch = (
-        expression.when_true
-        if _evaluate_condition(expression.condition, context)
-        else expression.when_false
-    )
-    return ok(evaluate_runtime_expression(branch, context))
-
-
-@evaluate_runtime_expression.register
-@safe(exceptions=(SchemaIssue,))
-def _(
     expression: CaseExpression | DefaultExpression,
     context: EvaluationContext = _EMPTY_EVALUATION_CONTEXT,
 ) -> EvaluationValue:
@@ -918,49 +879,79 @@ def _(
     context: EvaluationContext = _EMPTY_EVALUATION_CONTEXT,
 ) -> EvaluationValue:
     cases = tuple(
-        RuntimeCase(case.input_type, case.output_type, f"case-{index}")
+        RuntimeCase(case.test, case.output_type, f"case-{index}")
         for index, case in enumerate(expression.cases)
     )
     if _contains_input(expression.subject) and context.input_type is None:
         return RuntimeMapPlan(cases, expression.default, context)
-    subject_value = _evaluate_type(expression.subject, context)
-    if not isinstance(subject_value, ResolvedType):
-        raise ExpectedTypeError(
-            "evaluation",
-            "Map",
-            "Map subject must resolve to a concrete type",
-        )
-    members = _union_members(subject_value.value)
-    outputs: list[object] = []
+    subject_value = ok(evaluate_runtime_expression(expression.subject, context))
+    members: tuple[EvaluationValue, ...] = (
+        tuple(ResolvedType(member) for member in _union_members(subject_value.value))
+        if isinstance(subject_value, ResolvedType)
+        else (subject_value,)
+    )
+    outputs: list[EvaluationValue] = []
     for member in members:
         output = _map_member(member, cases, expression.default, context)
-        if not isinstance(output, ResolvedType):
-            raise ExpectedTypeError(
-                "evaluation",
-                "Map",
-                "Map output must resolve to a concrete type",
+        outputs.append(output)
+    if len(outputs) == 1:
+        return outputs[0]
+    if all(isinstance(output, ResolvedType) for output in outputs):
+        return ResolvedType(
+            _union_type(
+                tuple(
+                    output.value
+                    for output in outputs
+                    if isinstance(output, ResolvedType)
+                )
             )
-        outputs.append(output.value)
-    return ResolvedType(_union_type(tuple(outputs)))
+        )
+    raise ExpectedTypeError(
+        "evaluation",
+        "Map",
+        "Map outputs for a union subject must resolve to concrete types",
+    )
 
 
 def _map_member(
-    subject: object,
+    subject: EvaluationValue,
     cases: tuple[RuntimeCase, ...],
     default: RuntimeExpression | None,
     context: EvaluationContext,
-) -> EvaluatedType:
+) -> EvaluationValue:
     for case in cases:
-        matched, captured = _match_pattern(case.pattern, subject, None, context)
+        if _is_condition_expression(case.test):
+            matched = _evaluate_condition(case.test, context)
+            captured = None
+        elif isinstance(subject, ResolvedType):
+            matched, captured = _match_pattern(case.test, subject.value, None, context)
+        else:
+            matched = ok(evaluate_runtime_expression(case.test, context)) == subject
+            captured = None
         if not matched:
             continue
-        return _evaluate_type(
-            case.output,
-            replace(context, capture=captured),
+        return ok(
+            evaluate_runtime_expression(
+                case.output,
+                replace(context, capture=captured),
+            )
         )
     if default is None:
         return ResolvedType(Never)
-    return _evaluate_type(default, context)
+    return ok(evaluate_runtime_expression(default, context))
+
+
+def _is_condition_expression(
+    expression: RuntimeExpression,
+) -> bool:
+    return isinstance(
+        expression,
+        EqualExpression
+        | AssignableExpression
+        | AllExpression
+        | AnyExpression
+        | NotExpression,
+    )
 
 
 def _match_pattern(
@@ -1187,10 +1178,12 @@ def _(
     choices: dict[str, CoreSchema] = {}
     outputs: dict[str, EvaluatedType] = {}
     for case in plan.cases:
-        if _contains_generic_runtime_pattern(case.pattern):
+        if not _is_condition_expression(
+            case.test
+        ) and _contains_generic_runtime_pattern(case.test):
             raise UnsupportedRelationshipError(
                 "planning",
-                repr(case.pattern),
+                repr(case.test),
                 "value-time generic Map patterns are not supported; "
                 "match a concrete runtime type instead",
             )
@@ -1205,7 +1198,19 @@ def _(
     def select_input(value: object) -> str | None:
         value_type = type(value)
         for case in plan.cases:
-            matched = _match_runtime_pattern(case.pattern, value_type, value)
+            if _is_condition_expression(case.test):
+                try:
+                    matched = _evaluate_condition(
+                        case.test,
+                        replace(
+                            plan.context,
+                            input_type=ResolvedType(value_type),
+                        ),
+                    )
+                except SchemaIssue:
+                    matched = False
+            else:
+                matched = _match_runtime_pattern(case.test, value_type, value)
             if matched:
                 return case.tag
         return "default" if plan.default is not None else None
@@ -1216,39 +1221,6 @@ def _(
         select_input,
         "typeforge_map_no_match",
         "Input did not match any Typeforge Map case",
-    )
-
-
-@emit_core_schema.register
-@safe(exceptions=(SchemaIssue,))
-def _(
-    plan: RuntimeIfPlan,
-    handler: GetCoreSchemaHandler,
-    expression: str,
-) -> CoreSchema:
-    branches: dict[str, CoreSchema] = {}
-    outputs: dict[str, EvaluatedType] = {}
-    for tag, branch in (("true", plan.when_true), ("false", plan.when_false)):
-        evaluated = _evaluate_type(branch, plan.context)
-        branches[tag] = ok(emit_core_schema(evaluated, handler, expression))
-        outputs[tag] = evaluated
-
-    def select_input(value: object) -> str | None:
-        try:
-            condition = _evaluate_condition(
-                plan.condition,
-                replace(plan.context, input_type=ResolvedType(type(value))),
-            )
-        except SchemaIssue:
-            return None
-        return "true" if condition else "false"
-
-    return _dispatch_schema(
-        branches,
-        outputs,
-        select_input,
-        "typeforge_if_condition",
-        "Input condition could not be evaluated",
     )
 
 
@@ -1398,7 +1370,7 @@ def _evaluate_type(
     context: EvaluationContext,
 ) -> EvaluatedType:
     value = ok(evaluate_runtime_expression(expression, context))
-    if isinstance(value, ResolvedType | RecordShape | RuntimeMapPlan | RuntimeIfPlan):
+    if isinstance(value, ResolvedType | RecordShape | RuntimeMapPlan):
         return value
     raise ExpectedTypeError(
         "evaluation",
@@ -1570,12 +1542,8 @@ def _contains_input(expression: RuntimeExpression) -> bool:
             return any(_contains_input(condition) for condition in conditions)
         case NotExpression(condition):
             return _contains_input(condition)
-        case IfExpression(condition, when_true, when_false):
-            return any(
-                _contains_input(item) for item in (condition, when_true, when_false)
-            )
-        case CaseExpression(input_type, output_type):
-            return _contains_input(input_type) or _contains_input(output_type)
+        case CaseExpression(test, output_type):
+            return _contains_input(test) or _contains_input(output_type)
         case DefaultExpression(output_type):
             return _contains_input(output_type)
         case MapExpression(subject, cases, default):

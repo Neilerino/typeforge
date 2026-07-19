@@ -32,27 +32,17 @@ type Collect[T] = Annotated[
     ),
 ]
 
-type If[Condition, Then, Else] = Annotated[
-    Then | Else,
-    Doc(
-        "Selects `Then` when a Typeforge condition is true and `Else` when it is "
-        "false. Conditions are built with `Equal`, `Assignable`, `All`, `Any`, "
-        "and `Not`; within `MapFields` they may also inspect `Key` and `Value`. "
-        "The portable fallback is the union of both branches.\n\n"
-        "```python\n"
-        "def decode[T](value: T) -> If[Equal[T, bytes], str, T]: ...\n"
-        "```"
-    ),
-]
 type Assignable[Source, Target] = Annotated[
     bool,
     Doc(
         "Tests whether every value described by `Source` can be assigned to "
         "`Target`. This is a static subtype-style relationship, not a runtime "
-        "`isinstance` check. Use it as a condition inside `If`, `All`, `Any`, or "
-        "`Not`.\n\n"
+        "`isinstance` check. Use it as a `Case` test, or combine it with `All`, "
+        "`Any`, and `Not`.\n\n"
         "```python\n"
-        "type TextResult[T] = If[Assignable[T, str], str, bytes]\n"
+        "type TextResult[T] = Map[\n"
+        "    T, Case[Assignable[T, str], str], Default[bytes]\n"
+        "]\n"
         "```"
     ),
 ]
@@ -61,9 +51,12 @@ type Equal[Left, Right] = Annotated[
     Doc(
         "Tests whether `Left` and `Right` represent the same static type. Unlike "
         "`Assignable`, equality is symmetric and does not accept a proper subtype "
-        "as a match. Use it as a condition inside `If`, `All`, `Any`, or `Not`.\n\n"
+        "as a match. Use it as a `Case` test, or combine it with `All`, `Any`, "
+        "and `Not`.\n\n"
         "```python\n"
-        "type BytesResult[T] = If[Equal[T, bytes], str, T]\n"
+        "type BytesResult[T] = Map[\n"
+        "    T, Case[Equal[T, bytes], str], Default[T]\n"
+        "]\n"
         "```"
     ),
 ]
@@ -74,10 +67,13 @@ type All[*Conditions] = Annotated[
         "every supplied condition is true, and it can be nested with `Any` and "
         "`Not` to build a compound predicate.\n\n"
         "```python\n"
-        "type TextResult[T] = If[\n"
-        "    All[Assignable[T, str], Not[Equal[T, LiteralString]]],\n"
-        "    str,\n"
-        "    bytes,\n"
+        "type TextResult[T] = Map[\n"
+        "    T,\n"
+        "    Case[\n"
+        "        All[Assignable[T, str], Not[Equal[T, LiteralString]]],\n"
+        "        str,\n"
+        "    ],\n"
+        "    Default[bytes],\n"
         "]\n"
         "```"
     ),
@@ -89,10 +85,10 @@ type Any[*Conditions] = Annotated[
         "least one supplied condition is true, and it can be nested with `All` "
         "and `Not` to build a compound predicate.\n\n"
         "```python\n"
-        "type TextResult[T] = If[\n"
-        "    Any[Equal[T, str], Equal[T, bytes]],\n"
-        "    str,\n"
+        "type TextResult[T] = Map[\n"
         "    T,\n"
+        "    Case[Any[Equal[T, str], Equal[T, bytes]], str],\n"
+        "    Default[T],\n"
         "]\n"
         "```"
     ),
@@ -103,22 +99,26 @@ type Not[Condition] = Annotated[
         "Negates one Typeforge condition. It is useful for excluding a specific "
         "case from a broader `Assignable`, `All`, or `Any` predicate.\n\n"
         "```python\n"
-        "type TextResult[T] = If[\n"
-        "    All[Assignable[T, str | bytes], Not[Equal[T, bytes]]],\n"
-        "    str,\n"
+        "type TextResult[T] = Map[\n"
         "    T,\n"
+        "    Case[\n"
+        "        All[Assignable[T, str | bytes], Not[Equal[T, bytes]]],\n"
+        "        str,\n"
+        "    ],\n"
+        "    Default[T],\n"
         "]\n"
         "```"
     ),
 ]
 
-type Case[Input, Output] = Annotated[
+type Case[Test, Output] = Annotated[
     Output,
     Doc(
-        "Defines one input-to-output branch inside `Map`. Cases are tested in "
-        "declaration order and the first exact match wins. A structural input such "
-        "as `Option[Value]` can capture its nested type and reuse that `Value` in "
-        "the output.\n\n"
+        "Defines one ordered branch inside `Map`. A test may be an exact or "
+        "structural type pattern, or a predicate built with `Equal`, `Assignable`, "
+        "`All`, `Any`, and `Not`; the first matching or true case wins. A structural "
+        "pattern such as `Option[Value]` can capture its nested type and reuse that "
+        "`Value` in the output.\n\n"
         "```python\n"
         "type QueryResult[T] = Map[\n"
         "    T,\n"
@@ -146,9 +146,12 @@ type Map[Subject, *Cases] = Annotated[
     object,
     Doc(
         "Transforms `Subject` through an ordered sequence of `Case` branches. "
-        "The first exact or structural match supplies the output; `Default` is "
-        "used when none match, and an omitted default produces `Never`. At a "
-        "callable boundary, Typeforge lowers finite cases into portable overloads.\n\n"
+        "Each case may test an exact or structural pattern or a Typeforge boolean "
+        "predicate. The first matching or true case supplies the output; `Default` "
+        "is used when none match, and an omitted default produces `Never`. At a "
+        "callable boundary, Typeforge lowers representable cases into portable "
+        "overloads; without Typeforge processing, `Map` safely falls back to "
+        "`object`.\n\n"
         "```python\n"
         "def serialize[T](value: T) -> Map[\n"
         "    T,\n"
@@ -225,15 +228,15 @@ type Drop = Annotated[
     Never,
     Doc(
         "Removes the current field from a `MapFields` result. `Drop` is commonly "
-        "returned conditionally from `If`; using it as the entire transform drops "
-        "every field.\n\n"
+        "returned conditionally from a predicate `Case`; using it as the entire "
+        "transform drops every field.\n\n"
         "```python\n"
         "type Public[T] = MapFields[\n"
         "    T,\n"
-        "    If[\n"
-        '        Equal[Key, Literal["password"]],\n'
-        "        Drop,\n"
-        "        Field[Key, Value],\n"
+        "    Map[\n"
+        "        Key,\n"
+        '        Case[Equal[Key, Literal["password"]], Drop],\n'
+        "        Default[Field[Key, Value]],\n"
         "    ],\n"
         "]\n"
         "```"
@@ -249,7 +252,8 @@ type Key = Annotated[
         "```python\n"
         "type WithoutPassword[T] = MapFields[\n"
         "    T,\n"
-        '    If[Equal[Key, Literal["password"]], Drop, Field[Key, Value]],\n'
+        '    Map[Key, Case[Literal["password"], Drop], '
+        "Default[Field[Key, Value]]],\n"
         "]\n"
         "```"
     ),
