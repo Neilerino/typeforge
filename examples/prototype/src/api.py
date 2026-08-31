@@ -8,7 +8,6 @@ from typeforge import (
     Each,
     Equal,
     Field,
-    If,
     Key,
     Map,
     MapFields,
@@ -20,7 +19,13 @@ def collect[T](*values: Each[T]) -> Collect[T]:
     return values
 
 
-def read[M](mode: M) -> If[Equal[M, Literal["text"]], str, bytes]:
+def read[M](
+    mode: M,
+) -> Map[
+    M,
+    Case[Equal[M, Literal["text"]], str],
+    Default[bytes],
+]:
     raise NotImplementedError
 
 

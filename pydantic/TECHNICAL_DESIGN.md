@@ -15,7 +15,7 @@ logic that Pydantic can compile.
 from typing import Literal, TypedDict
 
 from pydantic import BaseModel
-from typeforge import Drop, Equal, Field, If, Key, MapFields, Value
+from typeforge import Case, Default, Drop, Equal, Field, Key, Map, MapFields, Value
 from typeforge.pydantic import Schema
 
 
@@ -27,10 +27,10 @@ class User(TypedDict):
 
 type Public[T] = MapFields[
     T,
-    If[
-        Equal[Key, Literal["password"]],
-        Drop,
-        Field[Key, Value],
+    Map[
+        Key,
+        Case[Equal[Key, Literal["password"]], Drop],
+        Default[Field[Key, Value]],
     ],
 ]
 
@@ -61,11 +61,11 @@ The public boundary name is `Schema`. Value-time execution uses the explicit
 The initial integration implements:
 
 - the optional `typeforge.pydantic` package and `Schema[T]` boundary;
-- schema-time `Equal`, `Assignable`, `All`, `Any`, `Not`, `If`, and `Map`;
+- schema-time `Equal`, `Assignable`, `All`, `Any`, `Not`, and `Map`;
 - structural schema-time `Map` patterns with `Value` capture;
 - `TypedDict` `MapFields`, including renaming, optional, readonly, and dropped
   fields;
-- strict raw-input dispatch with `Input` for value-time `Map` and `If`;
+- strict raw-input dispatch with `Input` for value-time `Map`;
 - Pydantic validation, serialization, JSON Schema, stable synthesized record
   definitions, and `Doc` descriptions;
 - static compiler and overlay erasure of `Schema`, including value-time output
@@ -115,7 +115,7 @@ Current follow-ups are intentionally explicit:
 
 ## Terminology
 
-- **Type expression**: A Typeforge expression such as `Map[...]`, `If[...]`, or
+- **Type expression**: A Typeforge expression such as `Map[...]` or
   `MapFields[...]`.
 - **Schema boundary**: The outer `Schema[...]` annotation that opts an expression
   into Pydantic integration.
@@ -376,21 +376,6 @@ metadata.
 The integration should construct core schemas directly only for shapes that do
 not already exist as a concrete Python type, such as a `MapFields` result.
 
-### `If`
-
-When its condition is schema-time resolvable, `If` emits only the selected
-branch's schema.
-
-When its condition depends on input, the planner may emit:
-
-- a native union if normal Pydantic branch selection has the same semantics;
-- a tagged union with a callable discriminator returning a boolean branch tag;
-- a wrap validator for conditions that require validation state or a
-  transformation before selection.
-
-Both branch schemas should still be built by the handler or native emitter, so
-only the decision logic runs in Python.
-
 ### `Map`
 
 When its subject is concrete, `Map` evaluates its cases once and emits the
@@ -594,7 +579,7 @@ code belongs behind a small Typeforge-owned emitter interface.
 - Runtime parsing of every Typeforge marker.
 - PEP 695 generic alias expansion and substitution.
 - Nested aliases, `Annotated` metadata, forward references, and recursion.
-- Shared evaluator behavior for `Equal`, `Assignable`, `If`, and `Map`.
+- Shared evaluator behavior for `Equal`, `Assignable`, and `Map`.
 - Execution-plan selection independent of Pydantic.
 - Typed error values for invalid and unsupported expressions.
 
@@ -630,7 +615,7 @@ code belongs behind a small Typeforge-owned emitter interface.
 1. Prototype `Schema[...]` with PEP 695 aliases on the supported Python and
    Pydantic versions.
 2. Extract or introduce the shared semantic expression model and evaluator.
-3. Implement the runtime typing frontend for schema-time `If` and `Map`.
+3. Implement the runtime typing frontend for schema-time `Map`.
 4. Emit ordinary resolved types through the Pydantic handler.
 5. Add static compiler handling that erases `Schema[...]`.
 6. Implement the `TypedDict` `MapFields` adapter.
