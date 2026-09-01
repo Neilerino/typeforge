@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Never
+from typing import Literal, Never
 
 import pytest
 from returns.result import Failure, Result, Success
@@ -20,8 +20,16 @@ from typeforge.semantics import (
     CaseExpression,
     DropExpression,
     EqualExpression,
+    EvaluationContext,
+    ExpectedConditionSemanticError,
+    ExpectedFieldNameSemanticError,
+    ExpectedFieldSemanticError,
+    ExpectedRecordSemanticError,
+    ExpectedTypeSemanticError,
+    Expression,
     FieldExpression,
     FieldName,
+    InputReference,
     KeyReference,
     MapExpression,
     MapFieldsExpression,
@@ -32,9 +40,13 @@ from typeforge.semantics import (
     RecordField,
     RecordShape,
     ResolvedType,
+    SemanticAdapterError,
     SemanticIssue,
     SemanticIssueCode,
     TypeReference,
+    UnboundInputSemanticError,
+    UnboundKeySemanticError,
+    UnboundValueSemanticError,
     UnionExpression,
     ValueReference,
     evaluate,
@@ -57,6 +69,11 @@ class NameTypeSystem:
     def assignable(self, source: str, target: str) -> Result[bool, SemanticIssue]:
         return Success(source == target or target == "object")
 
+    def union_members(self, value: str) -> Result[tuple[str, ...], SemanticIssue]:
+        if value == "Never":
+            return Success(())
+        return Success(tuple(value.split(" | ")))
+
     def union(self, members: tuple[str, ...]) -> Result[str, SemanticIssue]:
         return Success(" | ".join(dict.fromkeys(members)) or "Never")
 
@@ -65,10 +82,7 @@ class NameTypeSystem:
         if shape is not None:
             return Success(shape)
         return Failure(
-            SemanticIssue(
-                SemanticIssueCode.EXPECTED_RECORD,
-                f"{value} is not a supported record",
-            )
+            ExpectedRecordSemanticError(f"{value} is not a supported record")
         )
 
 
@@ -81,6 +95,13 @@ class PythonTypeSystem:
             return Success(issubclass(source, target))
         return Success(source == target)
 
+    def union_members(self, value: object) -> Result[tuple[object, ...], SemanticIssue]:
+        if value is Never:
+            return Success(())
+        if isinstance(value, tuple):
+            return Success(value)
+        return Success((value,))
+
     def union(self, members: tuple[object, ...]) -> Result[object, SemanticIssue]:
         unique_members = tuple(dict.fromkeys(members))
         if not unique_members:
@@ -91,11 +112,231 @@ class PythonTypeSystem:
 
     def record(self, value: object) -> Result[RecordShape[object], SemanticIssue]:
         return Failure(
-            SemanticIssue(
-                SemanticIssueCode.EXPECTED_RECORD,
-                f"{value!r} is not a supported record",
-            )
+            ExpectedRecordSemanticError(f"{value!r} is not a supported record")
         )
+
+
+type AdapterOperation = Literal[
+    "equal",
+    "assignable",
+    "union_members",
+    "union",
+    "record",
+]
+
+
+class FailingNameTypeSystem(NameTypeSystem):
+    def __init__(
+        self,
+        operation: AdapterOperation,
+        issue: SemanticIssue,
+    ) -> None:
+        super().__init__()
+        self._operation = operation
+        self._issue = issue
+
+    def equal(self, left: str, right: str) -> Result[bool, SemanticIssue]:
+        if self._operation == "equal":
+            return Failure(self._issue)
+        return super().equal(left, right)
+
+    def assignable(self, source: str, target: str) -> Result[bool, SemanticIssue]:
+        if self._operation == "assignable":
+            return Failure(self._issue)
+        return super().assignable(source, target)
+
+    def union_members(self, value: str) -> Result[tuple[str, ...], SemanticIssue]:
+        if self._operation == "union_members":
+            return Failure(self._issue)
+        return super().union_members(value)
+
+    def union(self, members: tuple[str, ...]) -> Result[str, SemanticIssue]:
+        if self._operation == "union":
+            return Failure(self._issue)
+        return super().union(members)
+
+    def record(self, value: str) -> Result[RecordShape[str], SemanticIssue]:
+        if self._operation == "record":
+            return Failure(self._issue)
+        return super().record(value)
+
+
+@MIGRATION_INCOMPLETE
+@pytest.mark.parametrize(
+    ("operation", "expression"),
+    (
+        (
+            "equal",
+            EqualExpression(TypeReference("int"), TypeReference("str")),
+        ),
+        (
+            "assignable",
+            AssignableExpression(TypeReference("int"), TypeReference("object")),
+        ),
+        (
+            "union_members",
+            MapExpression(
+                TypeReference("int"),
+                (CaseExpression(TypeReference("int"), TypeReference("str")),),
+            ),
+        ),
+        (
+            "union",
+            UnionExpression((TypeReference("int"), TypeReference("str"))),
+        ),
+        (
+            "record",
+            MapFieldsExpression(
+                TypeReference("Payload"),
+                FieldExpression(KeyReference(), ValueReference()),
+            ),
+        ),
+    ),
+)
+def test_adapter_failures_propagate_unchanged(
+    operation: AdapterOperation,
+    expression: Expression[str],
+) -> None:
+    """The semantic seam preserves a concrete adapter's modeled failure."""
+    issue = SemanticAdapterError(f"{operation} is unavailable")
+
+    result = evaluate(expression, FailingNameTypeSystem(operation, issue))
+
+    assert isinstance(result, Failure)
+    assert result.failure() is issue
+
+
+@MIGRATION_INCOMPLETE
+@pytest.mark.parametrize(
+    ("expression", "issue"),
+    (
+        (
+            KeyReference(),
+            UnboundKeySemanticError("Key requires MapFields"),
+        ),
+        (
+            ValueReference(),
+            UnboundValueSemanticError(
+                "Value requires MapFields or a structural Map case"
+            ),
+        ),
+        (
+            InputReference(),
+            UnboundInputSemanticError("Input requires value-time evaluation"),
+        ),
+    ),
+)
+def test_unbound_context_references_return_specific_failures(
+    expression: Expression[str],
+    issue: SemanticIssue,
+) -> None:
+    """Contextual references fail with stable codes and authored vocabulary."""
+    assert evaluate(expression, NameTypeSystem()) == Failure(issue)
+
+
+@MIGRATION_INCOMPLETE
+@pytest.mark.parametrize(
+    ("expression", "issue"),
+    (
+        (
+            EqualExpression(TypeReference("int"), FieldName("name")),
+            ExpectedTypeSemanticError(
+                "Equal operands must both be types or both be field names"
+            ),
+        ),
+        (
+            AssignableExpression(FieldName("name"), TypeReference("object")),
+            ExpectedTypeSemanticError("Assignable operands must both be types"),
+        ),
+        (
+            AllExpression((TypeReference("int"),)),
+            ExpectedConditionSemanticError("condition must evaluate to bool"),
+        ),
+        (
+            FieldExpression(TypeReference("int"), TypeReference("str")),
+            ExpectedFieldNameSemanticError("field name must evaluate to FieldName"),
+        ),
+        (
+            FieldExpression[str](FieldName("name"), FieldName("value")),
+            ExpectedTypeSemanticError("field value must evaluate to a type"),
+        ),
+        (
+            UnionExpression((TypeReference("int"), FieldName("name"))),
+            ExpectedTypeSemanticError("union members must evaluate to types"),
+        ),
+    ),
+)
+def test_evaluation_roles_reject_incompatible_values(
+    expression: Expression[str],
+    issue: SemanticIssue,
+) -> None:
+    """Each expression accepts only the evaluation-value roles it declares."""
+    assert evaluate(expression, NameTypeSystem()) == Failure(issue)
+
+
+@MIGRATION_INCOMPLETE
+def test_map_fields_rejects_a_non_field_transform_result() -> None:
+    """MapFields accepts transformed fields or Drop, never a resolved type."""
+    payload = RecordShape(
+        RecordFamily.TYPED_DICT,
+        "Payload",
+        (RecordField("value", "int"),),
+    )
+
+    result = evaluate(
+        MapFieldsExpression(
+            TypeReference("Payload"),
+            ValueReference(),
+        ),
+        NameTypeSystem((("Payload", payload),)),
+    )
+
+    assert result == Failure(
+        ExpectedFieldSemanticError(
+            "MapFields transform must evaluate to a field or Drop"
+        )
+    )
+
+
+@MIGRATION_INCOMPLETE
+@pytest.mark.parametrize(
+    ("expression", "context"),
+    (
+        (
+            ValueReference(),
+            EvaluationContext[object](value=ResolvedType(None)),
+        ),
+        (
+            InputReference(),
+            EvaluationContext[object](input_type=ResolvedType(None)),
+        ),
+    ),
+)
+def test_none_is_a_bound_context_type(
+    expression: Expression[object],
+    context: EvaluationContext[object],
+) -> None:
+    """A resolved None is observable and does not take an unbound path."""
+    assert evaluate(expression, PythonTypeSystem(), context) == Success(
+        ResolvedType(None)
+    )
+
+
+@MIGRATION_INCOMPLETE
+def test_map_distributes_native_union_members_from_the_adapter() -> None:
+    """Union decomposition is native while ordered Map behavior stays shared."""
+    expression = MapExpression(
+        TypeReference("int | bytes | datetime"),
+        (
+            CaseExpression(TypeReference("int"), TypeReference("str")),
+            CaseExpression(TypeReference("bytes"), TypeReference("str")),
+        ),
+        TypeReference("datetime"),
+    )
+
+    assert evaluate(expression, NameTypeSystem()) == Success(
+        ResolvedType("str | datetime")
+    )
 
 
 @MIGRATION_INCOMPLETE
@@ -177,7 +418,7 @@ def test_map_fields_preserves_family_and_field_modifiers() -> None:
             RecordField("attempts", "int"),
         ),
     )
-    transform = MapExpression(
+    transform = MapExpression[str](
         KeyReference(),
         (
             CaseExpression(
@@ -262,7 +503,7 @@ def test_compiler_and_runtime_reject_duplicate_record_outputs(
     tmp_path: Path,
 ) -> None:
     """Static and runtime record adapters enforce the same invariants."""
-    from typing import Literal, TypedDict
+    from typing import TypedDict
 
     class Pair(TypedDict):
         left: int

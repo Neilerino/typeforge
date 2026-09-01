@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import ClassVar
 
 
 class SemanticIssueCode(StrEnum):
@@ -23,5 +24,54 @@ class SemanticIssueCode(StrEnum):
 class SemanticIssue(Exception):
     """An expected failure crossing the semantic evaluation seam."""
 
-    code: SemanticIssueCode
     message: str
+
+    code: ClassVar[SemanticIssueCode]
+
+
+class SemanticAdapterError(SemanticIssue):
+    code = SemanticIssueCode.ADAPTER
+
+
+class DuplicateFieldSemanticError(SemanticIssue):
+    code = SemanticIssueCode.DUPLICATE_FIELD
+
+
+class ExpectedConditionSemanticError(SemanticIssue):
+    code = SemanticIssueCode.EXPECTED_CONDITION
+
+
+class ExpectedFieldSemanticError(SemanticIssue):
+    code = SemanticIssueCode.EXPECTED_FIELD
+
+
+class ExpectedFieldNameSemanticError(SemanticIssue):
+    code = SemanticIssueCode.EXPECTED_FIELD_NAME
+
+
+class ExpectedRecordSemanticError(SemanticIssue):
+    code = SemanticIssueCode.EXPECTED_RECORD
+
+
+class ExpectedTypeSemanticError(SemanticIssue):
+    code = SemanticIssueCode.EXPECTED_TYPE
+
+
+class NoMatchSemanticError(SemanticIssue):
+    code = SemanticIssueCode.NO_MATCH
+
+
+class UnboundInputSemanticError(SemanticIssue):
+    code = SemanticIssueCode.UNBOUND_INPUT
+
+
+class UnboundKeySemanticError(SemanticIssue):
+    code = SemanticIssueCode.UNBOUND_KEY
+
+
+class UnboundValueSemanticError(SemanticIssue):
+    code = SemanticIssueCode.UNBOUND_VALUE
+
+
+class UnsupportedExpressionSemanticError(SemanticIssue):
+    code = SemanticIssueCode.UNSUPPORTED_EXPRESSION

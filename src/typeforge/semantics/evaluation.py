@@ -2,7 +2,10 @@
 
 from returns.result import Failure, Result, Success
 
-from typeforge.semantics.errors import SemanticIssue, SemanticIssueCode
+from typeforge.semantics.errors import (
+    SemanticIssue,
+    UnsupportedExpressionSemanticError,
+)
 from typeforge.semantics.model import (
     EvaluationContext,
     EvaluationValue,
@@ -23,8 +26,7 @@ def evaluate[T](
     if isinstance(expression, TypeReference):
         return Success(ResolvedType(expression.value))
     return Failure(
-        SemanticIssue(
-            SemanticIssueCode.UNSUPPORTED_EXPRESSION,
-            f"unsupported expression {type(expression).__name__}",
+        UnsupportedExpressionSemanticError(
+            f"unsupported expression {type(expression).__name__}"
         )
     )

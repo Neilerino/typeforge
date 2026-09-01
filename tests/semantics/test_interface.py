@@ -25,8 +25,13 @@ class NameTypeSystem:
     def assignable(self, source: str, target: str) -> Result[bool, SemanticIssue]:
         return Success(source == target or target == "object")
 
+    def union_members(self, value: str) -> Result[tuple[str, ...], SemanticIssue]:
+        if value == "Never":
+            return Success(())
+        return Success(tuple(value.split(" | ")))
+
     def union(self, members: tuple[str, ...]) -> Result[str, SemanticIssue]:
-        return Success(" | ".join(dict.fromkeys(members)))
+        return Success(" | ".join(dict.fromkeys(members)) or "Never")
 
     def record(self, value: str) -> Result[RecordShape[str], SemanticIssue]:
         return Success(RecordShape(RecordFamily.TYPED_DICT, value, ()))
@@ -58,6 +63,20 @@ def test_evaluate_is_the_single_semantic_interface() -> None:
     )
 
     assert result == Success(ResolvedType("int"))
+
+
+def test_evaluation_context_distinguishes_none_from_an_unbound_type() -> None:
+    """Runtime adapters can bind None without using it as the unbound sentinel."""
+    context = EvaluationContext[object](
+        value=ResolvedType(None),
+        capture=ResolvedType(None),
+        input_type=ResolvedType(None),
+    )
+
+    assert_type(context.value, ResolvedType[object] | None)
+    assert context.value == ResolvedType(None)
+    assert context.capture == ResolvedType(None)
+    assert context.input_type == ResolvedType(None)
 
 
 def test_type_ref_constructs_a_runtime_domain_reference() -> None:

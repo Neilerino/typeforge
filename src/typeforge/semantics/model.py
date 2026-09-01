@@ -174,9 +174,9 @@ class EvaluationContext[T]:
     """Bindings available while evaluating nested expressions."""
 
     key: str | None = None
-    value: T | None = None
-    capture: T | None = None
-    input_type: T | None = None
+    value: ResolvedType[T] | None = None
+    capture: ResolvedType[T] | None = None
+    input_type: ResolvedType[T] | None = None
 
 
 type EvaluationValue[T] = (

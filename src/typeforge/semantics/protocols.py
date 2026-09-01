@@ -20,6 +20,10 @@ class TypeSystem[T](Protocol):
         """Return whether source is assignable to target."""
         ...
 
+    def union_members(self, value: T) -> Result[tuple[T, ...], SemanticIssue]:
+        """Decompose in native order; Never is empty, non-unions are singletons."""
+        ...
+
     def union(self, members: tuple[T, ...]) -> Result[T, SemanticIssue]:
         """Normalize members; an empty tuple represents Never."""
         ...
