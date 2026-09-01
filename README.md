@@ -52,6 +52,17 @@ Python source
 
 For local `Map` implementations, Typeforge also verifies return expressions after recognizable `type`, `isinstance`, literal, `None`, boolean, and `match` guards. It emits ordinary typed assignments in memory and lets the configured checker infer the expression type. Unrecognized flow falls back to the safe aggregate return type.
 
+### Semantic integration seam
+
+`typeforge.semantics` is the supported interface for integrations that adapt
+backend-specific types into Typeforge's shared evaluator. It exposes immutable
+semantic expressions, family-aware record shapes, the `TypeSystem` adapter
+protocol, typed `SemanticIssue` failures, and `evaluate`.
+
+The compiler and Pydantic integrations are still migrating to this interface.
+Application code should continue to use Typeforge markers and `Schema[...]`;
+the root `typeforge` exports remain unchanged.
+
 ## Examples
 
 Capture every argument type and collect them into a heterogeneous tuple:

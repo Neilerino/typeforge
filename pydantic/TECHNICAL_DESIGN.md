@@ -81,8 +81,9 @@ Current follow-ups are intentionally explicit:
 - value-time generic pattern capture and nested field access are not defined;
 - validation-mode JSON Schema for value-time dispatch is deliberately `{}`
   until its raw input language can be represented faithfully;
-- the shared source/runtime semantic protocol remains an architectural
-  extraction rather than a completed package split; and
+- the shared source/runtime semantic interface now lives in
+  `typeforge.semantics`, while compiler and runtime adapter migration remains
+  incomplete; and
 - plan explanation, benchmarks, wrap-validator fallback cases, and a
   `BaseModel` record adapter remain follow-up work.
 
