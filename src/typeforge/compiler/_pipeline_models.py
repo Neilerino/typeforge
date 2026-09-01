@@ -12,7 +12,8 @@ from typeforge.compiler.lowering import (
     OverloadDeclaration,
     VariableDeclaration,
 )
-from typeforge.compiler.records import TypedDictShape
+from typeforge.compiler.records import StaticType
+from typeforge.semantics import RecordShape
 
 
 @dataclass(frozen=True)
@@ -53,7 +54,7 @@ class GeneratedModule:
 class DerivedRecord:
     alias: str
     input_name: str
-    shape: TypedDictShape
+    shape: RecordShape[StaticType]
 
 
 @dataclass(frozen=True, slots=True)

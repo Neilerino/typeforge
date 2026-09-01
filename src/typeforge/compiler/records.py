@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import TypeIs
 
+from typeforge.semantics import RecordShape
+
 
 @dataclass(frozen=True, slots=True)
 class NamedType:
@@ -21,21 +23,7 @@ class UnionType:
         object.__setattr__(self, "members", members)
 
 
-@dataclass(frozen=True, slots=True)
-class TypedDictField:
-    name: str
-    value: StaticType
-    required: bool = True
-    readonly: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class TypedDictShape:
-    name: str | None
-    fields: tuple[TypedDictField, ...]
-
-
-type StaticType = NamedType | NeverType | UnionType | TypedDictShape
+type StaticType = NamedType | NeverType | UnionType | RecordShape[StaticType]
 
 NEVER = NeverType()
 
@@ -56,4 +44,4 @@ def union_of(*members: StaticType) -> StaticType:
 
 
 def is_static(value: object) -> TypeIs[StaticType]:
-    return isinstance(value, (NamedType, NeverType, UnionType, TypedDictShape))
+    return isinstance(value, NamedType | NeverType | UnionType | RecordShape)

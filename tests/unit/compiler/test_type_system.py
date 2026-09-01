@@ -1,15 +1,10 @@
 from returns.result import Failure, Success
 
-from typeforge.compiler._type_system import (
-    COMPILER_TYPE_SYSTEM,
-    typed_dict_shape,
-)
+from typeforge.compiler._type_system import COMPILER_TYPE_SYSTEM
 from typeforge.compiler.records import (
     NEVER,
     NamedType,
     StaticType,
-    TypedDictField,
-    TypedDictShape,
     UnionType,
 )
 from typeforge.semantics import (
@@ -19,6 +14,9 @@ from typeforge.semantics import (
     KeyReference,
     MapExpression,
     MapFieldsExpression,
+    RecordFamily,
+    RecordField,
+    RecordShape,
     ResolvedType,
     SemanticIssueCode,
     TypeReference,
@@ -116,13 +114,18 @@ def test_map_fields_rejects_non_record_input() -> None:
     assert result.failure().code is SemanticIssueCode.EXPECTED_RECORD
 
 
-def test_typed_dict_shapes_round_trip_through_the_semantic_record_model() -> None:
-    source: StaticType = TypedDictShape(
-        "Payload",
-        (TypedDictField("value", INT, required=False, readonly=True),),
+def test_record_shapes_are_used_without_translation() -> None:
+    source: StaticType = RecordShape[StaticType](
+        family=RecordFamily.TYPED_DICT,
+        name="Payload",
+        fields=(
+            RecordField[StaticType](
+                name="value",
+                value=INT,
+                required=False,
+                readonly=True,
+            ),
+        ),
     )
 
-    semantic = COMPILER_TYPE_SYSTEM.record(source)
-
-    assert isinstance(semantic, Success)
-    assert typed_dict_shape(semantic.unwrap()) == Success(source)
+    assert COMPILER_TYPE_SYSTEM.record(source) == Success(source)

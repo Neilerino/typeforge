@@ -23,7 +23,7 @@ from typeforge.compiler._semantic_lowering import (
     SemanticLoweringError,
     lower_semantic_expression,
 )
-from typeforge.compiler._type_system import COMPILER_TYPE_SYSTEM, typed_dict_shape
+from typeforge.compiler._type_system import COMPILER_TYPE_SYSTEM
 from typeforge.compiler._type_tree import rewrite_type
 from typeforge.compiler.emitter import emit_stub_module
 from typeforge.compiler.lowering import (
@@ -57,17 +57,14 @@ from typeforge.compiler.model import (
 from typeforge.compiler.model import (
     TypeExpression as SourceTypeExpression,
 )
-from typeforge.compiler.records import (
-    NamedType,
-    NeverType,
-    StaticType,
-    TypedDictShape,
-    UnionType,
+from typeforge.compiler.records import NamedType, NeverType, StaticType, UnionType
+from typeforge.semantics import (
+    MapFieldsExpression,
+    RecordFamily,
+    RecordField,
+    RecordShape,
+    evaluate,
 )
-from typeforge.compiler.records import (
-    TypedDictField as StaticTypedDictField,
-)
-from typeforge.semantics import MapFieldsExpression, RecordShape, evaluate
 
 
 @safe(exceptions=(AdaptationError,))
@@ -200,7 +197,10 @@ def replace_record_aliases_in_declaration(
             assert_never(unreachable)
 
 
-def typed_dict_declaration(shape: TypedDictShape) -> ClassDeclaration:
+def typed_dict_declaration(shape: RecordShape[StaticType]) -> ClassDeclaration:
+    if shape.family is not RecordFamily.TYPED_DICT:
+        raise ValueError(f"cannot emit {shape.family.value} record as a TypedDict")
+
     return ClassDeclaration(
         name=shape.name or "AnonymousTypedDict",
         bases=(TypeName("tf_typing.TypedDict"),),
@@ -212,7 +212,7 @@ def typed_dict_declaration(shape: TypedDictShape) -> ClassDeclaration:
     )
 
 
-def _typed_dict_field_type(field: StaticTypedDictField) -> TypeExpression:
+def _typed_dict_field_type(field: RecordField[StaticType]) -> TypeExpression:
     annotation = _static_type_expression(field.value)
     if field.readonly:
         annotation = TypeApplication(
@@ -237,13 +237,13 @@ def _static_type_expression(value: StaticType) -> TypeExpression:
             return UnionExpression(
                 tuple(_static_type_expression(member) for member in members)
             )
-        case TypedDictShape(name):
+        case RecordShape(name=name):
             return TypeName(name or "object")
         case _ as unreachable:
             assert_never(unreachable)
 
 
-def render_typed_dict(shape: TypedDictShape) -> str:
+def render_typed_dict(shape: RecordShape[StaticType]) -> str:
     """Render one TypedDict declaration for overlay consumers."""
     rendered = emit_stub_module(StubModule("", (typed_dict_declaration(shape),)))
     if isinstance(rendered, Failure):
@@ -308,25 +308,34 @@ def replace_record_aliases(
 
 def build_record_shapes(
     declarations: tuple[SourceTypedDict, ...],
-) -> tuple[TypedDictShape, ...]:
-    shapes: list[TypedDictShape] = []
-    by_name: dict[tuple[str, ...], TypedDictShape] = {}
+) -> tuple[RecordShape[StaticType], ...]:
+    shapes: list[RecordShape[StaticType]] = []
+    by_name: dict[tuple[str, ...], RecordShape[StaticType]] = {}
+    empty_shape = RecordShape[StaticType](
+        family=RecordFamily.TYPED_DICT,
+        name=None,
+        fields=(),
+    )
     for declaration in declarations:
         inherited = tuple(
             field
             for base in declaration.bases
-            for field in by_name.get(base, TypedDictShape(None, ())).fields
+            for field in by_name.get(base, empty_shape).fields
         )
         own_fields = tuple(
-            StaticTypedDictField(
-                field.name,
-                NamedType(field.annotation.source),
-                field.required,
-                field.readonly,
+            RecordField[StaticType](
+                name=field.name,
+                value=NamedType(field.annotation.source),
+                required=field.required,
+                readonly=field.readonly,
             )
             for field in declaration.fields
         )
-        shape = TypedDictShape(declaration.name, (*inherited, *own_fields))
+        shape = RecordShape[StaticType](
+            family=RecordFamily.TYPED_DICT,
+            name=declaration.name,
+            fields=(*inherited, *own_fields),
+        )
         shapes.append(shape)
         by_name[declaration.qualified_name] = shape
     return tuple(shapes)
@@ -334,13 +343,15 @@ def build_record_shapes(
 
 @safe(exceptions=(AdaptationError,))
 def derive_record_shapes(
-    aliases: tuple[SourceTypeAlias, ...], source_shapes: tuple[TypedDictShape, ...]
+    aliases: tuple[SourceTypeAlias, ...],
+    source_shapes: tuple[RecordShape[StaticType], ...],
 ) -> tuple[DerivedRecord, ...]:
     return _derive_record_shapes(aliases, source_shapes)
 
 
 def _derive_record_shapes(
-    aliases: tuple[SourceTypeAlias, ...], source_shapes: tuple[TypedDictShape, ...]
+    aliases: tuple[SourceTypeAlias, ...],
+    source_shapes: tuple[RecordShape[StaticType], ...],
 ) -> tuple[DerivedRecord, ...]:
     derived: list[DerivedRecord] = []
     for alias in aliases:
@@ -392,18 +403,11 @@ def _derive_record_shapes(
                     "MapFields must evaluate to a record shape",
                 )
 
-            static_shape_result = typed_dict_shape(evaluated)
-            if isinstance(static_shape_result, Failure):
-                raise AdaptationError(
-                    alias.name,
-                    alias.value.source,
-                    static_shape_result.failure().message,
-                )
             derived.append(
                 DerivedRecord(
                     alias.name,
                     source_shape.name or "",
-                    static_shape_result.unwrap(),
+                    evaluated,
                 )
             )
     return tuple(derived)

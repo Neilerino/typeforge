@@ -16,7 +16,7 @@ from typeforge.compiler.model import (
     SourceSpan,
     TypeExpression,
 )
-from typeforge.compiler.records import NamedType, StaticType, TypedDictShape
+from typeforge.compiler.records import NamedType, StaticType
 from typeforge.semantics import (
     CaseExpression,
     FieldExpression,
@@ -24,6 +24,8 @@ from typeforge.semantics import (
     KeyReference,
     MapExpression,
     MapFieldsExpression,
+    RecordFamily,
+    RecordShape,
     TypeReference,
     ValueReference,
 )
@@ -32,7 +34,11 @@ SPAN = SourceSpan(Path("records.py"), SourcePosition(1, 0), SourcePosition(1, 1)
 
 
 def test_names_lower_to_bound_or_named_type_references() -> None:
-    payload: StaticType = TypedDictShape("Payload", ())
+    payload: StaticType = RecordShape[StaticType](
+        family=RecordFamily.TYPED_DICT,
+        name="Payload",
+        fields=(),
+    )
 
     assert lower_semantic_expression(name("T"), (("T", payload),)) == TypeReference(
         payload
@@ -54,7 +60,11 @@ def test_string_literal_lowers_to_a_field_name() -> None:
 
 
 def test_record_markers_lower_to_the_shared_semantic_model() -> None:
-    payload: StaticType = TypedDictShape("Payload", ())
+    payload: StaticType = RecordShape[StaticType](
+        family=RecordFamily.TYPED_DICT,
+        name="Payload",
+        fields=(),
+    )
     expression = marker(
         MarkerKind.MAP_FIELDS,
         name("T"),
