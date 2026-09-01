@@ -22,11 +22,6 @@ class AdaptationError(Exception):
     message: str
 
 
-@dataclass(frozen=True)
-class EvaluatorAdaptationError(Exception):
-    message: str
-
-
 @dataclass(frozen=True, slots=True)
 class EmissionError:
     message: str

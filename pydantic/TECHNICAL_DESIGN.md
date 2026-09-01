@@ -81,9 +81,8 @@ Current follow-ups are intentionally explicit:
 - value-time generic pattern capture and nested field access are not defined;
 - validation-mode JSON Schema for value-time dispatch is deliberately `{}`
   until its raw input language can be represented faithfully;
-- the shared source/runtime semantic interface now lives in
-  `typeforge.semantics`, while compiler and runtime adapter migration remains
-  incomplete; and
+- compiler record evaluation now uses the shared interface in
+  `typeforge.semantics`, while runtime adapter migration remains incomplete; and
 - plan explanation, benchmarks, wrap-validator fallback cases, and a
   `BaseModel` record adapter remain follow-up work.
 
@@ -216,9 +215,9 @@ The static compiler and Pydantic integration must not implement separate
 meanings for Typeforge operators. They should share a semantic expression model
 and evaluator.
 
-The current compiler has related representations in `compiler/model.py`,
-`compiler/lowering.py`, `compiler/records.py`, and `compiler/evaluator.py`.
-Introducing the integration is an opportunity to separate three concerns:
+The compiler lowers source expressions through `compiler/_semantic_lowering.py`
+and implements backend-specific type operations in `compiler/_type_system.py`.
+The remaining runtime migration should preserve the same separation of concerns:
 
 1. Frontends parse source or runtime typing objects.
 2. A shared evaluator resolves Typeforge relationships.

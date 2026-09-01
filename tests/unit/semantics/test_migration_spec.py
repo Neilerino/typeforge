@@ -54,11 +54,6 @@ from typeforge.semantics import (
     type_ref,
 )
 
-MIGRATION_INCOMPLETE = pytest.mark.xfail(
-    strict=True,
-    reason="shared semantic evaluator migration is incomplete",
-)
-
 
 class NameTypeSystem:
     def __init__(self, records: tuple[tuple[str, RecordShape[str]], ...] = ()) -> None:
@@ -499,7 +494,6 @@ def test_two_type_system_adapters_share_map_semantics() -> None:
     )
 
 
-@MIGRATION_INCOMPLETE
 def test_compiler_and_runtime_reject_duplicate_record_outputs(
     tmp_path: Path,
 ) -> None:

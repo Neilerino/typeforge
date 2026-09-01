@@ -13,9 +13,12 @@ class NeverType:
     pass
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class UnionType:
     members: tuple[StaticType, ...]
+
+    def __init__(self, *members: StaticType) -> None:
+        object.__setattr__(self, "members", members)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,7 +52,7 @@ def union_of(*members: StaticType) -> StaticType:
         return NEVER
     if len(flattened) == 1:
         return flattened[0]
-    return UnionType(tuple(flattened))
+    return UnionType(*flattened)
 
 
 def is_static(value: object) -> TypeIs[StaticType]:

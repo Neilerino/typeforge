@@ -1,30 +1,12 @@
 """TypedDict discovery and structural record-transform materialization."""
 
-import ast
-from functools import singledispatch
 from typing import assert_never
 
 from returns.result import Failure, safe
 
-from typeforge.compiler import evaluator as record_evaluator
 from typeforge.compiler._markers import (
-    AllMarker,
-    AnyMarker,
-    AssignableMarker,
-    CaseMarker,
-    DefaultMarker,
-    DropMarker,
-    EqualMarker,
-    FieldMarker,
-    KeyMarker,
     MapFieldsMarker,
-    MapMarker,
     MarkerNormalizationError,
-    NormalizedMarker,
-    NotMarker,
-    OptionalFieldMarker,
-    ReadonlyFieldMarker,
-    ValueMarker,
     normalize_marker,
 )
 from typeforge.compiler._pipeline_adaptation import (
@@ -34,10 +16,14 @@ from typeforge.compiler._pipeline_adaptation import (
 from typeforge.compiler._pipeline_models import (
     AdaptationError,
     DerivedRecord,
-    EvaluatorAdaptationError,
     RecordMaterialization,
 )
 from typeforge.compiler._pipeline_utils import merge_imports
+from typeforge.compiler._semantic_lowering import (
+    SemanticLoweringError,
+    lower_semantic_expression,
+)
+from typeforge.compiler._type_system import COMPILER_TYPE_SYSTEM, typed_dict_shape
 from typeforge.compiler._type_tree import rewrite_type
 from typeforge.compiler.emitter import emit_stub_module
 from typeforge.compiler.lowering import (
@@ -60,10 +46,7 @@ from typeforge.compiler.model import (
     AppliedTypeExpression,
     MarkerTypeExpression,
     NameTypeExpression,
-    RawTypeExpression,
     SourceModule,
-    StarredTypeExpression,
-    UnionTypeExpression,
 )
 from typeforge.compiler.model import (
     TypeAliasDeclaration as SourceTypeAlias,
@@ -84,7 +67,7 @@ from typeforge.compiler.records import (
 from typeforge.compiler.records import (
     TypedDictField as StaticTypedDictField,
 )
-from typeforge.utils.error_handling import ok
+from typeforge.semantics import MapFieldsExpression, RecordShape, evaluate
 
 
 @safe(exceptions=(AdaptationError,))
@@ -380,180 +363,50 @@ def _derive_record_shapes(
         for source_shape in source_shapes:
             output_name = f"{alias.name}_{source_shape.name}"
             try:
-                evaluator_expression = adapt_evaluator_expression(
+                semantic_expression = lower_semantic_expression(
                     value, ((parameter, source_shape),), output_name
                 )
-            except EvaluatorAdaptationError as error:
+            except SemanticLoweringError as error:
                 raise AdaptationError(
                     alias.name, alias.value.source, error.message
                 ) from error
-            if not isinstance(evaluator_expression, record_evaluator.MapFields):
+            if not isinstance(semantic_expression, MapFieldsExpression):
                 raise AdaptationError(
                     alias.name,
                     alias.value.source,
                     "alias must evaluate to MapFields",
                 )
-            try:
-                evaluated = ok(record_evaluator.evaluate(evaluator_expression))
-            except record_evaluator.EvaluationError as error:
+
+            evaluated_result = evaluate(semantic_expression, COMPILER_TYPE_SYSTEM)
+            if isinstance(evaluated_result, Failure):
                 raise AdaptationError(
                     alias.name,
                     alias.value.source,
-                    error.message,
-                ) from error
-            if not isinstance(evaluated, TypedDictShape):
+                    evaluated_result.failure().message,
+                )
+            evaluated = evaluated_result.unwrap()
+            if not isinstance(evaluated, RecordShape):
                 raise AdaptationError(
                     alias.name,
                     alias.value.source,
-                    "MapFields must evaluate to a TypedDictShape",
+                    "MapFields must evaluate to a record shape",
+                )
+
+            static_shape_result = typed_dict_shape(evaluated)
+            if isinstance(static_shape_result, Failure):
+                raise AdaptationError(
+                    alias.name,
+                    alias.value.source,
+                    static_shape_result.failure().message,
                 )
             derived.append(
                 DerivedRecord(
                     alias.name,
                     source_shape.name or "",
-                    evaluated,
+                    static_shape_result.unwrap(),
                 )
             )
     return tuple(derived)
-
-
-@singledispatch
-def adapt_evaluator_expression(
-    expression: SourceTypeExpression,
-    environment: tuple[tuple[str, StaticType], ...],
-    output_name: str | None = None,
-) -> record_evaluator.Expression:
-    raise EvaluatorAdaptationError(
-        f"unsupported record expression {type(expression).__name__}"
-    )
-
-
-@adapt_evaluator_expression.register
-def _(
-    expression: NameTypeExpression,
-    environment: tuple[tuple[str, StaticType], ...],
-    output_name: str | None = None,
-) -> record_evaluator.Expression:
-    bound = dict(environment).get(expression.source)
-    return bound if bound is not None else NamedType(expression.source)
-
-
-@adapt_evaluator_expression.register
-def _(
-    expression: RawTypeExpression | UnionTypeExpression | StarredTypeExpression,
-    environment: tuple[tuple[str, StaticType], ...],
-    output_name: str | None = None,
-) -> record_evaluator.Expression:
-    return NamedType(expression.source)
-
-
-@adapt_evaluator_expression.register
-def _(
-    expression: AppliedTypeExpression,
-    environment: tuple[tuple[str, StaticType], ...],
-    output_name: str | None = None,
-) -> record_evaluator.Expression:
-    return adapt_field_name_literal(expression) or NamedType(expression.source)
-
-
-@adapt_evaluator_expression.register
-def _(
-    expression: MarkerTypeExpression,
-    environment: tuple[tuple[str, StaticType], ...],
-    output_name: str | None = None,
-) -> record_evaluator.Expression:
-    marker = _normalize_evaluator_marker(expression)
-
-    def adapt(item: SourceTypeExpression) -> record_evaluator.Expression:
-        return adapt_evaluator_expression(item, environment)
-
-    match marker:
-        case KeyMarker():
-            return record_evaluator.Key()
-        case ValueMarker():
-            return record_evaluator.Value()
-        case DropMarker():
-            return record_evaluator.Drop()
-        case FieldMarker(key=key, value=value):
-            return record_evaluator.Field(adapt(key), adapt(value))
-        case OptionalFieldMarker(key=key, value=value):
-            return record_evaluator.OptionalField(adapt(key), adapt(value))
-        case ReadonlyFieldMarker(key=key, value=value):
-            return record_evaluator.ReadonlyField(adapt(key), adapt(value))
-        case MapFieldsMarker(record=record, transform=transform):
-            return record_evaluator.MapFields(
-                adapt(record), adapt(transform), output_name
-            )
-        case MapMarker(subject=subject, entries=entries):
-            cases = tuple(
-                record_evaluator.Case(adapt(entry.test), adapt(entry.output))
-                for entry in entries
-                if isinstance(entry, CaseMarker)
-            )
-            default = next(
-                (
-                    adapt(entry.output)
-                    for entry in entries
-                    if isinstance(entry, DefaultMarker)
-                ),
-                None,
-            )
-            return (
-                record_evaluator.Map(adapt(subject), cases)
-                if default is None
-                else record_evaluator.Map(adapt(subject), cases, default)
-            )
-        case EqualMarker(left=left, right=right):
-            return record_evaluator.Equal(adapt(left), adapt(right))
-        case AssignableMarker(left=left, right=right):
-            return record_evaluator.Assignable(adapt(left), adapt(right))
-        case AllMarker(items=items):
-            return record_evaluator.All(tuple(adapt(item) for item in items))
-        case AnyMarker(items=items):
-            return record_evaluator.Any(tuple(adapt(item) for item in items))
-        case NotMarker(item=item):
-            return record_evaluator.Not(adapt(item))
-        case _:
-            raise EvaluatorAdaptationError(
-                f"unsupported record expression "
-                f"{type(marker).__name__.removesuffix('Marker')}"
-            )
-
-
-def adapt_evaluator_expressions(
-    expressions: tuple[SourceTypeExpression, ...],
-    environment: tuple[tuple[str, StaticType], ...],
-) -> tuple[record_evaluator.Expression, ...]:
-    return tuple(
-        adapt_evaluator_expression(expression, environment)
-        for expression in expressions
-    )
-
-
-def _normalize_evaluator_marker(
-    expression: MarkerTypeExpression,
-) -> NormalizedMarker:
-    try:
-        return normalize_marker(expression)
-    except MarkerNormalizationError as error:
-        raise EvaluatorAdaptationError(error.message) from error
-
-
-def adapt_field_name_literal(
-    expression: AppliedTypeExpression,
-) -> record_evaluator.FieldName | None:
-    if not isinstance(expression.constructor, NameTypeExpression):
-        return None
-    if expression.constructor.source != "Literal" or len(expression.arguments) != 1:
-        return None
-    argument = expression.arguments[0]
-    if not isinstance(argument, RawTypeExpression):
-        return None
-    try:
-        value = ast.literal_eval(argument.source)
-    except SyntaxError, ValueError:
-        return None
-    return record_evaluator.FieldName(value) if isinstance(value, str) else None
 
 
 def map_fields_alias_reference(

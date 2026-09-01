@@ -160,7 +160,10 @@ def _[T](
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
     name = expect_field_name(_evaluate(expression.name, type_system, context))
-    value = expect_type(_evaluate(expression.value, type_system, context))
+    value = expect_type(
+        _evaluate(expression.value, type_system, context),
+        "field value must evaluate to a type",
+    )
 
     return RecordField(
         name.value,
@@ -182,6 +185,7 @@ def _[T](
     record = type_system.record(record_type.value).unwrap()
     fields: list[RecordField[T]] = []
     field_names: set[str] = set()
+
     for source_field in record.fields:
         field_context = replace(
             context,
@@ -192,7 +196,10 @@ def _[T](
         if isinstance(transformed, DroppedField):
             continue
 
-        field = expect_field(transformed)
+        field = expect_field(
+            transformed,
+            "MapFields transform must evaluate to a field or Drop",
+        )
         if field.name in field_names:
             raise DuplicateFieldSemanticError(
                 f"multiple source fields produce {field.name!r}"
@@ -217,7 +224,10 @@ def _[T](
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
     members = tuple(
-        expect_type(_evaluate(member, type_system, context)).value
+        expect_type(
+            _evaluate(member, type_system, context),
+            "union members must evaluate to types",
+        ).value
         for member in expression.members
     )
     return ResolvedType(type_system.union(members).unwrap())
@@ -249,8 +259,14 @@ def _[T](
     type_system: TypeSystem[T],
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
-    source = expect_type(_evaluate(expression.source, type_system, context))
-    target = expect_type(_evaluate(expression.target, type_system, context))
+    source = expect_type(
+        _evaluate(expression.source, type_system, context),
+        "Assignable operands must both be types",
+    )
+    target = expect_type(
+        _evaluate(expression.target, type_system, context),
+        "Assignable operands must both be types",
+    )
 
     return type_system.assignable(source.value, target.value).unwrap()
 
@@ -310,7 +326,13 @@ def _[T](
     if len(outputs) == 1:
         return outputs[0]
 
-    output_types = tuple(expect_type(output).value for output in outputs)
+    output_types = tuple(
+        expect_type(
+            output,
+            "Map outputs for a union subject must evaluate to types",
+        ).value
+        for output in outputs
+    )
     return ResolvedType(type_system.union(output_types).unwrap())
 
 
