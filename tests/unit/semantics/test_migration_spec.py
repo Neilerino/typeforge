@@ -184,13 +184,12 @@ class FailingNameTypeSystem(NameTypeSystem):
             "union",
             UnionExpression((TypeReference("int"), TypeReference("str"))),
         ),
-        pytest.param(
+        (
             "record",
             MapFieldsExpression(
                 TypeReference("Payload"),
                 FieldExpression(KeyReference(), ValueReference()),
             ),
-            marks=MIGRATION_INCOMPLETE,
         ),
     ),
 )
@@ -264,15 +263,13 @@ def test_leaf_and_bound_context_expressions_produce_evaluation_values() -> None:
             AllExpression((TypeReference("int"),)),
             ExpectedConditionSemanticError("condition must evaluate to bool"),
         ),
-        pytest.param(
+        (
             FieldExpression(TypeReference("int"), TypeReference("str")),
             ExpectedFieldNameSemanticError("field name must evaluate to FieldName"),
-            marks=MIGRATION_INCOMPLETE,
         ),
-        pytest.param(
+        (
             FieldExpression[str](FieldName("name"), FieldName("value")),
             ExpectedTypeSemanticError("field value must evaluate to a type"),
-            marks=MIGRATION_INCOMPLETE,
         ),
         (
             UnionExpression((TypeReference("int"), FieldName("name"))),
@@ -288,7 +285,6 @@ def test_evaluation_roles_reject_incompatible_values(
     assert evaluate(expression, NameTypeSystem()) == Failure(issue)
 
 
-@MIGRATION_INCOMPLETE
 def test_map_fields_rejects_a_non_field_transform_result() -> None:
     """MapFields accepts transformed fields or Drop, never a resolved type."""
     payload = RecordShape(
@@ -414,7 +410,6 @@ def test_assignability_uses_the_type_system_adapter() -> None:
     assert evaluate(expression, NameTypeSystem()) == Success(True)
 
 
-@MIGRATION_INCOMPLETE
 def test_map_fields_preserves_family_and_field_modifiers() -> None:
     """MapFields keeps record family while transforming field semantics."""
     credentials = RecordShape(
@@ -462,7 +457,6 @@ def test_map_fields_preserves_family_and_field_modifiers() -> None:
     )
 
 
-@MIGRATION_INCOMPLETE
 def test_map_fields_rejects_duplicate_output_names() -> None:
     """Every record adapter rejects duplicate transformed field names."""
     pair = RecordShape(

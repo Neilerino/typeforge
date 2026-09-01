@@ -16,7 +16,7 @@ from typeforge.semantics.domain.models import (
 
 def expect_type[T](
     value: EvaluationValue[T],
-    message: str,
+    message: str = "type must evaluate to ResolvedType",
 ) -> ResolvedType[T]:
     if isinstance(value, ResolvedType):
         return value
@@ -25,7 +25,7 @@ def expect_type[T](
 
 def expect_condition[T](
     value: EvaluationValue[T],
-    message: str,
+    message: str = "condition must evaluate to bool",
 ) -> bool:
     if isinstance(value, bool):
         return value
@@ -34,7 +34,7 @@ def expect_condition[T](
 
 def expect_field_name[T](
     value: EvaluationValue[T],
-    message: str,
+    message: str = "field name must evaluate to FieldName",
 ) -> FieldName:
     if isinstance(value, FieldName):
         return value
@@ -43,7 +43,7 @@ def expect_field_name[T](
 
 def expect_field[T](
     value: EvaluationValue[T],
-    message: str,
+    message: str = "field must evaluate to RecordField",
 ) -> RecordField[T]:
     if isinstance(value, RecordField):
         return value

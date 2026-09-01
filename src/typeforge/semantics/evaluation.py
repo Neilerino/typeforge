@@ -1,11 +1,19 @@
 """Shared semantic evaluation interface and private traversal."""
 
+from dataclasses import replace
 from functools import singledispatch
 
-from returns.result import Failure, Result, safe
+from returns.primitives.exceptions import UnwrapFailedError
+from returns.result import Result, safe
 
-from typeforge.semantics.domain.assertions import expect_condition, expect_type
+from typeforge.semantics.domain.assertions import (
+    expect_condition,
+    expect_field,
+    expect_field_name,
+    expect_type,
+)
 from typeforge.semantics.domain.exceptions import (
+    DuplicateFieldSemanticError,
     ExpectedTypeSemanticError,
     SemanticIssue,
     UnboundInputSemanticError,
@@ -24,11 +32,16 @@ from typeforge.semantics.domain.models import (
     EvaluationContext,
     EvaluationValue,
     Expression,
+    FieldExpression,
     FieldName,
     InputReference,
     KeyReference,
     MapExpression,
+    MapFieldsExpression,
     NotExpression,
+    OptionalFieldExpression,
+    ReadonlyFieldExpression,
+    RecordField,
     ResolvedType,
     TypeReference,
     UnionExpression,
@@ -37,22 +50,28 @@ from typeforge.semantics.domain.models import (
 from typeforge.semantics.protocols import TypeSystem
 
 
-def _value_or_raise[T](result: Result[T, SemanticIssue]) -> T:
-    if isinstance(result, Failure):
-        raise result.failure()
-
-    return result.unwrap()
-
-
-@safe(exceptions=(SemanticIssue,))
 def evaluate[T](
     expression: Expression[T],
     type_system: TypeSystem[T],
     context: EvaluationContext[T] | None = None,
-) -> EvaluationValue[T]:
+) -> Result[EvaluationValue[T], SemanticIssue]:
     """Evaluate a normalized expression through a type-system adapter."""
     evaluation_context = EvaluationContext[T]() if context is None else context
-    return _evaluate(expression, type_system, evaluation_context)
+
+    eval_safely = safe(exceptions=(SemanticIssue, UnwrapFailedError))(_evaluate)
+    return eval_safely(expression, type_system, evaluation_context).alt(_semantic_issue)
+
+
+def _semantic_issue(error: Exception) -> SemanticIssue:
+    if isinstance(error, SemanticIssue):
+        return error
+
+    if isinstance(error, UnwrapFailedError) and isinstance(
+        error.__cause__, SemanticIssue
+    ):
+        return error.__cause__
+
+    raise error
 
 
 @singledispatch
@@ -132,6 +151,65 @@ def _[T](
     return DroppedField()
 
 
+@_evaluate.register(FieldExpression | OptionalFieldExpression | ReadonlyFieldExpression)
+def _[T](
+    expression: (
+        FieldExpression[T] | OptionalFieldExpression[T] | ReadonlyFieldExpression[T]
+    ),
+    type_system: TypeSystem[T],
+    context: EvaluationContext[T],
+) -> EvaluationValue[T]:
+    name = expect_field_name(_evaluate(expression.name, type_system, context))
+    value = expect_type(_evaluate(expression.value, type_system, context))
+
+    return RecordField(
+        name.value,
+        value.value,
+        required=not isinstance(expression, OptionalFieldExpression),
+        readonly=isinstance(expression, ReadonlyFieldExpression),
+    )
+
+
+@_evaluate.register(MapFieldsExpression)
+def _[T](
+    expression: MapFieldsExpression[T],
+    type_system: TypeSystem[T],
+    context: EvaluationContext[T],
+) -> EvaluationValue[T]:
+    record_type = expect_type(
+        _evaluate(expression.record, type_system, context),
+    )
+    record = type_system.record(record_type.value).unwrap()
+    fields: list[RecordField[T]] = []
+    field_names: set[str] = set()
+    for source_field in record.fields:
+        field_context = replace(
+            context,
+            key=source_field.name,
+            value=ResolvedType(source_field.value),
+        )
+        transformed = _evaluate(expression.transform, type_system, field_context)
+        if isinstance(transformed, DroppedField):
+            continue
+
+        field = expect_field(transformed)
+        if field.name in field_names:
+            raise DuplicateFieldSemanticError(
+                f"multiple source fields produce {field.name!r}"
+            )
+
+        field_names.add(field.name)
+        fields.append(field)
+
+    return replace(
+        record,
+        name=(
+            record.name if expression.output_name is None else expression.output_name
+        ),
+        fields=tuple(fields),
+    )
+
+
 @_evaluate.register(UnionExpression)
 def _[T](
     expression: UnionExpression[T],
@@ -139,13 +217,10 @@ def _[T](
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
     members = tuple(
-        expect_type(
-            _evaluate(member, type_system, context),
-            "union members must evaluate to types",
-        ).value
+        expect_type(_evaluate(member, type_system, context)).value
         for member in expression.members
     )
-    return ResolvedType(_value_or_raise(type_system.union(members)))
+    return ResolvedType(type_system.union(members).unwrap())
 
 
 @_evaluate.register(EqualExpression)
@@ -158,7 +233,7 @@ def _[T](
     right = _evaluate(expression.right, type_system, context)
 
     if isinstance(left, ResolvedType) and isinstance(right, ResolvedType):
-        return _value_or_raise(type_system.equal(left.value, right.value))
+        return type_system.equal(left.value, right.value).unwrap()
 
     if isinstance(left, FieldName) and isinstance(right, FieldName):
         return left == right
@@ -174,15 +249,10 @@ def _[T](
     type_system: TypeSystem[T],
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
-    source = expect_type(
-        _evaluate(expression.source, type_system, context),
-        "Assignable operands must both be types",
-    )
-    target = expect_type(
-        _evaluate(expression.target, type_system, context),
-        "Assignable operands must both be types",
-    )
-    return _value_or_raise(type_system.assignable(source.value, target.value))
+    source = expect_type(_evaluate(expression.source, type_system, context))
+    target = expect_type(_evaluate(expression.target, type_system, context))
+
+    return type_system.assignable(source.value, target.value).unwrap()
 
 
 @_evaluate.register(AnyExpression | AllExpression)
@@ -192,10 +262,8 @@ def _[T](
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
     for condition in expression.conditions:
-        matched = expect_condition(
-            _evaluate(condition, type_system, context),
-            "condition must evaluate to bool",
-        )
+        matched = expect_condition(_evaluate(condition, type_system, context))
+
         if isinstance(expression, AllExpression) and not matched:
             return False
 
@@ -211,11 +279,7 @@ def _[T](
     type_system: TypeSystem[T],
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
-    condition = expect_condition(
-        _evaluate(expression.condition, type_system, context),
-        "condition must evaluate to bool",
-    )
-    return not condition
+    return not expect_condition(_evaluate(expression.condition, type_system, context))
 
 
 @_evaluate.register(MapExpression)
@@ -228,7 +292,7 @@ def _[T](
 
     members: tuple[EvaluationValue[T], ...]
     if isinstance(subject, ResolvedType):
-        native_members = _value_or_raise(type_system.union_members(subject.value))
+        native_members = type_system.union_members(subject.value).unwrap()
         members = tuple(ResolvedType(member) for member in native_members)
     else:
         members = (subject,)
@@ -246,14 +310,8 @@ def _[T](
     if len(outputs) == 1:
         return outputs[0]
 
-    output_types = tuple(
-        expect_type(
-            output,
-            "Map outputs for a union subject must evaluate to types",
-        ).value
-        for output in outputs
-    )
-    return ResolvedType(_value_or_raise(type_system.union(output_types)))
+    output_types = tuple(expect_type(output).value for output in outputs)
+    return ResolvedType(type_system.union(output_types).unwrap())
 
 
 def _evaluate_map_member[T](
@@ -272,10 +330,7 @@ def _evaluate_map_member[T](
             | AnyExpression
             | NotExpression,
         ):
-            matched = expect_condition(
-                _evaluate(case.test, type_system, context),
-                "condition must evaluate to bool",
-            )
+            matched = expect_condition(_evaluate(case.test, type_system, context))
         else:
             test = _evaluate(case.test, type_system, context)
             matched = _map_values_are_equal(subject, test, type_system)
@@ -285,7 +340,7 @@ def _evaluate_map_member[T](
     if default is not None:
         return _evaluate(default, type_system, context)
 
-    return ResolvedType(_value_or_raise(type_system.union(())))
+    return ResolvedType(type_system.union(()).unwrap())
 
 
 def _map_values_are_equal[T](
@@ -294,7 +349,7 @@ def _map_values_are_equal[T](
     type_system: TypeSystem[T],
 ) -> bool:
     if isinstance(left, ResolvedType) and isinstance(right, ResolvedType):
-        return _value_or_raise(type_system.equal(left.value, right.value))
+        return type_system.equal(left.value, right.value).unwrap()
 
     if isinstance(left, FieldName) and isinstance(right, FieldName):
         return left == right
