@@ -162,7 +162,6 @@ class FailingNameTypeSystem(NameTypeSystem):
         return super().record(value)
 
 
-@MIGRATION_INCOMPLETE
 @pytest.mark.parametrize(
     ("operation", "expression"),
     (
@@ -185,12 +184,13 @@ class FailingNameTypeSystem(NameTypeSystem):
             "union",
             UnionExpression((TypeReference("int"), TypeReference("str"))),
         ),
-        (
+        pytest.param(
             "record",
             MapFieldsExpression(
                 TypeReference("Payload"),
                 FieldExpression(KeyReference(), ValueReference()),
             ),
+            marks=MIGRATION_INCOMPLETE,
         ),
     ),
 )
@@ -247,7 +247,6 @@ def test_leaf_and_bound_context_expressions_produce_evaluation_values() -> None:
     ) == Success(FieldName("name"))
 
 
-@MIGRATION_INCOMPLETE
 @pytest.mark.parametrize(
     ("expression", "issue"),
     (
@@ -265,13 +264,15 @@ def test_leaf_and_bound_context_expressions_produce_evaluation_values() -> None:
             AllExpression((TypeReference("int"),)),
             ExpectedConditionSemanticError("condition must evaluate to bool"),
         ),
-        (
+        pytest.param(
             FieldExpression(TypeReference("int"), TypeReference("str")),
             ExpectedFieldNameSemanticError("field name must evaluate to FieldName"),
+            marks=MIGRATION_INCOMPLETE,
         ),
-        (
+        pytest.param(
             FieldExpression[str](FieldName("name"), FieldName("value")),
             ExpectedTypeSemanticError("field value must evaluate to a type"),
+            marks=MIGRATION_INCOMPLETE,
         ),
         (
             UnionExpression((TypeReference("int"), FieldName("name"))),
@@ -334,7 +335,6 @@ def test_none_is_a_bound_context_type(
     )
 
 
-@MIGRATION_INCOMPLETE
 def test_map_distributes_native_union_members_from_the_adapter() -> None:
     """Union decomposition is native while ordered Map behavior stays shared."""
     expression = MapExpression(
@@ -351,7 +351,6 @@ def test_map_distributes_native_union_members_from_the_adapter() -> None:
     )
 
 
-@MIGRATION_INCOMPLETE
 def test_map_is_ordered_and_distributes_over_unions() -> None:
     """Map preserves first-match order and unions its resolved outputs."""
     expression = MapExpression(
@@ -375,18 +374,16 @@ def test_map_is_ordered_and_distributes_over_unions() -> None:
     )
 
 
-@MIGRATION_INCOMPLETE
 def test_map_without_a_match_resolves_to_never() -> None:
     """An omitted Map default resolves through the adapter's empty union."""
     expression = MapExpression(
-        type_ref(bytes),
-        (CaseExpression(type_ref(int), type_ref(str)),),
+        TypeReference("bytes"),
+        (CaseExpression(TypeReference("int"), TypeReference("str")),),
     )
 
     assert evaluate(expression, NameTypeSystem()) == Success(ResolvedType("Never"))
 
 
-@MIGRATION_INCOMPLETE
 def test_conditions_short_circuit_nested_failures() -> None:
     """All and Any stop before evaluating an unreachable failing operand."""
     all_expression = AllExpression(
@@ -407,7 +404,6 @@ def test_conditions_short_circuit_nested_failures() -> None:
     assert evaluate(NotExpression(all_expression), NameTypeSystem()) == Success(True)
 
 
-@MIGRATION_INCOMPLETE
 def test_assignability_uses_the_type_system_adapter() -> None:
     """Assignable delegates backend-specific type relations to its adapter."""
     expression = AssignableExpression(
@@ -490,7 +486,6 @@ def test_map_fields_rejects_duplicate_output_names() -> None:
     assert result.failure().code is SemanticIssueCode.DUPLICATE_FIELD
 
 
-@MIGRATION_INCOMPLETE
 def test_two_type_system_adapters_share_map_semantics() -> None:
     """Compiler-like and runtime-like types resolve through the same seam."""
     name_expression = MapExpression(
