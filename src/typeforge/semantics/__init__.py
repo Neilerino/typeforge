@@ -1,6 +1,6 @@
 """Shared semantic data and interfaces for Typeforge adapters."""
 
-from typeforge.semantics.errors import (
+from typeforge.semantics.domain.exceptions import (
     DuplicateFieldSemanticError,
     ExpectedConditionSemanticError,
     ExpectedFieldNameSemanticError,
@@ -16,8 +16,7 @@ from typeforge.semantics.errors import (
     UnboundValueSemanticError,
     UnsupportedExpressionSemanticError,
 )
-from typeforge.semantics.evaluation import evaluate
-from typeforge.semantics.model import (
+from typeforge.semantics.domain.models import (
     AllExpression,
     AnyExpression,
     AssignableExpression,
@@ -46,6 +45,7 @@ from typeforge.semantics.model import (
     ValueReference,
     type_ref,
 )
+from typeforge.semantics.evaluation import evaluate
 from typeforge.semantics.protocols import TypeSystem
 
 __all__ = (

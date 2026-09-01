@@ -33,6 +33,7 @@ compiler = [
 
 [dependency-groups]
 dev = [
+    "archunitpython>=1.5,<2",
     "mypy>=2.2,<3",
     "pydantic>=2.13.4,<3",
     "pyrefly>=1.1.1",
@@ -45,7 +46,7 @@ dev = [
 packages = ["src/typeforge"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests/unit", "tests/architecture"]
 
 [tool.mypy]
 strict = true

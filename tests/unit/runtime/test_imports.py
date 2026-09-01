@@ -32,7 +32,7 @@ def test_importing_typeforge_does_not_import_pydantic() -> None:
 
 
 def test_importing_pydantic_integration_without_extra_has_focused_error() -> None:
-    source = Path(__file__).parents[2] / "src"
+    source = Path(__file__).parents[3] / "src"
     completed = subprocess.run(
         [sys.executable, "-S", "-c", "import typeforge.pydantic"],
         check=False,

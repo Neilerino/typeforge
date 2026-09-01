@@ -19,6 +19,7 @@ from typeforge.semantics import (
     AssignableExpression,
     CaseExpression,
     DropExpression,
+    DroppedField,
     EqualExpression,
     EvaluationContext,
     ExpectedConditionSemanticError,
@@ -206,7 +207,6 @@ def test_adapter_failures_propagate_unchanged(
     assert result.failure() is issue
 
 
-@MIGRATION_INCOMPLETE
 @pytest.mark.parametrize(
     ("expression", "issue"),
     (
@@ -232,6 +232,19 @@ def test_unbound_context_references_return_specific_failures(
 ) -> None:
     """Contextual references fail with stable codes and authored vocabulary."""
     assert evaluate(expression, NameTypeSystem()) == Failure(issue)
+
+
+def test_leaf_and_bound_context_expressions_produce_evaluation_values() -> None:
+    """Leaf expressions resolve without exposing recursive traversal."""
+    type_system = NameTypeSystem()
+
+    assert evaluate(FieldName("name"), type_system) == Success(FieldName("name"))
+    assert evaluate(DropExpression(), type_system) == Success(DroppedField())
+    assert evaluate(
+        KeyReference(),
+        type_system,
+        EvaluationContext(key="name"),
+    ) == Success(FieldName("name"))
 
 
 @MIGRATION_INCOMPLETE
@@ -298,7 +311,6 @@ def test_map_fields_rejects_a_non_field_transform_result() -> None:
     )
 
 
-@MIGRATION_INCOMPLETE
 @pytest.mark.parametrize(
     ("expression", "context"),
     (

@@ -229,7 +229,10 @@ A possible package shape is:
 ```text
 src/typeforge/
     semantics/
-        model.py
+        domain/
+            assertions.py
+            exceptions.py
+            models.py
         evaluation.py
         protocols.py
     pydantic/

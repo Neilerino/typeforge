@@ -4,8 +4,8 @@ from typing import Protocol, runtime_checkable
 
 from returns.result import Result
 
-from typeforge.semantics.errors import SemanticIssue
-from typeforge.semantics.model import RecordShape
+from typeforge.semantics.domain.exceptions import SemanticIssue
+from typeforge.semantics.domain.models import RecordShape
 
 
 @runtime_checkable
