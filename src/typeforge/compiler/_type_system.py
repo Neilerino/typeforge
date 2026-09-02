@@ -85,12 +85,12 @@ class CompilerTypeSystem:
 
         return Success(value)
 
-    def inspect_parameterized_type(
+    def inspect(
         self, value: StaticType
     ) -> Result[ParameterizedTypeShape[StaticType] | None, SemanticIssue]:
         raise NotImplementedError
 
-    def build_parameterized_type(
+    def build(
         self, shape: ParameterizedTypeShape[StaticType]
     ) -> Result[StaticType, SemanticIssue]:
         raise NotImplementedError

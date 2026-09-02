@@ -37,14 +37,12 @@ class NameTypeSystem:
     def record(self, value: str) -> Result[RecordShape[str], SemanticIssue]:
         return Success(RecordShape(RecordFamily.TYPED_DICT, value, ()))
 
-    def inspect_parameterized_type(
+    def inspect(
         self, value: str
     ) -> Result[ParameterizedTypeShape[str] | None, SemanticIssue]:
         raise NotImplementedError
 
-    def build_parameterized_type(
-        self, shape: ParameterizedTypeShape[str]
-    ) -> Result[str, SemanticIssue]:
+    def build(self, shape: ParameterizedTypeShape[str]) -> Result[str, SemanticIssue]:
         raise NotImplementedError
 
 

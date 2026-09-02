@@ -92,14 +92,12 @@ class NameTypeSystem:
             ExpectedRecordSemanticError(f"{value} is not a supported record")
         )
 
-    def inspect_parameterized_type(
+    def inspect(
         self, value: str
     ) -> Result[ParameterizedTypeShape[str] | None, SemanticIssue]:
         return Success(self._parameterized_types.get(value))
 
-    def build_parameterized_type(
-        self, shape: ParameterizedTypeShape[str]
-    ) -> Result[str, SemanticIssue]:
+    def build(self, shape: ParameterizedTypeShape[str]) -> Result[str, SemanticIssue]:
         value = next(
             (
                 value
@@ -150,12 +148,12 @@ class PythonTypeSystem:
             ExpectedRecordSemanticError(f"{value!r} is not a supported record")
         )
 
-    def inspect_parameterized_type(
+    def inspect(
         self, value: object
     ) -> Result[ParameterizedTypeShape[object] | None, SemanticIssue]:
         return Success(self._parameterized_types.get(value))
 
-    def build_parameterized_type(
+    def build(
         self, shape: ParameterizedTypeShape[object]
     ) -> Result[object, SemanticIssue]:
         value = next(
@@ -177,8 +175,8 @@ type AdapterOperation = Literal[
     "union_members",
     "union",
     "record",
-    "inspect_parameterized_type",
-    "build_parameterized_type",
+    "inspect",
+    "build",
 ]
 
 
@@ -218,19 +216,17 @@ class FailureInjectionTypeSystemProxy[T]:
             return Failure(self._issue)
         return self._type_system.record(value)
 
-    def inspect_parameterized_type(
+    def inspect(
         self, value: T
     ) -> Result[ParameterizedTypeShape[T] | None, SemanticIssue]:
-        if self._operation == "inspect_parameterized_type":
+        if self._operation == "inspect":
             return Failure(self._issue)
-        return self._type_system.inspect_parameterized_type(value)
+        return self._type_system.inspect(value)
 
-    def build_parameterized_type(
-        self, shape: ParameterizedTypeShape[T]
-    ) -> Result[T, SemanticIssue]:
-        if self._operation == "build_parameterized_type":
+    def build(self, shape: ParameterizedTypeShape[T]) -> Result[T, SemanticIssue]:
+        if self._operation == "build":
             return Failure(self._issue)
-        return self._type_system.build_parameterized_type(shape)
+        return self._type_system.build(shape)
 
 
 @pytest.mark.parametrize(
@@ -552,7 +548,7 @@ def test_repeated_value_in_a_parameterized_pattern_is_one_capture(
 )
 @pytest.mark.parametrize(
     "operation",
-    ("inspect_parameterized_type", "build_parameterized_type"),
+    ("inspect", "build"),
 )
 def test_parameterized_type_adapter_failures_propagate_unchanged(
     operation: AdapterOperation,

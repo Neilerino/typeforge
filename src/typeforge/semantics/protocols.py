@@ -32,14 +32,12 @@ class TypeSystem[T](Protocol):
         """Describe value without erasing its record family."""
         ...
 
-    def inspect_parameterized_type(
+    def inspect(
         self, value: T
     ) -> Result[ParameterizedTypeShape[T] | None, SemanticIssue]:
         """Return the origin and arguments of a parameterized type, if present."""
         ...
 
-    def build_parameterized_type(
-        self, shape: ParameterizedTypeShape[T]
-    ) -> Result[T, SemanticIssue]:
+    def build(self, shape: ParameterizedTypeShape[T]) -> Result[T, SemanticIssue]:
         """Build a backend type from a parameterized type shape."""
         ...

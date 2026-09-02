@@ -209,12 +209,12 @@ class ParameterizedTypeShape[T]:
 
 
 class TypeSystem[T](Protocol):
-    def inspect_parameterized_type(
+    def inspect(
         self,
         value: T,
     ) -> Result[ParameterizedTypeShape[T] | None, SemanticIssue]: ...
 
-    def build_parameterized_type(
+    def build(
         self,
         shape: ParameterizedTypeShape[T],
     ) -> Result[T, SemanticIssue]: ...
