@@ -25,12 +25,14 @@ from typeforge.semantics.domain.models import (
     AllExpression,
     AnyExpression,
     AssignableExpression,
+    CaptureValuePattern,
     CaseExpression,
     DropExpression,
     DroppedField,
     EqualExpression,
     EvaluationContext,
     EvaluationValue,
+    ExactTypePattern,
     Expression,
     FieldExpression,
     FieldName,
@@ -40,6 +42,7 @@ from typeforge.semantics.domain.models import (
     MapFieldsExpression,
     NotExpression,
     OptionalFieldExpression,
+    ParameterizedTypePattern,
     ReadonlyFieldExpression,
     RecordField,
     ResolvedType,
@@ -353,6 +356,13 @@ def _evaluate_map_member[T](
             | NotExpression,
         ):
             matched = expect_condition(_evaluate(case.test, type_system, context))
+        elif isinstance(
+            case.test,
+            ExactTypePattern | CaptureValuePattern | ParameterizedTypePattern,
+        ):
+            raise UnsupportedExpressionSemanticError(
+                "structural type patterns are not supported yet"
+            )
         else:
             test = _evaluate(case.test, type_system, context)
             matched = _map_values_are_equal(subject, test, type_system)

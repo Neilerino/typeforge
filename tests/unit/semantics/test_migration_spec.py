@@ -17,7 +17,9 @@ from typeforge.semantics import (
     AllExpression,
     AnyExpression,
     AssignableExpression,
+    CaptureValuePattern,
     CaseExpression,
+    DeferredMap,
     DropExpression,
     DroppedField,
     EqualExpression,
@@ -36,6 +38,9 @@ from typeforge.semantics import (
     MapFieldsExpression,
     NotExpression,
     OptionalFieldExpression,
+    ParameterizedTypePattern,
+    ParameterizedTypeShape,
+    ParameterizedTypeTemplate,
     ReadonlyFieldExpression,
     RecordFamily,
     RecordField,
@@ -45,6 +50,7 @@ from typeforge.semantics import (
     SemanticIssue,
     SemanticIssueCode,
     TypeReference,
+    TypeSystem,
     UnboundInputSemanticError,
     UnboundKeySemanticError,
     UnboundValueSemanticError,
@@ -56,8 +62,13 @@ from typeforge.semantics import (
 
 
 class NameTypeSystem:
-    def __init__(self, records: tuple[tuple[str, RecordShape[str]], ...] = ()) -> None:
+    def __init__(
+        self,
+        records: tuple[tuple[str, RecordShape[str]], ...] = (),
+        parameterized_types: tuple[tuple[str, ParameterizedTypeShape[str]], ...] = (),
+    ) -> None:
         self._records = dict(records)
+        self._parameterized_types = dict(parameterized_types)
 
     def equal(self, left: str, right: str) -> Result[bool, SemanticIssue]:
         return Success(left == right)
@@ -81,8 +92,36 @@ class NameTypeSystem:
             ExpectedRecordSemanticError(f"{value} is not a supported record")
         )
 
+    def inspect_parameterized_type(
+        self, value: str
+    ) -> Result[ParameterizedTypeShape[str] | None, SemanticIssue]:
+        return Success(self._parameterized_types.get(value))
+
+    def build_parameterized_type(
+        self, shape: ParameterizedTypeShape[str]
+    ) -> Result[str, SemanticIssue]:
+        value = next(
+            (
+                value
+                for value, candidate in self._parameterized_types.items()
+                if candidate == shape
+            ),
+            None,
+        )
+        if value is not None:
+            return Success(value)
+        return Failure(SemanticAdapterError(f"cannot build {shape!r}"))
+
 
 class PythonTypeSystem:
+    def __init__(
+        self,
+        parameterized_types: tuple[
+            tuple[object, ParameterizedTypeShape[object]], ...
+        ] = (),
+    ) -> None:
+        self._parameterized_types = dict(parameterized_types)
+
     def equal(self, left: object, right: object) -> Result[bool, SemanticIssue]:
         return Success(left == right)
 
@@ -111,6 +150,26 @@ class PythonTypeSystem:
             ExpectedRecordSemanticError(f"{value!r} is not a supported record")
         )
 
+    def inspect_parameterized_type(
+        self, value: object
+    ) -> Result[ParameterizedTypeShape[object] | None, SemanticIssue]:
+        return Success(self._parameterized_types.get(value))
+
+    def build_parameterized_type(
+        self, shape: ParameterizedTypeShape[object]
+    ) -> Result[object, SemanticIssue]:
+        value = next(
+            (
+                value
+                for value, candidate in self._parameterized_types.items()
+                if candidate == shape
+            ),
+            None,
+        )
+        if value is not None:
+            return Success(value)
+        return Failure(SemanticAdapterError(f"cannot build {shape!r}"))
+
 
 type AdapterOperation = Literal[
     "equal",
@@ -118,43 +177,60 @@ type AdapterOperation = Literal[
     "union_members",
     "union",
     "record",
+    "inspect_parameterized_type",
+    "build_parameterized_type",
 ]
 
 
-class FailingNameTypeSystem(NameTypeSystem):
+class FailureInjectionTypeSystemProxy[T]:
     def __init__(
         self,
+        type_system: TypeSystem[T],
         operation: AdapterOperation,
         issue: SemanticIssue,
     ) -> None:
-        super().__init__()
+        self._type_system = type_system
         self._operation = operation
         self._issue = issue
 
-    def equal(self, left: str, right: str) -> Result[bool, SemanticIssue]:
+    def equal(self, left: T, right: T) -> Result[bool, SemanticIssue]:
         if self._operation == "equal":
             return Failure(self._issue)
-        return super().equal(left, right)
+        return self._type_system.equal(left, right)
 
-    def assignable(self, source: str, target: str) -> Result[bool, SemanticIssue]:
+    def assignable(self, source: T, target: T) -> Result[bool, SemanticIssue]:
         if self._operation == "assignable":
             return Failure(self._issue)
-        return super().assignable(source, target)
+        return self._type_system.assignable(source, target)
 
-    def union_members(self, value: str) -> Result[tuple[str, ...], SemanticIssue]:
+    def union_members(self, value: T) -> Result[tuple[T, ...], SemanticIssue]:
         if self._operation == "union_members":
             return Failure(self._issue)
-        return super().union_members(value)
+        return self._type_system.union_members(value)
 
-    def union(self, members: tuple[str, ...]) -> Result[str, SemanticIssue]:
+    def union(self, members: tuple[T, ...]) -> Result[T, SemanticIssue]:
         if self._operation == "union":
             return Failure(self._issue)
-        return super().union(members)
+        return self._type_system.union(members)
 
-    def record(self, value: str) -> Result[RecordShape[str], SemanticIssue]:
+    def record(self, value: T) -> Result[RecordShape[T], SemanticIssue]:
         if self._operation == "record":
             return Failure(self._issue)
-        return super().record(value)
+        return self._type_system.record(value)
+
+    def inspect_parameterized_type(
+        self, value: T
+    ) -> Result[ParameterizedTypeShape[T] | None, SemanticIssue]:
+        if self._operation == "inspect_parameterized_type":
+            return Failure(self._issue)
+        return self._type_system.inspect_parameterized_type(value)
+
+    def build_parameterized_type(
+        self, shape: ParameterizedTypeShape[T]
+    ) -> Result[T, SemanticIssue]:
+        if self._operation == "build_parameterized_type":
+            return Failure(self._issue)
+        return self._type_system.build_parameterized_type(shape)
 
 
 @pytest.mark.parametrize(
@@ -195,7 +271,10 @@ def test_adapter_failures_propagate_unchanged(
     """The semantic seam preserves a concrete adapter's modeled failure."""
     issue = SemanticAdapterError(f"{operation} is unavailable")
 
-    result = evaluate(expression, FailingNameTypeSystem(operation, issue))
+    result = evaluate(
+        expression,
+        FailureInjectionTypeSystemProxy(NameTypeSystem(), operation, issue),
+    )
 
     assert isinstance(result, Failure)
     assert result.failure() is issue
@@ -373,6 +452,181 @@ def test_map_without_a_match_resolves_to_never() -> None:
     )
 
     assert evaluate(expression, NameTypeSystem()) == Success(ResolvedType("Never"))
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="shared semantics cannot yet inspect or build parameterized types",
+)
+def test_parameterized_map_semantics_are_shared_by_type_system_adapters() -> None:
+    """`Map[T, Case[list[Value], set[Value]], Default[T]]` is shared."""
+    name_type_system = NameTypeSystem(
+        parameterized_types=(
+            ("list[int]", ParameterizedTypeShape("list", ("int",))),
+            ("set[int]", ParameterizedTypeShape("set", ("int",))),
+        )
+    )
+    python_type_system = PythonTypeSystem(
+        parameterized_types=(
+            (list[int], ParameterizedTypeShape[object](list, (int,))),
+            (set[int], ParameterizedTypeShape[object](set, (int,))),
+        )
+    )
+    name_expression = MapExpression(
+        TypeReference("list[int]"),
+        (
+            CaseExpression(
+                ParameterizedTypePattern("list", (CaptureValuePattern(),)),
+                ParameterizedTypeTemplate("set", (ValueReference(),)),
+            ),
+        ),
+        TypeReference("list[int]"),
+    )
+    runtime_expression = MapExpression(
+        type_ref(list[int]),
+        (
+            CaseExpression(
+                ParameterizedTypePattern(list, (CaptureValuePattern(),)),
+                ParameterizedTypeTemplate(set, (ValueReference(),)),
+            ),
+        ),
+        type_ref(list[int]),
+    )
+
+    assert evaluate(name_expression, name_type_system) == Success(
+        ResolvedType("set[int]")
+    )
+    assert evaluate(runtime_expression, python_type_system) == Success(
+        ResolvedType(set[int])
+    )
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="shared semantics cannot yet enforce repeated structural Value captures",
+)
+@pytest.mark.parametrize(
+    ("subject", "expected"),
+    (
+        ("tuple[int, int]", "matched"),
+        ("tuple[int, str]", "not-matched"),
+    ),
+)
+def test_repeated_value_in_a_parameterized_pattern_is_one_capture(
+    subject: str,
+    expected: str,
+) -> None:
+    """Repeated `Value` positions must match the same captured type."""
+    type_system = NameTypeSystem(
+        parameterized_types=(
+            (
+                "tuple[int, int]",
+                ParameterizedTypeShape("tuple", ("int", "int")),
+            ),
+            (
+                "tuple[int, str]",
+                ParameterizedTypeShape("tuple", ("int", "str")),
+            ),
+        )
+    )
+    expression = MapExpression(
+        TypeReference(subject),
+        (
+            CaseExpression(
+                ParameterizedTypePattern(
+                    "tuple",
+                    (CaptureValuePattern(), CaptureValuePattern()),
+                ),
+                TypeReference("matched"),
+            ),
+        ),
+        TypeReference("not-matched"),
+    )
+
+    assert evaluate(expression, type_system) == Success(ResolvedType(expected))
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="shared semantics does not use parameterized type adapter operations yet",
+)
+@pytest.mark.parametrize(
+    "operation",
+    ("inspect_parameterized_type", "build_parameterized_type"),
+)
+def test_parameterized_type_adapter_failures_propagate_unchanged(
+    operation: AdapterOperation,
+) -> None:
+    """Structural evaluation preserves the adapter's modeled failure."""
+    issue = SemanticAdapterError(f"{operation} is unavailable")
+    type_system = NameTypeSystem(
+        parameterized_types=(
+            ("list[int]", ParameterizedTypeShape("list", ("int",))),
+            ("set[int]", ParameterizedTypeShape("set", ("int",))),
+        )
+    )
+    expression = MapExpression(
+        TypeReference("list[int]"),
+        (
+            CaseExpression(
+                ParameterizedTypePattern("list", (CaptureValuePattern(),)),
+                ParameterizedTypeTemplate("set", (ValueReference(),)),
+            ),
+        ),
+    )
+
+    result = evaluate(
+        expression,
+        FailureInjectionTypeSystemProxy(type_system, operation, issue),
+    )
+
+    assert isinstance(result, Failure)
+    assert result.failure() is issue
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="Input maps cannot yet produce a shared DeferredMap",
+)
+def test_input_map_preserves_deferred_meaning_and_possible_output_type() -> None:
+    """`Map[Input, Case[int, int], Case[str, UUID], Default[bytes]]` defers."""
+    cases = (
+        CaseExpression(TypeReference("int"), TypeReference("int")),
+        CaseExpression(TypeReference("str"), TypeReference("UUID")),
+    )
+    default = TypeReference("bytes")
+    expression = MapExpression(InputReference(), cases, default)
+
+    assert evaluate(expression, NameTypeSystem()) == Success(
+        DeferredMap(
+            cases=cases,
+            default=default,
+            context=EvaluationContext(),
+            possible_output=ResolvedType("int | UUID | bytes"),
+        )
+    )
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="Input maps cannot yet distinguish no-match from a possible output",
+)
+def test_deferred_map_no_match_is_not_part_of_its_possible_output_type() -> None:
+    """A deferred `Map` without `Default` can fail but cannot output `Never`."""
+    cases = (
+        CaseExpression(TypeReference("int"), TypeReference("int")),
+        CaseExpression(TypeReference("str"), TypeReference("UUID")),
+    )
+    expression = MapExpression(InputReference(), cases)
+
+    assert evaluate(expression, NameTypeSystem()) == Success(
+        DeferredMap(
+            cases=cases,
+            default=None,
+            context=EvaluationContext(),
+            possible_output=ResolvedType("int | UUID"),
+        )
+    )
 
 
 def test_conditions_short_circuit_nested_failures() -> None:

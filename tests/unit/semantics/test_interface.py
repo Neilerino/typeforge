@@ -6,6 +6,7 @@ from returns.result import Result, Success
 
 from typeforge.semantics import (
     EvaluationContext,
+    ParameterizedTypeShape,
     RecordFamily,
     RecordField,
     RecordShape,
@@ -35,6 +36,16 @@ class NameTypeSystem:
 
     def record(self, value: str) -> Result[RecordShape[str], SemanticIssue]:
         return Success(RecordShape(RecordFamily.TYPED_DICT, value, ()))
+
+    def inspect_parameterized_type(
+        self, value: str
+    ) -> Result[ParameterizedTypeShape[str] | None, SemanticIssue]:
+        raise NotImplementedError
+
+    def build_parameterized_type(
+        self, shape: ParameterizedTypeShape[str]
+    ) -> Result[str, SemanticIssue]:
+        raise NotImplementedError
 
 
 def test_record_data_is_family_aware_and_immutable() -> None:

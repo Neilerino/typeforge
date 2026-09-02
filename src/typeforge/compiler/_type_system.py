@@ -13,6 +13,7 @@ from typeforge.compiler.records import (
 )
 from typeforge.semantics import (
     ExpectedRecordSemanticError,
+    ParameterizedTypeShape,
     RecordShape,
     SemanticIssue,
 )
@@ -83,6 +84,16 @@ class CompilerTypeSystem:
             )
 
         return Success(value)
+
+    def inspect_parameterized_type(
+        self, value: StaticType
+    ) -> Result[ParameterizedTypeShape[StaticType] | None, SemanticIssue]:
+        raise NotImplementedError
+
+    def build_parameterized_type(
+        self, shape: ParameterizedTypeShape[StaticType]
+    ) -> Result[StaticType, SemanticIssue]:
+        raise NotImplementedError
 
 
 COMPILER_TYPE_SYSTEM = CompilerTypeSystem()

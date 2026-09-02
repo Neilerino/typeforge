@@ -5,7 +5,7 @@ from typing import Protocol, runtime_checkable
 from returns.result import Result
 
 from typeforge.semantics.domain.exceptions import SemanticIssue
-from typeforge.semantics.domain.models import RecordShape
+from typeforge.semantics.domain.models import ParameterizedTypeShape, RecordShape
 
 
 @runtime_checkable
@@ -30,4 +30,16 @@ class TypeSystem[T](Protocol):
 
     def record(self, value: T) -> Result[RecordShape[T], SemanticIssue]:
         """Describe value without erasing its record family."""
+        ...
+
+    def inspect_parameterized_type(
+        self, value: T
+    ) -> Result[ParameterizedTypeShape[T] | None, SemanticIssue]:
+        """Return the origin and arguments of a parameterized type, if present."""
+        ...
+
+    def build_parameterized_type(
+        self, shape: ParameterizedTypeShape[T]
+    ) -> Result[T, SemanticIssue]:
+        """Build a backend type from a parameterized type shape."""
         ...

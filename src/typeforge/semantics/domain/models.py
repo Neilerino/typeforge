@@ -42,6 +42,39 @@ class TypeReference[T]:
 
 
 @dataclass(frozen=True, slots=True)
+class ParameterizedTypeShape[T]:
+    """The origin and type arguments inspected from a backend type."""
+
+    origin: T
+    arguments: tuple[T, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ExactTypePattern[T]:
+    """A structural pattern that matches one backend type exactly."""
+
+    value: T
+
+
+@dataclass(frozen=True, slots=True)
+class CaptureValuePattern:
+    """The structural pattern position bound to authored `Value`."""
+
+
+@dataclass(frozen=True, slots=True)
+class ParameterizedTypePattern[T]:
+    """A structural pattern for a parameterized type."""
+
+    origin: T
+    arguments: tuple[TypePattern[T], ...]
+
+
+type TypePattern[T] = (
+    ExactTypePattern[T] | CaptureValuePattern | ParameterizedTypePattern[T]
+)
+
+
+@dataclass(frozen=True, slots=True)
 class UnionExpression[T]:
     members: tuple[Expression[T], ...]
 
@@ -59,6 +92,17 @@ class KeyReference:
 @dataclass(frozen=True, slots=True)
 class ValueReference:
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class ParameterizedTypeTemplate[T]:
+    """A parameterized output type awaiting contextual substitution."""
+
+    origin: T
+    arguments: tuple[TypeTemplate[T], ...]
+
+
+type TypeTemplate[T] = TypeReference[T] | ValueReference | ParameterizedTypeTemplate[T]
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,7 +139,7 @@ class NotExpression[T]:
 
 @dataclass(frozen=True, slots=True)
 class CaseExpression[T]:
-    test: Expression[T]
+    test: Expression[T] | TypePattern[T]
     output: Expression[T]
 
 
@@ -142,6 +186,7 @@ type Expression[T] = (
     | InputReference
     | KeyReference
     | ValueReference
+    | ParameterizedTypeTemplate[T]
     | FieldName
     | EqualExpression[T]
     | AssignableExpression[T]
@@ -179,8 +224,24 @@ class EvaluationContext[T]:
     input_type: ResolvedType[T] | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class DeferredMap[T]:
+    """A Map whose ordered case selection must wait for Input."""
+
+    cases: tuple[CaseExpression[T], ...]
+    default: Expression[T] | None
+    context: EvaluationContext[T]
+    possible_output: ResolvedType[T]
+
+
 type EvaluationValue[T] = (
-    ResolvedType[T] | RecordShape[T] | RecordField[T] | FieldName | DroppedField | bool
+    ResolvedType[T]
+    | RecordShape[T]
+    | RecordField[T]
+    | FieldName
+    | DroppedField
+    | DeferredMap[T]
+    | bool
 )
 
 
