@@ -25,7 +25,11 @@ SEMANTICS = ArchModule(
             ],
         )
     ],
-    files=[ArchFile(name="protocols"), ArchFile(name="evaluation")],
+    files=[
+        ArchFile(name="protocols"),
+        ArchFile(name="map_evaluation"),
+        ArchFile(name="evaluation"),
+    ],
 )
 
 

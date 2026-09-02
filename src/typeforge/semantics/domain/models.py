@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TypeIs
 
 
 class RecordFamily(StrEnum):
@@ -69,11 +70,6 @@ class ParameterizedTypePattern[T]:
     arguments: tuple[TypePattern[T], ...]
 
 
-type TypePattern[T] = (
-    ExactTypePattern[T] | CaptureValuePattern | ParameterizedTypePattern[T]
-)
-
-
 @dataclass(frozen=True, slots=True)
 class UnionExpression[T]:
     members: tuple[Expression[T], ...]
@@ -100,9 +96,6 @@ class ParameterizedTypeTemplate[T]:
 
     origin: T
     arguments: tuple[TypeTemplate[T], ...]
-
-
-type TypeTemplate[T] = TypeReference[T] | ValueReference | ParameterizedTypeTemplate[T]
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,28 +173,6 @@ class MapFieldsExpression[T]:
     output_name: str | None = None
 
 
-type Expression[T] = (
-    TypeReference[T]
-    | UnionExpression[T]
-    | InputReference
-    | KeyReference
-    | ValueReference
-    | ParameterizedTypeTemplate[T]
-    | FieldName
-    | EqualExpression[T]
-    | AssignableExpression[T]
-    | AllExpression[T]
-    | AnyExpression[T]
-    | NotExpression[T]
-    | MapExpression[T]
-    | FieldExpression[T]
-    | OptionalFieldExpression[T]
-    | ReadonlyFieldExpression[T]
-    | DropExpression
-    | MapFieldsExpression[T]
-)
-
-
 @dataclass(frozen=True, slots=True)
 class ResolvedType[T]:
     """A backend-specific type resolved by semantic evaluation."""
@@ -245,6 +216,65 @@ type EvaluationValue[T] = (
 )
 
 
+type Expression[T] = (
+    TypeReference[T]
+    | UnionExpression[T]
+    | InputReference
+    | KeyReference
+    | ValueReference
+    | ParameterizedTypeTemplate[T]
+    | FieldName
+    | EqualExpression[T]
+    | AssignableExpression[T]
+    | AllExpression[T]
+    | AnyExpression[T]
+    | NotExpression[T]
+    | MapExpression[T]
+    | FieldExpression[T]
+    | OptionalFieldExpression[T]
+    | ReadonlyFieldExpression[T]
+    | DropExpression
+    | MapFieldsExpression[T]
+)
+
+type BooleanExpression[T] = (
+    EqualExpression[T]
+    | AssignableExpression[T]
+    | AllExpression[T]
+    | AnyExpression[T]
+    | NotExpression[T]
+)
+
+type TypePattern[T] = (
+    ExactTypePattern[T] | CaptureValuePattern | ParameterizedTypePattern[T]
+)
+
+
+type TypeTemplate[T] = TypeReference[T] | ValueReference | ParameterizedTypeTemplate[T]
+
+
 def type_ref(value: object, /) -> TypeReference[object]:
     """Reference a Python typing object in the shared runtime type domain."""
     return TypeReference(value)
+
+
+def is_bool_expr[T](
+    expression: Expression[T] | TypePattern[T],
+) -> TypeIs[BooleanExpression[T]]:
+    return isinstance(
+        expression,
+        EqualExpression
+        | AssignableExpression
+        | AllExpression
+        | AnyExpression
+        | NotExpression,
+    )
+
+
+def is_pattern_expr[T](
+    expression: Expression[T] | TypePattern[T],
+) -> TypeIs[TypePattern[T]]:
+    return isinstance(
+        expression,
+        ExactTypePattern | CaptureValuePattern | ParameterizedTypePattern,
+    )

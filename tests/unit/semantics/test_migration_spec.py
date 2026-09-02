@@ -24,6 +24,7 @@ from typeforge.semantics import (
     DroppedField,
     EqualExpression,
     EvaluationContext,
+    ExactTypePattern,
     ExpectedConditionSemanticError,
     ExpectedFieldNameSemanticError,
     ExpectedFieldSemanticError,
@@ -450,10 +451,6 @@ def test_map_without_a_match_resolves_to_never() -> None:
     assert evaluate(expression, NameTypeSystem()) == Success(ResolvedType("Never"))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="shared semantics cannot yet inspect or build parameterized types",
-)
 def test_parameterized_map_semantics_are_shared_by_type_system_adapters() -> None:
     """`Map[T, Case[list[Value], set[Value]], Default[T]]` is shared."""
     name_type_system = NameTypeSystem(
@@ -497,10 +494,68 @@ def test_parameterized_map_semantics_are_shared_by_type_system_adapters() -> Non
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="shared semantics cannot yet enforce repeated structural Value captures",
-)
+def test_parameterized_pattern_matches_nested_exact_and_capture_arguments() -> None:
+    """`Case[dict[str, list[Value]], set[Value]]` captures the nested type."""
+    type_system = NameTypeSystem(
+        parameterized_types=(
+            (
+                "dict[str, list[int]]",
+                ParameterizedTypeShape("dict", ("str", "list[int]")),
+            ),
+            ("list[int]", ParameterizedTypeShape("list", ("int",))),
+            ("set[int]", ParameterizedTypeShape("set", ("int",))),
+        )
+    )
+    expression = MapExpression(
+        TypeReference("dict[str, list[int]]"),
+        (
+            CaseExpression(
+                ParameterizedTypePattern(
+                    "dict",
+                    (
+                        ExactTypePattern("str"),
+                        ParameterizedTypePattern(
+                            "list",
+                            (CaptureValuePattern(),),
+                        ),
+                    ),
+                ),
+                ParameterizedTypeTemplate("set", (ValueReference(),)),
+            ),
+        ),
+    )
+
+    assert evaluate(expression, type_system) == Success(ResolvedType("set[int]"))
+
+
+@pytest.mark.parametrize("subject", ("set[int]", "tuple[int, str]", "int"))
+def test_parameterized_pattern_requires_matching_origin_and_arity(
+    subject: str,
+) -> None:
+    """A different origin, arity, or plain type selects the `Map` default."""
+    type_system = NameTypeSystem(
+        parameterized_types=(
+            ("set[int]", ParameterizedTypeShape("set", ("int",))),
+            (
+                "tuple[int, str]",
+                ParameterizedTypeShape("tuple", ("int", "str")),
+            ),
+        )
+    )
+    expression = MapExpression(
+        TypeReference(subject),
+        (
+            CaseExpression(
+                ParameterizedTypePattern("tuple", (CaptureValuePattern(),)),
+                TypeReference("matched"),
+            ),
+        ),
+        TypeReference("not-matched"),
+    )
+
+    assert evaluate(expression, type_system) == Success(ResolvedType("not-matched"))
+
+
 @pytest.mark.parametrize(
     ("subject", "expected"),
     (
@@ -542,13 +597,9 @@ def test_repeated_value_in_a_parameterized_pattern_is_one_capture(
     assert evaluate(expression, type_system) == Success(ResolvedType(expected))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="shared semantics does not use parameterized type adapter operations yet",
-)
 @pytest.mark.parametrize(
     "operation",
-    ("inspect", "build"),
+    ("equal", "inspect", "build"),
 )
 def test_parameterized_type_adapter_failures_propagate_unchanged(
     operation: AdapterOperation,

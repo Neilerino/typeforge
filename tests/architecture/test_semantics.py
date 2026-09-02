@@ -49,6 +49,11 @@ def protocols(semantics: ArchModule) -> ArchFile:
 
 
 @pytest.fixture
+def map_evaluation(semantics: ArchModule) -> ArchFile:
+    return semantics.file("map_evaluation")
+
+
+@pytest.fixture
 def evaluation(semantics: ArchModule) -> ArchFile:
     return semantics.file("evaluation")
 
@@ -69,6 +74,7 @@ def test_semantics_dependencies_point_toward_the_domain(
     architecture: LayeredArchitecture,
     domain: ArchModule,
     protocols: ArchFile,
+    map_evaluation: ArchFile,
     evaluation: ArchFile,
     interface: ArchFile,
 ) -> None:
@@ -78,8 +84,14 @@ def test_semantics_dependencies_point_toward_the_domain(
         .may_only_depend_on_layers()
         .where_layer(protocols.name)
         .may_only_depend_on_layers(domain.name)
-        .where_layer(evaluation.name)
+        .where_layer(map_evaluation.name)
         .may_only_depend_on_layers(domain.name, protocols.name)
+        .where_layer(evaluation.name)
+        .may_only_depend_on_layers(
+            domain.name,
+            protocols.name,
+            map_evaluation.name,
+        )
         .where_layer(interface.name)
         .may_only_depend_on_layers(domain.name, protocols.name, evaluation.name)
     )

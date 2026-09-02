@@ -25,14 +25,11 @@ from typeforge.semantics.domain.models import (
     AllExpression,
     AnyExpression,
     AssignableExpression,
-    CaptureValuePattern,
-    CaseExpression,
     DropExpression,
     DroppedField,
     EqualExpression,
     EvaluationContext,
     EvaluationValue,
-    ExactTypePattern,
     Expression,
     FieldExpression,
     FieldName,
@@ -42,7 +39,8 @@ from typeforge.semantics.domain.models import (
     MapFieldsExpression,
     NotExpression,
     OptionalFieldExpression,
-    ParameterizedTypePattern,
+    ParameterizedTypeShape,
+    ParameterizedTypeTemplate,
     ReadonlyFieldExpression,
     RecordField,
     ResolvedType,
@@ -50,6 +48,7 @@ from typeforge.semantics.domain.models import (
     UnionExpression,
     ValueReference,
 )
+from typeforge.semantics.map_evaluation import evaluate_map_members
 from typeforge.semantics.protocols import TypeSystem
 
 
@@ -152,6 +151,23 @@ def _[T](
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
     return DroppedField()
+
+
+@_evaluate.register(ParameterizedTypeTemplate)
+def _[T](
+    expression: ParameterizedTypeTemplate[T],
+    type_system: TypeSystem[T],
+    context: EvaluationContext[T],
+) -> EvaluationValue[T]:
+    arguments = tuple(
+        expect_type(
+            _evaluate(argument, type_system, context),
+            "parameterized type arguments must evaluate to types",
+        ).value
+        for argument in expression.arguments
+    )
+    shape = ParameterizedTypeShape(expression.origin, arguments)
+    return ResolvedType(type_system.build(shape).unwrap())
 
 
 @_evaluate.register(FieldExpression | OptionalFieldExpression | ReadonlyFieldExpression)
@@ -316,15 +332,12 @@ def _[T](
     else:
         members = (subject,)
 
-    outputs = tuple(
-        _evaluate_map_member(
-            member,
-            expression.cases,
-            expression.default,
-            type_system,
-            context,
-        )
-        for member in members
+    outputs = evaluate_map_members(
+        members,
+        expression,
+        type_system,
+        context,
+        fn=_evaluate,
     )
     if len(outputs) == 1:
         return outputs[0]
@@ -337,53 +350,3 @@ def _[T](
         for output in outputs
     )
     return ResolvedType(type_system.union(output_types).unwrap())
-
-
-def _evaluate_map_member[T](
-    subject: EvaluationValue[T],
-    cases: tuple[CaseExpression[T], ...],
-    default: Expression[T] | None,
-    type_system: TypeSystem[T],
-    context: EvaluationContext[T],
-) -> EvaluationValue[T]:
-    for case in cases:
-        if isinstance(
-            case.test,
-            EqualExpression
-            | AssignableExpression
-            | AllExpression
-            | AnyExpression
-            | NotExpression,
-        ):
-            matched = expect_condition(_evaluate(case.test, type_system, context))
-        elif isinstance(
-            case.test,
-            ExactTypePattern | CaptureValuePattern | ParameterizedTypePattern,
-        ):
-            raise UnsupportedExpressionSemanticError(
-                "structural type patterns are not supported yet"
-            )
-        else:
-            test = _evaluate(case.test, type_system, context)
-            matched = _map_values_are_equal(subject, test, type_system)
-        if matched:
-            return _evaluate(case.output, type_system, context)
-
-    if default is not None:
-        return _evaluate(default, type_system, context)
-
-    return ResolvedType(type_system.union(()).unwrap())
-
-
-def _map_values_are_equal[T](
-    left: EvaluationValue[T],
-    right: EvaluationValue[T],
-    type_system: TypeSystem[T],
-) -> bool:
-    if isinstance(left, ResolvedType) and isinstance(right, ResolvedType):
-        return type_system.equal(left.value, right.value).unwrap()
-
-    if isinstance(left, FieldName) and isinstance(right, FieldName):
-        return left == right
-
-    return False
