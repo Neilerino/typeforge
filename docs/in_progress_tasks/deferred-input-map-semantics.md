@@ -1,6 +1,6 @@
 # Deferred `Input` Map Semantics
 
-Status: Not started  
+Status: Complete
 Depends on: Parameterized type pattern semantics
 
 ## Goal

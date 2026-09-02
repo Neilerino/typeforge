@@ -48,7 +48,7 @@ from typeforge.semantics.domain.models import (
     UnionExpression,
     ValueReference,
 )
-from typeforge.semantics.map_evaluation import evaluate_map_members
+from typeforge.semantics.map_evaluation import evaluate_map
 from typeforge.semantics.protocols import TypeSystem
 
 
@@ -323,30 +323,4 @@ def _[T](
     type_system: TypeSystem[T],
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
-    subject = _evaluate(expression.subject, type_system, context)
-
-    members: tuple[EvaluationValue[T], ...]
-    if isinstance(subject, ResolvedType):
-        native_members = type_system.union_members(subject.value).unwrap()
-        members = tuple(ResolvedType(member) for member in native_members)
-    else:
-        members = (subject,)
-
-    outputs = evaluate_map_members(
-        members,
-        expression,
-        type_system,
-        context,
-        fn=_evaluate,
-    )
-    if len(outputs) == 1:
-        return outputs[0]
-
-    output_types = tuple(
-        expect_type(
-            output,
-            "Map outputs for a union subject must evaluate to types",
-        ).value
-        for output in outputs
-    )
-    return ResolvedType(type_system.union(output_types).unwrap())
+    return evaluate_map(expression, type_system, context, fn=_evaluate)

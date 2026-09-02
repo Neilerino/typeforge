@@ -5,15 +5,17 @@ from dataclasses import replace
 from functools import singledispatch
 from typing import NamedTuple, Protocol
 
-from typeforge.semantics.domain.assertions import expect_condition
+from typeforge.semantics.domain.assertions import expect_condition, expect_type
 from typeforge.semantics.domain.exceptions import UnsupportedExpressionSemanticError
 from typeforge.semantics.domain.models import (
     CaptureValuePattern,
+    DeferredMap,
     EvaluationContext,
     EvaluationValue,
     ExactTypePattern,
     Expression,
     FieldName,
+    InputReference,
     MapExpression,
     ParameterizedTypePattern,
     ResolvedType,
@@ -50,7 +52,74 @@ class _R_MatchTypePattern[T](NamedTuple):
         return cls(matched=False, value_binding=None)
 
 
-def evaluate_map_members[T](
+def evaluate_map[T](
+    expression: MapExpression[T],
+    type_system: TypeSystem[T],
+    context: EvaluationContext[T],
+    *,
+    fn: _ExpressionEvaluator[T],
+) -> EvaluationValue[T]:
+    if isinstance(expression.subject, InputReference) and context.input_type is None:
+        return _defer_map(expression, type_system, context, fn=fn)
+
+    subject = fn(expression.subject, type_system, context)
+    members: tuple[EvaluationValue[T], ...]
+    if isinstance(subject, ResolvedType):
+        native_members = type_system.union_members(subject.value).unwrap()
+        members = tuple(ResolvedType(member) for member in native_members)
+    else:
+        members = (subject,)
+
+    outputs = _evaluate_map_members(
+        members,
+        expression,
+        type_system,
+        context,
+        fn=fn,
+    )
+    if len(outputs) == 1:
+        return outputs[0]
+
+    output_types = tuple(
+        expect_type(
+            output,
+            "Map outputs for a union subject must evaluate to types",
+        ).value
+        for output in outputs
+    )
+    return ResolvedType(type_system.union(output_types).unwrap())
+
+
+def _defer_map[T](
+    expression: MapExpression[T],
+    type_system: TypeSystem[T],
+    context: EvaluationContext[T],
+    *,
+    fn: _ExpressionEvaluator[T],
+) -> DeferredMap[T]:
+    output_types = tuple(
+        expect_type(
+            fn(case.output, type_system, context),
+            "deferred Map outputs must evaluate to types",
+        ).value
+        for case in expression.cases
+    )
+    if expression.default is not None:
+        default_type = expect_type(
+            fn(expression.default, type_system, context),
+            "deferred Map outputs must evaluate to types",
+        )
+        output_types = (*output_types, default_type.value)
+
+    return DeferredMap(
+        cases=expression.cases,
+        default=expression.default,
+        context=context,
+        possible_output=ResolvedType(type_system.union(output_types).unwrap()),
+    )
+
+
+def _evaluate_map_members[T](
     members: Sequence[EvaluationValue[T]],
     expression: MapExpression[T],
     type_system: TypeSystem[T],
@@ -197,4 +266,4 @@ def _map_values_are_equal[T](
     return False
 
 
-__all__ = ("evaluate_map_members",)
+__all__ = ("evaluate_map",)

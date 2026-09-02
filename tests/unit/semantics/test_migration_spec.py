@@ -631,10 +631,6 @@ def test_parameterized_type_adapter_failures_propagate_unchanged(
     assert result.failure() is issue
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Input maps cannot yet produce a shared DeferredMap",
-)
 def test_input_map_preserves_deferred_meaning_and_possible_output_type() -> None:
     """`Map[Input, Case[int, int], Case[str, UUID], Default[bytes]]` defers."""
     cases = (
@@ -654,10 +650,6 @@ def test_input_map_preserves_deferred_meaning_and_possible_output_type() -> None
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Input maps cannot yet distinguish no-match from a possible output",
-)
 def test_deferred_map_no_match_is_not_part_of_its_possible_output_type() -> None:
     """A deferred `Map` without `Default` can fail but cannot output `Never`."""
     cases = (
@@ -674,6 +666,103 @@ def test_deferred_map_no_match_is_not_part_of_its_possible_output_type() -> None
             possible_output=ResolvedType("int | UUID"),
         )
     )
+
+
+def test_deferred_map_normalizes_duplicate_possible_outputs() -> None:
+    """Possible output types use the adapter's union normalization."""
+    cases = (
+        CaseExpression(TypeReference("int"), TypeReference("str")),
+        CaseExpression(TypeReference("bytes"), TypeReference("str")),
+    )
+    default = TypeReference("bytes")
+    expression = MapExpression(InputReference(), cases, default)
+
+    result = evaluate(expression, NameTypeSystem())
+
+    assert result == Success(
+        DeferredMap(
+            cases=cases,
+            default=default,
+            context=EvaluationContext(),
+            possible_output=ResolvedType("str | bytes"),
+        )
+    )
+
+
+def test_deferred_map_preserves_union_adapter_failures() -> None:
+    """Possible output construction preserves the adapter's modeled failure."""
+    issue = SemanticAdapterError("union is unavailable")
+    expression = MapExpression(
+        InputReference(),
+        (CaseExpression(TypeReference("int"), TypeReference("str")),),
+    )
+
+    result = evaluate(
+        expression,
+        FailureInjectionTypeSystemProxy(NameTypeSystem(), "union", issue),
+    )
+
+    assert isinstance(result, Failure)
+    assert result.failure() is issue
+
+
+def test_deferred_map_preserves_and_uses_its_evaluation_context() -> None:
+    """A deferred output can use a `MapFields` value binding available now."""
+    context = EvaluationContext(value=ResolvedType("int"))
+    cases = (CaseExpression(TypeReference("str"), ValueReference()),)
+    expression = MapExpression(InputReference(), cases)
+
+    result = evaluate(expression, NameTypeSystem(), context)
+
+    assert result == Success(
+        DeferredMap(
+            cases=cases,
+            default=None,
+            context=context,
+            possible_output=ResolvedType("int"),
+        )
+    )
+
+
+def test_deferred_map_rejects_an_output_that_needs_future_input() -> None:
+    """Possible outputs must resolve before the deferred input is available."""
+    expression = MapExpression(
+        InputReference(),
+        (CaseExpression(TypeReference("int"), InputReference()),),
+    )
+
+    assert evaluate(expression, NameTypeSystem()) == Failure(
+        UnboundInputSemanticError("Input requires value-time evaluation")
+    )
+
+
+def test_deferred_map_rejects_a_non_type_output() -> None:
+    """Every possible deferred output must resolve to a type."""
+    expression = MapExpression(
+        InputReference(),
+        (CaseExpression(TypeReference("int"), FieldName("not-a-type")),),
+    )
+
+    assert evaluate(expression, NameTypeSystem()) == Failure(
+        ExpectedTypeSemanticError("deferred Map outputs must evaluate to types")
+    )
+
+
+def test_bound_input_evaluates_the_map_instead_of_deferring_it() -> None:
+    """A bound `Input` selects an ordinary ordered `Map` output."""
+    expression = MapExpression(
+        InputReference(),
+        (CaseExpression(TypeReference("int"), TypeReference("str")),),
+        TypeReference("bytes"),
+    )
+
+    result = evaluate(
+        expression,
+        NameTypeSystem(),
+        EvaluationContext(input_type=ResolvedType("int")),
+    )
+
+    assert result == Success(ResolvedType("str"))
 
 
 def test_conditions_short_circuit_nested_failures() -> None:
