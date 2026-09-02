@@ -47,6 +47,7 @@ packages = ["src/typeforge"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/architecture"]
+pythonpath = ["."]
 
 [tool.mypy]
 strict = true

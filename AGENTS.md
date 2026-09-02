@@ -10,13 +10,8 @@
 ## Commands
 
 * Install the complete development environment with `uv sync --locked --all-extras --dev`.
-* Run focused tests while developing with `uv run pytest <relevant test path>`.
-* Before finishing, run:
-  * `uv run pytest tests`
-  * `uv run ruff check .`
-  * `uv run ruff format --check .`
-  * `uv run mypy src`
-  * `uv run pyright src`
+* Run focused checks while developing with `make check <relevant source and test paths>`.
+* Before finishing, run `make check`.
 
 ## Design
 

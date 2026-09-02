@@ -64,10 +64,6 @@ def test_names_lower_to_bound_or_named_type_references() -> None:
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="compiler semantic lowering makes parameterized types opaque",
-)
 def test_parameterized_type_lowers_to_a_structured_compiler_type() -> None:
     """`list[int]` lowers to a reference containing `ParameterizedType`."""
     expression = AppliedTypeExpression(
@@ -82,10 +78,6 @@ def test_parameterized_type_lowers_to_a_structured_compiler_type() -> None:
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="compiler semantic lowering does not distinguish patterns and templates",
-)
 def test_map_lowers_parameterized_case_roles_to_shared_semantics() -> None:
     """`Case[list[Value], set[Value]]` lowers to a pattern and template."""
     value = marker(MarkerKind.VALUE)
@@ -128,10 +120,6 @@ def test_map_lowers_parameterized_case_roles_to_shared_semantics() -> None:
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="compiler semantic lowering does not lower Input to shared semantics",
-)
 def test_input_map_lowers_and_evaluates_to_a_deferred_map() -> None:
     """`Map[Input, Case[int, int], ...]` lowers to deferred semantics."""
     cases: tuple[CaseExpression[StaticType], ...] = (
@@ -181,6 +169,31 @@ def test_string_literal_lowers_to_a_field_name() -> None:
     )
 
     assert lower_semantic_expression(literal, ()) == FieldName("token")
+
+
+def test_map_case_preserves_string_literal_field_names() -> None:
+    source = AppliedTypeExpression(
+        source='Literal["source"]',
+        span=SPAN,
+        constructor=name("Literal"),
+        arguments=(RawTypeExpression('"source"', SPAN),),
+    )
+    target = AppliedTypeExpression(
+        source='Literal["target"]',
+        span=SPAN,
+        constructor=name("Literal"),
+        arguments=(RawTypeExpression('"target"', SPAN),),
+    )
+    expression = marker(
+        MarkerKind.MAP,
+        marker(MarkerKind.KEY),
+        marker(MarkerKind.CASE, source, target),
+    )
+
+    assert lower_semantic_expression(expression, ()) == MapExpression(
+        KeyReference(),
+        (CaseExpression(FieldName("source"), FieldName("target")),),
+    )
 
 
 def test_record_markers_lower_to_the_shared_semantic_model() -> None:

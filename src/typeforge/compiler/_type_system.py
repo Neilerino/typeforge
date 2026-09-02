@@ -7,6 +7,7 @@ from returns.result import Failure, Result, Success
 from typeforge.compiler.records import (
     NamedType,
     NeverType,
+    ParameterizedType,
     StaticType,
     UnionType,
     union_of,
@@ -88,12 +89,15 @@ class CompilerTypeSystem:
     def inspect(
         self, value: StaticType
     ) -> Result[ParameterizedTypeShape[StaticType] | None, SemanticIssue]:
-        raise NotImplementedError
+        if isinstance(value, ParameterizedType):
+            return Success(ParameterizedTypeShape(value.origin, value.arguments))
+
+        return Success(None)
 
     def build(
         self, shape: ParameterizedTypeShape[StaticType]
     ) -> Result[StaticType, SemanticIssue]:
-        raise NotImplementedError
+        return Success(ParameterizedType(shape.origin, shape.arguments))
 
 
 COMPILER_TYPE_SYSTEM = CompilerTypeSystem()

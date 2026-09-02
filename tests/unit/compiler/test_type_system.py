@@ -1,4 +1,3 @@
-import pytest
 from returns.result import Failure, Success
 
 from typeforge.compiler._type_system import COMPILER_TYPE_SYSTEM
@@ -37,10 +36,6 @@ def type_reference(value: StaticType) -> TypeReference[StaticType]:
     return TypeReference(value=value)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="CompilerTypeSystem cannot inspect compiler parameterized types yet",
-)
 def test_compiler_type_system_inspects_parameterized_types() -> None:
     from typeforge.compiler.records import ParameterizedType
 
@@ -51,10 +46,6 @@ def test_compiler_type_system_inspects_parameterized_types() -> None:
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="CompilerTypeSystem cannot build compiler parameterized types yet",
-)
 def test_compiler_type_system_builds_parameterized_types() -> None:
     from typeforge.compiler.records import ParameterizedType
 

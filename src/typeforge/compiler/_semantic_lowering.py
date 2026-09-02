@@ -29,30 +29,38 @@ from typeforge.compiler.model import (
     MarkerTypeExpression,
     NameTypeExpression,
     RawTypeExpression,
+    RuntimeInputTypeExpression,
     StarredTypeExpression,
     UnionTypeExpression,
 )
 from typeforge.compiler.model import (
     TypeExpression as SourceTypeExpression,
 )
-from typeforge.compiler.records import NamedType, StaticType
+from typeforge.compiler.records import NamedType, ParameterizedType, StaticType
 from typeforge.semantics import (
     AllExpression,
     AnyExpression,
     AssignableExpression,
+    CaptureValuePattern,
     CaseExpression,
     DropExpression,
     EqualExpression,
+    ExactTypePattern,
     Expression,
     FieldExpression,
     FieldName,
+    InputReference,
     KeyReference,
     MapExpression,
     MapFieldsExpression,
     NotExpression,
     OptionalFieldExpression,
+    ParameterizedTypePattern,
+    ParameterizedTypeTemplate,
     ReadonlyFieldExpression,
+    TypePattern,
     TypeReference,
+    TypeTemplate,
     ValueReference,
 )
 
@@ -96,6 +104,15 @@ def _(
 
 @lower_semantic_expression.register
 def _(
+    expression: RuntimeInputTypeExpression,
+    environment: SemanticEnvironment,
+    output_name: str | None = None,
+) -> Expression[StaticType]:
+    return InputReference()
+
+
+@lower_semantic_expression.register
+def _(
     expression: AppliedTypeExpression,
     environment: SemanticEnvironment,
     output_name: str | None = None,
@@ -103,7 +120,7 @@ def _(
     field_name = field_name_literal(expression)
     if field_name is not None:
         return field_name
-    return TypeReference(NamedType(expression.source))
+    return TypeReference(_lower_concrete_type(expression, environment))
 
 
 @lower_semantic_expression.register
@@ -138,7 +155,10 @@ def _(
             )
         case MapMarker(subject=subject, entries=entries):
             cases = tuple(
-                CaseExpression(lower(entry.test), lower(entry.output))
+                CaseExpression(
+                    _lower_case_test(entry.test, environment),
+                    _lower_case_output(entry.output, environment),
+                )
                 for entry in entries
                 if isinstance(entry, CaseMarker)
             )
@@ -166,6 +186,107 @@ def _(
                 "unsupported record expression "
                 f"{type(marker).__name__.removesuffix('Marker')}"
             )
+
+
+def _lower_concrete_type(
+    expression: SourceTypeExpression,
+    environment: SemanticEnvironment,
+) -> StaticType:
+    match expression:
+        case NameTypeExpression(source=source):
+            bound = dict(environment).get(source)
+            return bound if bound is not None else NamedType(source)
+        case AppliedTypeExpression(constructor=constructor, arguments=arguments):
+            return ParameterizedType(
+                origin=_lower_concrete_type(constructor, environment),
+                arguments=tuple(
+                    _lower_concrete_type(argument, environment)
+                    for argument in arguments
+                ),
+            )
+        case _:
+            return NamedType(expression.source)
+
+
+def _lower_case_test(
+    expression: SourceTypeExpression,
+    environment: SemanticEnvironment,
+) -> Expression[StaticType] | TypePattern[StaticType]:
+    match expression:
+        case AppliedTypeExpression():
+            field_name = field_name_literal(expression)
+            if field_name is not None:
+                return field_name
+            return _lower_type_pattern(expression, environment)
+        case MarkerTypeExpression():
+            marker = _normalize_semantic_marker(expression)
+            if isinstance(marker, ValueMarker):
+                return CaptureValuePattern()
+        case _:
+            pass
+
+    return lower_semantic_expression(expression, environment)
+
+
+def _lower_type_pattern(
+    expression: SourceTypeExpression,
+    environment: SemanticEnvironment,
+) -> TypePattern[StaticType]:
+    match expression:
+        case AppliedTypeExpression(constructor=constructor, arguments=arguments):
+            return ParameterizedTypePattern(
+                origin=_lower_concrete_type(constructor, environment),
+                arguments=tuple(
+                    _lower_type_pattern(argument, environment) for argument in arguments
+                ),
+            )
+        case MarkerTypeExpression():
+            marker = _normalize_semantic_marker(expression)
+            if isinstance(marker, ValueMarker):
+                return CaptureValuePattern()
+            raise SemanticLoweringError(
+                "unsupported type pattern "
+                f"{type(marker).__name__.removesuffix('Marker')}"
+            )
+        case _:
+            return ExactTypePattern(_lower_concrete_type(expression, environment))
+
+
+def _lower_case_output(
+    expression: SourceTypeExpression,
+    environment: SemanticEnvironment,
+) -> Expression[StaticType]:
+    if isinstance(expression, AppliedTypeExpression):
+        field_name = field_name_literal(expression)
+        if field_name is not None:
+            return field_name
+        return _lower_type_template(expression, environment)
+    return lower_semantic_expression(expression, environment)
+
+
+def _lower_type_template(
+    expression: SourceTypeExpression,
+    environment: SemanticEnvironment,
+) -> TypeTemplate[StaticType]:
+    match expression:
+        case AppliedTypeExpression(constructor=constructor, arguments=arguments):
+            return ParameterizedTypeTemplate(
+                origin=_lower_concrete_type(constructor, environment),
+                arguments=tuple(
+                    _lower_type_template(argument, environment)
+                    for argument in arguments
+                ),
+            )
+        case MarkerTypeExpression():
+            marker = _normalize_semantic_marker(expression)
+            if isinstance(marker, ValueMarker):
+                return ValueReference()
+            raise SemanticLoweringError(
+                "unsupported type template "
+                f"{type(marker).__name__.removesuffix('Marker')}"
+            )
+        case _:
+            return TypeReference(_lower_concrete_type(expression, environment))
 
 
 def _normalize_semantic_marker(
