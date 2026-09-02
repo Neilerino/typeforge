@@ -310,6 +310,8 @@ def test_schema_boundaries_resolve_in_model_fields_and_generated_stubs(
         "Case[Equal[Input, str], int], Default[float]]]\n"
         "    structural: Schema[Map["
         "list[int], Case[list[Value], Value], Default[bytes]]]\n"
+        "    structural_output: Schema[Map["
+        "list[int], Case[list[Value], set[Value]], Default[bytes]]]\n"
         "    nested_capture: Schema[Map["
         "list[int], Case[list[Value], Map[Value, Case[int, str], Default[bytes]]], "
         "Default[float]]]\n"
@@ -329,5 +331,6 @@ def test_schema_boundaries_resolve_in_model_fields_and_generated_stubs(
     assert "    runtime: int | bytes" in content
     assert "    runtime_if: int | float" in content
     assert "    structural: int" in content
+    assert "    structural_output: set[int]" in content
     assert "    nested_capture: str" in content
     assert "    public: Public_User" in content

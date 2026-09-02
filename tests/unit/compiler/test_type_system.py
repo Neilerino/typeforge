@@ -1,3 +1,4 @@
+import pytest
 from returns.result import Failure, Success
 
 from typeforge.compiler._type_system import COMPILER_TYPE_SYSTEM
@@ -14,6 +15,7 @@ from typeforge.semantics import (
     KeyReference,
     MapExpression,
     MapFieldsExpression,
+    ParameterizedTypeShape,
     RecordFamily,
     RecordField,
     RecordShape,
@@ -33,6 +35,34 @@ DATETIME: StaticType = NamedType("datetime", ("object",))
 
 def type_reference(value: StaticType) -> TypeReference[StaticType]:
     return TypeReference(value=value)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="CompilerTypeSystem cannot inspect compiler parameterized types yet",
+)
+def test_compiler_type_system_inspects_parameterized_types() -> None:
+    from typeforge.compiler.records import ParameterizedType
+
+    value = ParameterizedType(NamedType("list"), (INT,))
+
+    assert COMPILER_TYPE_SYSTEM.inspect(value) == Success(
+        ParameterizedTypeShape(NamedType("list"), (INT,))
+    )
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="CompilerTypeSystem cannot build compiler parameterized types yet",
+)
+def test_compiler_type_system_builds_parameterized_types() -> None:
+    from typeforge.compiler.records import ParameterizedType
+
+    shape = ParameterizedTypeShape[StaticType](NamedType("set"), (INT,))
+
+    assert COMPILER_TYPE_SYSTEM.build(shape) == Success(
+        ParameterizedType(NamedType("set"), (INT,))
+    )
 
 
 def test_assignable_understands_union_sources_and_targets() -> None:

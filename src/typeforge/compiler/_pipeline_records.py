@@ -57,7 +57,13 @@ from typeforge.compiler.model import (
 from typeforge.compiler.model import (
     TypeExpression as SourceTypeExpression,
 )
-from typeforge.compiler.records import NamedType, NeverType, StaticType, UnionType
+from typeforge.compiler.records import (
+    NamedType,
+    NeverType,
+    ParameterizedType,
+    StaticType,
+    UnionType,
+)
 from typeforge.semantics import (
     MapFieldsExpression,
     RecordFamily,
@@ -233,6 +239,11 @@ def _static_type_expression(value: StaticType) -> TypeExpression:
             return TypeName(name)
         case NeverType():
             return TypeName("tf_typing.Never")
+        case ParameterizedType(origin, arguments):
+            return TypeApplication(
+                _static_type_expression(origin),
+                tuple(_static_type_expression(argument) for argument in arguments),
+            )
         case UnionType(members):
             return UnionExpression(
                 tuple(_static_type_expression(member) for member in members)
