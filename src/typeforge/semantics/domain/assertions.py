@@ -7,7 +7,6 @@ from typeforge.semantics.domain.exceptions import (
     ExpectedTypeSemanticError,
 )
 from typeforge.semantics.domain.models import (
-    DeferredMap,
     EvaluationValue,
     FieldName,
     RecordField,
@@ -21,17 +20,6 @@ def expect_type[T](
 ) -> ResolvedType[T]:
     if isinstance(value, ResolvedType):
         return value
-    raise ExpectedTypeSemanticError(message)
-
-
-def expect_possible_type[T](
-    value: EvaluationValue[T],
-    message: str = "value must have a possible output type",
-) -> ResolvedType[T]:
-    if isinstance(value, ResolvedType):
-        return value
-    if isinstance(value, DeferredMap):
-        return value.possible_output
     raise ExpectedTypeSemanticError(message)
 
 

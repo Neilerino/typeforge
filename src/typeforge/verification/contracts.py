@@ -28,11 +28,7 @@ def build_return_contract(
     aliases: tuple[SemanticRelationshipAlias, ...],
     enclosing_type_parameters: tuple[str, ...] = (),
 ) -> Result[ReturnContract | None, AdaptationError]:
-    adapted = adapt_function(
-        function,
-        enclosing_type_parameters,
-        aliases=aliases,
-    )
+    adapted = adapt_function(function, enclosing_type_parameters)
     if isinstance(adapted, Failure):
         return adapted
     expanded = expand_function_map_aliases(adapted.unwrap(), aliases)

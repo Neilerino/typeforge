@@ -171,7 +171,7 @@ def test_string_literal_lowers_to_a_field_name() -> None:
     assert lower_semantic_expression(literal, ()) == FieldName("token")
 
 
-def test_field_name_map_preserves_string_literal_names() -> None:
+def test_map_case_preserves_string_literal_field_names() -> None:
     source = AppliedTypeExpression(
         source='Literal["source"]',
         span=SPAN,
@@ -185,23 +185,14 @@ def test_field_name_map_preserves_string_literal_names() -> None:
         arguments=(RawTypeExpression('"target"', SPAN),),
     )
     expression = marker(
-        MarkerKind.FIELD,
-        marker(
-            MarkerKind.MAP,
-            marker(MarkerKind.KEY),
-            marker(MarkerKind.CASE, source, target),
-            marker(MarkerKind.DEFAULT, marker(MarkerKind.KEY)),
-        ),
-        name("int"),
+        MarkerKind.MAP,
+        marker(MarkerKind.KEY),
+        marker(MarkerKind.CASE, source, target),
     )
 
-    assert lower_semantic_expression(expression, ()) == FieldExpression(
-        MapExpression(
-            KeyReference(),
-            (CaseExpression(FieldName("source"), FieldName("target")),),
-            KeyReference(),
-        ),
-        TypeReference(NamedType("int")),
+    assert lower_semantic_expression(expression, ()) == MapExpression(
+        KeyReference(),
+        (CaseExpression(FieldName("source"), FieldName("target")),),
     )
 
 

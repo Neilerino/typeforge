@@ -12,7 +12,6 @@ from typeforge.compiler.lowering import (
     OverloadDeclaration,
     VariableDeclaration,
 )
-from typeforge.compiler.model import MarkerTypeExpression
 from typeforge.compiler.records import StaticType
 from typeforge.semantics import RecordShape
 
@@ -76,5 +75,4 @@ class ModuleVariables:
 class SemanticRelationshipAlias:
     name: str
     parameter: str
-    semantic_source: MarkerTypeExpression
-    callable_relationship: MapType
+    relationship: MapType

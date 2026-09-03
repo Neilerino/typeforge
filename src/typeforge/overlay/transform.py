@@ -275,7 +275,7 @@ def _generate_overloads(
             if len(function.qualified_name) == 2
             else ()
         )
-        adapted = adapt_function(function, enclosing, aliases=aliases)
+        adapted = adapt_function(function, enclosing)
         if isinstance(adapted, Failure):
             return Failure(_adaptation_error(module.path, adapted.failure()))
         expanded = expand_function_map_aliases(adapted.unwrap(), aliases)
@@ -521,14 +521,14 @@ def _alias_edits(
             Success(
                 TypeAliasDeclaration(
                     name=alias.name,
-                    value=_relationship_fallback(relationship.callable_relationship),
+                    value=_relationship_fallback(relationship.relationship),
                     type_parameters=tuple(
                         parameter.declaration for parameter in alias.type_parameters
                     ),
                 )
             )
             if relationship is not None
-            else adapt_alias(alias, aliases=semantic_aliases).map(
+            else adapt_alias(alias).map(
                 lambda declaration: TypeAliasDeclaration(
                     declaration.name,
                     replace_record_aliases(
@@ -615,15 +615,13 @@ def _schema_edits(
 
     edits: list[_Edit] = []
     for boundary in boundaries.values():
-        adapted = adapt_type_expression(
-            "Schema",
-            boundary,
-            (),
-            aliases=semantic_aliases,
-        )
+        adapted = adapt_type_expression("Schema", boundary, ())
         if isinstance(adapted, Failure):
             return Failure(_adaptation_error(module.path, adapted.failure()))
-        resolved = replace_record_aliases(adapted.unwrap(), derived)
+        resolved = replace_record_aliases(
+            expand_map_aliases(adapted.unwrap(), semantic_aliases),
+            derived,
+        )
         emitted = emit_type_expression(resolved)
         if isinstance(emitted, Failure):
             return Failure(
