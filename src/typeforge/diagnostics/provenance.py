@@ -1,7 +1,6 @@
 from returns.result import Failure
 
-from typeforge.compiler.frontend import parse_source
-from typeforge.compiler.model import ParameterKind, enriched_functions
+from typeforge.compiler.source import ParameterKind, enriched_functions, parse_source
 from typeforge.diagnostics.model import (
     AuthoredCallable,
     AuthoredParameter,

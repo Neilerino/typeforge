@@ -42,13 +42,12 @@ from typeforge.compiler._pipeline_utils import (
     validate_public_surface,
 )
 from typeforge.compiler.emitter import emit_stub_module
-from typeforge.compiler.frontend import parse_module
 from typeforge.compiler.lowering import (
     ArityFrontier,
     StubModule,
     lower_variadic_module,
 )
-from typeforge.compiler.model import SourceModule
+from typeforge.compiler.source import SourceModule, parse_module
 
 
 def generate_module(

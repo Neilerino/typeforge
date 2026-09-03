@@ -2,18 +2,16 @@ from pathlib import Path
 
 import pytest
 
-from typeforge.compiler._markers import (
+from typeforge.compiler.source import (
     MARKER_SIGNATURES,
     MapMarker,
-    MarkerNormalizationError,
-    normalize_marker,
-)
-from typeforge.compiler.model import (
     MarkerKind,
+    MarkerNormalizationError,
     MarkerTypeExpression,
     NameTypeExpression,
     SourcePosition,
     SourceSpan,
+    normalize_marker,
 )
 
 SPAN = SourceSpan(Path("markers.py"), SourcePosition(1, 0), SourcePosition(1, 1))

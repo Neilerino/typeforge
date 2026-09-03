@@ -2,27 +2,25 @@ from pathlib import Path
 
 from returns.result import Failure, Success
 
-from typeforge.compiler.frontend import (
-    SourceReadError,
-    SourceSyntaxError,
-    parse_module,
-    parse_source,
-)
-from typeforge.compiler.model import (
+from typeforge.compiler.source import (
     AppliedTypeExpression,
     MarkerKind,
     MarkerTypeExpression,
     ParameterKind,
     RuntimeInputTypeExpression,
     SchemaTypeExpression,
+    SourceReadError,
+    SourceSyntaxError,
     StarredTypeExpression,
     TypeParameterKind,
     UnionTypeExpression,
     contains_marker,
     enriched_functions,
+    parse_module,
+    parse_source,
 )
 
-FIXTURES = Path(__file__).parent / "fixtures"
+FIXTURES = Path(__file__).parent.parent / "fixtures"
 
 
 def test_parse_module_finds_enriched_functions_and_preserves_spans() -> None:

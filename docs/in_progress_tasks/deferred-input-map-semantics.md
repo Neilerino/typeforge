@@ -209,10 +209,8 @@ current one.
 
 ### 1. Characterize the production compiler behavior
 
-Add focused production-interface contracts for behavior discovered during the
-experiment. Use `generate_module()` for compiler output and mirror cases through
-`transform_source()` wherever overlay adaptation has an independent call path.
-Cover:
+Add focused `generate_module()` contracts for compiler behavior discovered
+during the experiment. Cover:
 
 - direct and aliased structural Maps;
 - `Literal` as a field name and as a type output;
@@ -227,9 +225,7 @@ Cover:
 - same-symbol identity and known mismatches in partially unresolved structures;
 - repeated captures involving unresolved positions;
 - nested uncertain Maps used by predicates;
-- nested aliases and alias cycles;
-- overlay cases for deferred, unresolved-generic, nested-alias, and nested-type
-  schema boundaries.
+- nested aliases and alias cycles.
 
 Classify every row as either retained behavior or an intended correction:
 
@@ -368,9 +364,11 @@ callable Map overload and verification tests remain unchanged.
 
 ### 8. Cut over and delete the duplicate path
 
-Route every compiler and overlay schema boundary through the tested schema
-adapter. Activate the end-to-end correction contracts assigned here by the
-characterization matrix. Then delete from `_pipeline_adaptation.py`:
+Route every compiler schema boundary through the tested schema adapter. Update
+the overlay only as a downstream caller where deletion changes the compiler
+interface it consumes. Activate the compiler end-to-end correction contracts
+assigned here by the characterization matrix. Then delete from
+`_pipeline_adaptation.py`:
 
 - `resolve_schema_type()` and `_resolve_schema_map_member()`;
 - `_match_schema_pattern()`;
@@ -384,10 +382,12 @@ Do not retain the previous path as fallback behavior.
 
 Completion criterion:
 
-- all compiler and overlay schema boundaries use the adapter;
+- all compiler schema boundaries use the adapter;
+- the overlay no longer calls deleted compiler helpers and its existing
+  compatibility tests remain green;
 - the public generated-stub contract remains green, including
   `Case[list[Value], set[Value]] -> set[int]`;
-- all compiler and overlay end-to-end correction contracts pass without xfails;
+- all compiler end-to-end correction contracts pass without xfails;
 - callable Map lowering and implementation verification remain green;
 - no second structural matcher, predicate evaluator, union normalizer, or
   possible-output calculation exists in the compiler;

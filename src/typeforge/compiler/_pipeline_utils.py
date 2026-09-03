@@ -6,12 +6,6 @@ from typing import assert_never
 
 from returns.result import Failure, Result, Success
 
-from typeforge.compiler._markers import (
-    DefaultMarker,
-    MapMarker,
-    MarkerNormalizationError,
-    normalize_marker,
-)
 from typeforge.compiler._pipeline_models import (
     ModuleVariables,
     UnsupportedPublicDeclaration,
@@ -23,8 +17,11 @@ from typeforge.compiler.lowering import (
     TypeName,
     VariableDeclaration,
 )
-from typeforge.compiler.model import (
+from typeforge.compiler.source import (
     AppliedTypeExpression,
+    DefaultMarker,
+    MapMarker,
+    MarkerNormalizationError,
     MarkerTypeExpression,
     NameTypeExpression,
     RawTypeExpression,
@@ -33,8 +30,9 @@ from typeforge.compiler.model import (
     SourceModule,
     StarredTypeExpression,
     UnionTypeExpression,
+    normalize_marker,
 )
-from typeforge.compiler.model import (
+from typeforge.compiler.source import (
     TypeExpression as SourceTypeExpression,
 )
 

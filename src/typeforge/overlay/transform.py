@@ -15,7 +15,6 @@ from typeforge.analysis.model import (
     VirtualDocument,
 )
 from typeforge.compiler.emitter import emit_stub_module, emit_type_expression
-from typeforge.compiler.frontend import SourceSyntaxError, parse_source
 from typeforge.compiler.lowering import (
     ArityFrontier,
     EachType,
@@ -38,21 +37,6 @@ from typeforge.compiler.lowering import (
     UnpackedType,
     lower_variadic_module,
 )
-from typeforge.compiler.model import (
-    AppliedTypeExpression,
-    MarkerTypeExpression,
-    SchemaTypeExpression,
-    SourceModule,
-    StarredTypeExpression,
-    UnionTypeExpression,
-    contains_marker,
-)
-from typeforge.compiler.model import (
-    FunctionDeclaration as SourceFunction,
-)
-from typeforge.compiler.model import (
-    TypeExpression as SourceTypeExpression,
-)
 from typeforge.compiler.pipeline import (
     AdaptationError,
     DerivedRecord,
@@ -67,6 +51,23 @@ from typeforge.compiler.pipeline import (
     expand_map_aliases,
     render_typed_dict,
     replace_record_aliases,
+)
+from typeforge.compiler.source import (
+    AppliedTypeExpression,
+    MarkerTypeExpression,
+    SchemaTypeExpression,
+    SourceModule,
+    SourceSyntaxError,
+    StarredTypeExpression,
+    UnionTypeExpression,
+    contains_marker,
+    parse_source,
+)
+from typeforge.compiler.source import (
+    FunctionDeclaration as SourceFunction,
+)
+from typeforge.compiler.source import (
+    TypeExpression as SourceTypeExpression,
 )
 from typeforge.verification.contracts import union_types
 from typeforge.verification.model import ReturnObligation, VerificationPlan

@@ -2,11 +2,12 @@
 
 from dataclasses import dataclass
 
-from typeforge.compiler.model import (
+from typeforge.compiler.source._model import (
     MarkerKind,
     MarkerTypeExpression,
+    SchemaTypeExpression,
 )
-from typeforge.compiler.model import (
+from typeforge.compiler.source._model import (
     TypeExpression as SourceTypeExpression,
 )
 
@@ -178,6 +179,12 @@ type NormalizedMarker = (
     | KeyMarker
     | ValueMarker
 )
+
+
+def schema_inner_expression(expression: SourceTypeExpression) -> SourceTypeExpression:
+    if isinstance(expression, SchemaTypeExpression) and len(expression.arguments) == 1:
+        return expression.arguments[0]
+    return expression
 
 
 def normalize_marker(expression: MarkerTypeExpression) -> NormalizedMarker:

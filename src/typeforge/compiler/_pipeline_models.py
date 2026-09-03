@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from typeforge.compiler.frontend import FrontendError
 from typeforge.compiler.lowering import (
     ClassDeclaration,
     LoweringError,
@@ -13,6 +12,7 @@ from typeforge.compiler.lowering import (
     VariableDeclaration,
 )
 from typeforge.compiler.records import StaticType
+from typeforge.compiler.source import FrontendError
 from typeforge.semantics import RecordShape
 
 

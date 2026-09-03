@@ -39,6 +39,7 @@
 * Prefer clear names and small functions over explanatory comments.
 * Add comments only when intent cannot be expressed through structure or naming.
 * Use pattern matching for small, local decisions over domain variants.
+* Don't rush to complete a task; If while your working on a task you encounter an obstacle, take a step back and we can regroup.
 
 ## Testing and completion
 

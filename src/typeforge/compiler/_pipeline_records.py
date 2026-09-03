@@ -4,15 +4,7 @@ from typing import assert_never
 
 from returns.result import Failure, safe
 
-from typeforge.compiler._markers import (
-    MapFieldsMarker,
-    MarkerNormalizationError,
-    normalize_marker,
-)
-from typeforge.compiler._pipeline_adaptation import (
-    schema_inner_expression,
-    substitute_type,
-)
+from typeforge.compiler._pipeline_adaptation import substitute_type
 from typeforge.compiler._pipeline_models import (
     AdaptationError,
     DerivedRecord,
@@ -42,27 +34,31 @@ from typeforge.compiler.lowering import (
     UnionExpression,
     VariableDeclaration,
 )
-from typeforge.compiler.model import (
-    AppliedTypeExpression,
-    MarkerTypeExpression,
-    NameTypeExpression,
-    SourceModule,
-)
-from typeforge.compiler.model import (
-    TypeAliasDeclaration as SourceTypeAlias,
-)
-from typeforge.compiler.model import (
-    TypedDictDeclaration as SourceTypedDict,
-)
-from typeforge.compiler.model import (
-    TypeExpression as SourceTypeExpression,
-)
 from typeforge.compiler.records import (
     NamedType,
     NeverType,
     ParameterizedType,
     StaticType,
     UnionType,
+)
+from typeforge.compiler.source import (
+    AppliedTypeExpression,
+    MapFieldsMarker,
+    MarkerNormalizationError,
+    MarkerTypeExpression,
+    NameTypeExpression,
+    SourceModule,
+    normalize_marker,
+    schema_inner_expression,
+)
+from typeforge.compiler.source import (
+    TypeAliasDeclaration as SourceTypeAlias,
+)
+from typeforge.compiler.source import (
+    TypedDictDeclaration as SourceTypedDict,
+)
+from typeforge.compiler.source import (
+    TypeExpression as SourceTypeExpression,
 )
 from typeforge.semantics import (
     MapFieldsExpression,

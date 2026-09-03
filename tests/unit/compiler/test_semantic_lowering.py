@@ -8,7 +8,13 @@ from typeforge.compiler._semantic_lowering import (
     lower_semantic_expression,
 )
 from typeforge.compiler._type_system import COMPILER_TYPE_SYSTEM
-from typeforge.compiler.model import (
+from typeforge.compiler.records import (
+    NamedType,
+    ParameterizedType,
+    StaticType,
+    UnionType,
+)
+from typeforge.compiler.source import (
     AppliedTypeExpression,
     MarkerKind,
     MarkerTypeExpression,
@@ -18,12 +24,6 @@ from typeforge.compiler.model import (
     SourcePosition,
     SourceSpan,
     TypeExpression,
-)
-from typeforge.compiler.records import (
-    NamedType,
-    ParameterizedType,
-    StaticType,
-    UnionType,
 )
 from typeforge.semantics import (
     CaptureValuePattern,

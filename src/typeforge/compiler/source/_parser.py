@@ -4,7 +4,7 @@ from pathlib import Path
 
 from returns.result import Failure, Result, Success
 
-from typeforge.compiler.model import (
+from typeforge.compiler.source._model import (
     AppliedTypeExpression,
     ClassDeclaration,
     ClassField,

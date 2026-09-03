@@ -8,11 +8,11 @@ from typeforge.analysis.model import SourcePosition, SourceSpan
 from typeforge.analysis.positions import source_position_from_utf8
 from typeforge.compiler.emitter import emit_type_expression
 from typeforge.compiler.lowering import TypeExpression
-from typeforge.compiler.model import SourceModule
 from typeforge.compiler.pipeline import (
     AdaptationError,
     SemanticRelationshipAlias,
 )
+from typeforge.compiler.source import SourceModule
 from typeforge.verification.contracts import aggregate_output, build_return_contract
 from typeforge.verification.guards import recognize_guard, recognize_pattern
 from typeforge.verification.model import (

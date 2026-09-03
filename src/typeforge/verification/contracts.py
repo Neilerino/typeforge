@@ -12,7 +12,6 @@ from typeforge.compiler.lowering import (
     predicate_controller,
     predicate_is_supported,
 )
-from typeforge.compiler.model import FunctionDeclaration as SourceFunction
 from typeforge.compiler.pipeline import (
     AdaptationError,
     SemanticRelationshipAlias,
@@ -20,6 +19,7 @@ from typeforge.compiler.pipeline import (
     expand_function_map_aliases,
     substitute_type,
 )
+from typeforge.compiler.source import FunctionDeclaration as SourceFunction
 from typeforge.verification.model import Alternative, ReturnContract
 
 

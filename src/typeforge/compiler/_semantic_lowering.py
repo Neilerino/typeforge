@@ -4,9 +4,11 @@ import ast
 from dataclasses import dataclass
 from functools import singledispatch
 
-from typeforge.compiler._markers import (
+from typeforge.compiler.records import NamedType, ParameterizedType, StaticType
+from typeforge.compiler.source import (
     AllMarker,
     AnyMarker,
+    AppliedTypeExpression,
     AssignableMarker,
     CaseMarker,
     DefaultMarker,
@@ -17,26 +19,22 @@ from typeforge.compiler._markers import (
     MapFieldsMarker,
     MapMarker,
     MarkerNormalizationError,
+    MarkerTypeExpression,
+    NameTypeExpression,
     NormalizedMarker,
     NotMarker,
     OptionalFieldMarker,
-    ReadonlyFieldMarker,
-    ValueMarker,
-    normalize_marker,
-)
-from typeforge.compiler.model import (
-    AppliedTypeExpression,
-    MarkerTypeExpression,
-    NameTypeExpression,
     RawTypeExpression,
+    ReadonlyFieldMarker,
     RuntimeInputTypeExpression,
     StarredTypeExpression,
     UnionTypeExpression,
+    ValueMarker,
+    normalize_marker,
 )
-from typeforge.compiler.model import (
+from typeforge.compiler.source import (
     TypeExpression as SourceTypeExpression,
 )
-from typeforge.compiler.records import NamedType, ParameterizedType, StaticType
 from typeforge.semantics import (
     AllExpression,
     AnyExpression,

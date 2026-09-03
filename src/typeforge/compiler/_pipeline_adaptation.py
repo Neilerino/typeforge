@@ -5,28 +5,6 @@ from typing import assert_never
 
 from returns.result import Result, safe
 
-from typeforge.compiler._markers import (
-    AllMarker,
-    AnyMarker,
-    AssignableMarker,
-    CaseMarker,
-    CollectMarker,
-    DefaultMarker,
-    DropMarker,
-    EachMarker,
-    EqualMarker,
-    FieldMarker,
-    KeyMarker,
-    MapFieldsMarker,
-    MapMarker,
-    MarkerNormalizationError,
-    NormalizedMarker,
-    NotMarker,
-    OptionalFieldMarker,
-    ReadonlyFieldMarker,
-    ValueMarker,
-    normalize_marker,
-)
 from typeforge.compiler._pipeline_models import (
     AdaptationError,
     SemanticRelationshipAlias,
@@ -74,30 +52,51 @@ from typeforge.compiler.lowering import (
     UnpackedType,
     is_predicate,
 )
-from typeforge.compiler.model import (
+from typeforge.compiler.source import (
+    AllMarker,
+    AnyMarker,
     AppliedTypeExpression,
+    AssignableMarker,
+    CaseMarker,
+    CollectMarker,
+    DefaultMarker,
+    DropMarker,
+    EachMarker,
+    EqualMarker,
+    FieldMarker,
+    KeyMarker,
+    MapFieldsMarker,
+    MapMarker,
+    MarkerNormalizationError,
     MarkerTypeExpression,
     NameTypeExpression,
+    NormalizedMarker,
+    NotMarker,
+    OptionalFieldMarker,
     RawTypeExpression,
+    ReadonlyFieldMarker,
     RuntimeInputTypeExpression,
     SchemaTypeExpression,
     SourceModule,
     StarredTypeExpression,
     UnionTypeExpression,
+    ValueMarker,
+    normalize_marker,
+    schema_inner_expression,
 )
-from typeforge.compiler.model import (
+from typeforge.compiler.source import (
     ClassDeclaration as SourceClass,
 )
-from typeforge.compiler.model import (
+from typeforge.compiler.source import (
     FunctionDeclaration as SourceFunction,
 )
-from typeforge.compiler.model import (
+from typeforge.compiler.source import (
     ParameterKind as SourceParameterKind,
 )
-from typeforge.compiler.model import (
+from typeforge.compiler.source import (
     TypeAliasDeclaration as SourceTypeAlias,
 )
-from typeforge.compiler.model import (
+from typeforge.compiler.source import (
     TypeExpression as SourceTypeExpression,
 )
 
@@ -214,12 +213,6 @@ def _collect_semantic_relationship_aliases(
             raise AssertionError("relationship adaptation produced a plain type")
         semantic.append(SemanticRelationshipAlias(alias.name, parameter, relationship))
     return tuple(semantic)
-
-
-def schema_inner_expression(expression: SourceTypeExpression) -> SourceTypeExpression:
-    if isinstance(expression, SchemaTypeExpression) and len(expression.arguments) == 1:
-        return expression.arguments[0]
-    return expression
 
 
 def collect_semantic_map_aliases(
