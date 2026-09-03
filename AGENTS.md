@@ -16,9 +16,9 @@
 ## Design
 
 * Keep data separate from behavior.
-* Represent domain data with frozen, slotted dataclasses.
+* Represent domain data with dataclasses.
 * Prefer functions consuming data or protocols over stateful service classes.
-* Keep the runtime marker layer dependency-free and inert.
+* Consider dependancy seams between modules, and how modules should relate to each other.
 * The compiler must not import or execute authored application code.
 * Keep third-party frontend models behind Typeforge-owned protocols and data models.
 * Generated interfaces must be deterministic and use standard Python typing constructs.
@@ -38,14 +38,12 @@
 
 * Prefer clear names and small functions over explanatory comments.
 * Add comments only when intent cannot be expressed through structure or naming.
-* Prefer immutable transformations over in-place mutation.
-* Use `singledispatch` when an operation is fundamentally dispatched by domain variant.
 * Use pattern matching for small, local decisions over domain variants.
-* Handle unsupported variants explicitly; do not silently turn them into fallback values.
 
 ## Testing and completion
 
 * Add or update tests whenever behavior changes.
 * Test failure propagation, short-circuiting, unsupported inputs, and sentinel behavior where relevant.
+* See `tests/architecture/AGENTS.md` for details on architecture testing.
 * Update public documentation when public behavior or syntax changes.
 * Work is complete when the focused tests and all repository checks pass and the final diff contains no unrelated changes.
