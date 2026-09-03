@@ -292,12 +292,16 @@ def test_schema_boundaries_resolve_in_model_fields_and_generated_stubs(
     source = tmp_path / "models.py"
     source.write_text(
         "from pydantic import BaseModel\n"
-        "from typing import TypedDict\n"
+        "from typing import Literal, TypedDict\n"
         "from typeforge import (\n"
         "    Case, Default, Equal, Field, Key, Map, MapFields, Value,\n"
         ")\n"
         "from typeforge.pydantic import Input, Schema\n\n"
-        "type Wire[T] = Map[T, Case[bytes, str], Default[int]]\n\n"
+        "type Wire[T] = Map[T, Case[bytes, str], Default[int]]\n"
+        "type Structural[T] = Map["
+        "T, Case[list[Value], set[Value]], Default[bytes]]\n"
+        "type GenericWire[T] = Map["
+        "T, Case[Equal[T, int], str], Default[bytes]]\n\n"
         "class User(TypedDict):\n"
         "    name: str\n\n"
         "type Public[T] = MapFields[T, Field[Key, Value]]\n\n"
@@ -305,17 +309,36 @@ def test_schema_boundaries_resolve_in_model_fields_and_generated_stubs(
         "    wire: Schema[Wire[bytes]]\n"
         "    direct: Schema[Map["
         "int, Case[Equal[int, int], str], Default[bytes]]]\n"
+        "    literal_output: Schema[Map["
+        'int, Case[int, Literal["yes"]], Default[Literal["no"]]]]\n'
         "    runtime: Schema[Map[Input, Case[int, int], Case[str, bytes]]]\n"
+        "    runtime_duplicate: Schema[Map["
+        "Input, Case[int, int], Case[str, int]]]\n"
         "    runtime_if: Schema[Map[Input, "
         "Case[Equal[Input, str], int], Default[float]]]\n"
+        "    nested_runtime: Schema[Map[Input, Case[int, Map["
+        "Input, Case[int, str], Default[float]]], Default[bytes]]]\n"
         "    structural: Schema[Map["
         "list[int], Case[list[Value], Value], Default[bytes]]]\n"
         "    structural_output: Schema[Map["
         "list[int], Case[list[Value], set[Value]], Default[bytes]]]\n"
+        "    structural_alias: Schema[Structural[list[int]]]\n"
+        "    union_output: Schema[Map["
+        "list[int], Case[list[Value], set[Value] | None], Default[bytes]]]\n"
+        "    nested_union_output: Schema[Map["
+        "list[int], Case[list[Value], tuple[Value | None]], Default[bytes]]]\n"
+        "    union_subject: Schema[Map["
+        "int | bytes, Case[int, str], Default[float]]]\n"
+        "    normalized_pattern: Schema[Map["
+        "list[int | int], Case[list[int], str], Default[bytes]]]\n"
         "    nested_capture: Schema[Map["
         "list[int], Case[list[Value], Map[Value, Case[int, str], Default[bytes]]], "
         "Default[float]]]\n"
-        "    public: Schema[Public[User]]\n",
+        "    public: Schema[Public[User]]\n\n"
+        "class GenericPayload[T](BaseModel):\n"
+        "    value: Schema[Map["
+        "T, Case[Equal[T, int], str], Default[bytes]]]\n"
+        "    alias_value: Schema[GenericWire[T]]\n",
         encoding="utf-8",
     )
 
@@ -328,9 +351,106 @@ def test_schema_boundaries_resolve_in_model_fields_and_generated_stubs(
     assert "class Public_User(tf_typing.TypedDict):\n    name: str" in content
     assert "    wire: str" in content
     assert "    direct: str" in content
+    assert '    literal_output: Literal["yes"]' in content
     assert "    runtime: int | bytes" in content
+    assert "    runtime_duplicate: int" in content
     assert "    runtime_if: int | float" in content
+    assert "    nested_runtime: str | float | bytes" in content
     assert "    structural: int" in content
     assert "    structural_output: set[int]" in content
+    assert "    structural_alias: set[int]" in content
+    assert "    union_output: set[int] | None" in content
+    assert "    nested_union_output: tuple[int | None]" in content
+    assert "    union_subject: str | float" in content
+    assert "    normalized_pattern: str" in content
     assert "    nested_capture: str" in content
     assert "    public: Public_User" in content
+    assert "class GenericPayload[T](BaseModel):\n    value: str | bytes" in content
+    assert "    alias_value: str | bytes" in content
+
+
+def test_generic_schema_predicates_preserve_first_match_order(tmp_path: Path) -> None:
+    source = tmp_path / "generic_models.py"
+    source.write_text(
+        "from pydantic import BaseModel\n"
+        "from typeforge import Case, Default, Equal, Map, Value\n"
+        "from typeforge.pydantic import Input, Schema\n\n"
+        "class Payload[T](BaseModel):\n"
+        "    unknown: Schema[Map["
+        "T, Case[Equal[T, int], str], Default[bytes]]]\n"
+        "    exact_unknown: Schema[Map["
+        "T, Case[int, str], Default[bytes]]]\n"
+        "    same_symbol: Schema[Map["
+        "T, Case[T, str], Default[bytes]]]\n"
+        "    same_structure: Schema[Map["
+        "list[T], Case[list[T], str], Default[bytes]]]\n"
+        "    structural_unknown: Schema[Map["
+        "list[T], Case[list[int], str], Default[bytes]]]\n"
+        "    structural_mismatch: Schema[Map["
+        "list[T], Case[set[int], str], Default[bytes]]]\n"
+        "    pattern_unknown: Schema[Map["
+        "list[int], Case[list[T], str], Default[bytes]]]\n"
+        "    known_argument_mismatch: Schema[Map["
+        "tuple[int, T], Case[tuple[str, int], float], Default[bytes]]]\n"
+        "    repeated_capture: Schema[Map["
+        "tuple[int, T], Case[tuple[Value, Value], Value], Default[bytes]]]\n"
+        "    known_false: Schema[Map["
+        "int, Case[Equal[int, str], float], "
+        "Case[Equal[T, int], str], Default[bytes]]]\n"
+        "    known_true: Schema[Map["
+        "int, Case[Equal[int, int], float], "
+        "Case[Equal[T, int], str], Default[bytes]]]\n"
+        "    exact_first: Schema[Map["
+        "int, Case[int, float], "
+        "Case[Equal[T, int], str], Default[bytes]]]\n"
+        "    nested: Schema[Map["
+        "int, Case[int, Map["
+        "T, Case[Equal[T, int], str], Default[bytes]]], Default[float]]]\n"
+        "    nested_deferred: Schema[Map["
+        "T, Case[Equal[T, int], Map["
+        "Input, Case[int, str], Default[float]]], Default[bytes]]]\n"
+        "    nested_condition: Schema[Map[int, Case[Equal[Map["
+        "T, Case[int, int], Default[str]], int], bytes], Default[float]]]\n",
+        encoding="utf-8",
+    )
+
+    generated = generate_module(source, maximum_arity=2)
+
+    assert isinstance(generated, Success)
+    content = generated.unwrap().content
+    assert "    unknown: str | bytes" in content
+    assert "    exact_unknown: str | bytes" in content
+    assert "    same_symbol: str" in content
+    assert "    same_structure: str" in content
+    assert "    structural_unknown: str | bytes" in content
+    assert "    structural_mismatch: bytes" in content
+    assert "    pattern_unknown: str | bytes" in content
+    assert "    known_argument_mismatch: bytes" in content
+    assert "    repeated_capture: int | bytes" in content
+    assert "    known_false: str | bytes" in content
+    assert "    known_true: float" in content
+    assert "    exact_first: float" in content
+    assert "    nested: str | bytes" in content
+    assert "    nested_deferred: str | float | bytes" in content
+    assert "    nested_condition: bytes | float" in content
+
+
+def test_cyclic_schema_relationship_aliases_fail_explicitly(tmp_path: Path) -> None:
+    source = tmp_path / "cyclic_models.py"
+    source.write_text(
+        "from pydantic import BaseModel\n"
+        "from typeforge import Case, Default, Map\n"
+        "from typeforge.pydantic import Schema\n\n"
+        "type First[T] = Map[T, Case[int, Second[T]], Default[T]]\n"
+        "type Second[T] = Map[T, Case[int, First[T]], Default[T]]\n\n"
+        "class Payload(BaseModel):\n"
+        "    value: Schema[First[int]]\n",
+        encoding="utf-8",
+    )
+
+    generated = generate_module(source, maximum_arity=2)
+
+    assert isinstance(generated, Failure)
+    error = generated.failure()
+    assert isinstance(error, AdaptationError)
+    assert error.message == "cyclic relationship alias: First -> Second -> First"

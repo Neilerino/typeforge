@@ -1,9 +1,8 @@
 """Adapt source syntax into lowering IR and expand semantic type relationships."""
 
 from functools import singledispatch
-from typing import assert_never
 
-from returns.result import Result, safe
+from returns.result import Failure, Result, safe
 
 from typeforge.compiler._markers import (
     AllMarker,
@@ -36,7 +35,11 @@ from typeforge.compiler._pipeline_utils import (
     collect_imports,
     merge_imports,
 )
-from typeforge.compiler._type_tree import rewrite_type, rewrite_type_children, walk_type
+from typeforge.compiler._semantic_evaluation import evaluate_source_semantics
+from typeforge.compiler._semantic_lowering import UnresolvedTypeBinding
+from typeforge.compiler._source_type_tree import rewrite_source_type_children
+from typeforge.compiler._static_type_adaptation import static_type_expression
+from typeforge.compiler._type_tree import rewrite_type, rewrite_type_children
 from typeforge.compiler.lowering import (
     AllPredicate,
     AnyPredicate,
@@ -47,14 +50,10 @@ from typeforge.compiler.lowering import (
     Declaration,
     EachType,
     EqualPredicate,
-    FieldType,
-    FixedTuple,
     FunctionDeclaration,
     HomogeneousTuple,
     ImportFrom,
-    LiteralType,
     MapCase,
-    MapFieldsType,
     MapType,
     MapValueType,
     ModuleImport,
@@ -72,7 +71,6 @@ from typeforge.compiler.lowering import (
     TypeVariable,
     UnionExpression,
     UnpackedType,
-    is_predicate,
 )
 from typeforge.compiler.model import (
     AppliedTypeExpression,
@@ -100,6 +98,8 @@ from typeforge.compiler.model import (
 from typeforge.compiler.model import (
     TypeExpression as SourceTypeExpression,
 )
+from typeforge.compiler.records import NamedType
+from typeforge.semantics import DeferredMap, ResolvedType
 
 
 def substitute_type(
@@ -125,7 +125,12 @@ def adapt_source_module(
         parameter_names = tuple(parameter.name for parameter in alias.type_parameters)
         lowered_alias = TypeAliasDeclaration(
             alias.name,
-            _adapt_alias_fallback(alias.name, alias.value, parameter_names),
+            _adapt_alias_fallback(
+                alias.name,
+                alias.value,
+                parameter_names,
+                semantic_aliases,
+            ),
             tuple(parameter.declaration for parameter in alias.type_parameters),
         )
         declarations.append(
@@ -142,7 +147,10 @@ def adapt_source_module(
         declarations.append(
             (
                 source_class.span.start.line,
-                expand_class_map_aliases(_adapt_class(source_class), semantic_aliases),
+                expand_class_map_aliases(
+                    _adapt_class(source_class, semantic_aliases),
+                    semantic_aliases,
+                ),
             )
         )
     for function in module.functions:
@@ -152,7 +160,8 @@ def adapt_source_module(
             (
                 function.span.start.line,
                 expand_function_map_aliases(
-                    _adapt_function(function), semantic_aliases
+                    _adapt_function(function, aliases=semantic_aliases),
+                    semantic_aliases,
                 ),
             )
         )
@@ -212,7 +221,14 @@ def _collect_semantic_relationship_aliases(
         relationship = _adapt_type_expression(value, alias.name, (parameter,))
         if not isinstance(relationship, MapType):
             raise AssertionError("relationship adaptation produced a plain type")
-        semantic.append(SemanticRelationshipAlias(alias.name, parameter, relationship))
+        semantic.append(
+            SemanticRelationshipAlias(
+                name=alias.name,
+                parameter=parameter,
+                semantic_source=value,
+                callable_relationship=relationship,
+            )
+        )
     return tuple(semantic)
 
 
@@ -220,6 +236,155 @@ def schema_inner_expression(expression: SourceTypeExpression) -> SourceTypeExpre
     if isinstance(expression, SchemaTypeExpression) and len(expression.arguments) == 1:
         return expression.arguments[0]
     return expression
+
+
+def _adapt_schema_type(
+    expression: SourceTypeExpression,
+    declaration: str,
+    type_parameters: tuple[str, ...],
+    aliases: tuple[SemanticRelationshipAlias, ...],
+) -> TypeExpression:
+    expanded = _expand_semantic_aliases(expression, aliases)
+    if isinstance(expanded, MarkerTypeExpression) and isinstance(
+        _normalize_marker(declaration, expanded), MapMarker
+    ):
+        return _evaluate_schema_map(
+            expanded,
+            declaration,
+            type_parameters,
+        )
+
+    match expanded:
+        case AppliedTypeExpression(constructor=constructor, arguments=arguments):
+            return TypeApplication(
+                _adapt_schema_type(
+                    constructor,
+                    declaration,
+                    type_parameters,
+                    aliases,
+                ),
+                tuple(
+                    _adapt_schema_type(
+                        argument,
+                        declaration,
+                        type_parameters,
+                        aliases,
+                    )
+                    for argument in arguments
+                ),
+            )
+        case UnionTypeExpression(members=members):
+            return UnionExpression(
+                tuple(
+                    _adapt_schema_type(
+                        member,
+                        declaration,
+                        type_parameters,
+                        aliases,
+                    )
+                    for member in members
+                )
+            )
+        case StarredTypeExpression(item=item):
+            return UnpackedType(
+                _adapt_schema_type(item, declaration, type_parameters, aliases)
+            )
+        case SchemaTypeExpression(arguments=(item,)):
+            return _adapt_schema_type(item, declaration, type_parameters, aliases)
+        case _:
+            return _adapt_type_expression(
+                expanded,
+                declaration,
+                type_parameters,
+                aliases,
+            )
+
+
+def _evaluate_schema_map(
+    expression: MarkerTypeExpression,
+    declaration: str,
+    type_parameters: tuple[str, ...],
+) -> TypeExpression:
+    environment = tuple(
+        (name, UnresolvedTypeBinding(NamedType(name))) for name in type_parameters
+    )
+    evaluated_result = evaluate_source_semantics(expression, environment)
+    if isinstance(evaluated_result, Failure):
+        raise AdaptationError(
+            declaration,
+            expression.source,
+            evaluated_result.failure().message,
+        )
+
+    match evaluated_result.unwrap():
+        case ResolvedType(value):
+            return static_type_expression(value)
+        case DeferredMap(possible_output=ResolvedType(value)):
+            return static_type_expression(value)
+        case value:
+            raise AdaptationError(
+                declaration,
+                expression.source,
+                "Schema Map must resolve to a type",
+            )
+
+
+def _expand_semantic_aliases(
+    expression: SourceTypeExpression,
+    aliases: tuple[SemanticRelationshipAlias, ...],
+    active: tuple[str, ...] = (),
+) -> SourceTypeExpression:
+    if isinstance(expression, AppliedTypeExpression) and isinstance(
+        expression.constructor, NameTypeExpression
+    ):
+        alias = next(
+            (
+                item
+                for item in aliases
+                if item.name == expression.constructor.source
+                and len(expression.arguments) == 1
+            ),
+            None,
+        )
+        if alias is not None:
+            if alias.name in active:
+                cycle = " -> ".join((*active, alias.name))
+                raise AdaptationError(
+                    alias.name,
+                    expression.source,
+                    f"cyclic relationship alias: {cycle}",
+                )
+            argument = _expand_semantic_aliases(
+                expression.arguments[0], aliases, active
+            )
+            substituted = _substitute_source_type(
+                alias.semantic_source,
+                alias.parameter,
+                argument,
+            )
+            return _expand_semantic_aliases(
+                substituted,
+                aliases,
+                (*active, alias.name),
+            )
+
+    return rewrite_source_type_children(
+        expression,
+        lambda child: _expand_semantic_aliases(child, aliases, active),
+    )
+
+
+def _substitute_source_type(
+    expression: SourceTypeExpression,
+    variable: str,
+    replacement: SourceTypeExpression,
+) -> SourceTypeExpression:
+    if isinstance(expression, NameTypeExpression) and expression.source == variable:
+        return replacement
+    return rewrite_source_type_children(
+        expression,
+        lambda child: _substitute_source_type(child, variable, replacement),
+    )
 
 
 def collect_semantic_map_aliases(
@@ -283,12 +448,12 @@ def expand_map_aliases(
 ) -> TypeExpression:
     match expression:
         case SchemaType(item):
-            return resolve_schema_type(expand_map_aliases(item, aliases))
+            return expand_map_aliases(item, aliases)
         case TypeApplication(TypeName(name), (argument,)):
             alias = next((item for item in aliases if item.name == name), None)
             if alias is not None:
                 return substitute_type(
-                    alias.relationship,
+                    alias.callable_relationship,
                     alias.parameter,
                     expand_map_aliases(argument, aliases),
                 )
@@ -300,207 +465,11 @@ def expand_map_aliases(
     )
 
 
-def resolve_schema_type(expression: TypeExpression) -> TypeExpression:
-    match expression:
-        case TypeApplication(constructor, arguments):
-            return TypeApplication(
-                resolve_schema_type(constructor),
-                tuple(resolve_schema_type(argument) for argument in arguments),
-            )
-        case FixedTuple(items):
-            return FixedTuple(tuple(resolve_schema_type(item) for item in items))
-        case HomogeneousTuple(item):
-            return HomogeneousTuple(resolve_schema_type(item))
-        case EachType(item):
-            return EachType(resolve_schema_type(item))
-        case CollectType(item):
-            return CollectType(resolve_schema_type(item))
-        case UnpackedType(item):
-            return UnpackedType(resolve_schema_type(item))
-        case UnionExpression(members):
-            return union_types_for_schema(
-                tuple(resolve_schema_type(member) for member in members)
-            )
-        case MapType(subject_expression, cases, default):
-            subject = resolve_schema_type(subject_expression)
-            if isinstance(subject_expression, RuntimeInputType):
-                return union_types_for_schema(
-                    (
-                        *(resolve_schema_type(case.output_type) for case in cases),
-                        resolve_schema_type(default),
-                    )
-                )
-            members = (
-                subject.members if isinstance(subject, UnionExpression) else (subject,)
-            )
-            return union_types_for_schema(
-                tuple(
-                    _resolve_schema_map_member(member, cases, default)
-                    for member in members
-                )
-            )
-        case FieldType(name, value, required, readonly):
-            return FieldType(
-                resolve_schema_type(name),
-                resolve_schema_type(value),
-                required,
-                readonly,
-            )
-        case MapFieldsType(record, transform):
-            return MapFieldsType(
-                resolve_schema_type(record),
-                resolve_schema_type(transform),
-            )
-        case SchemaType(item):
-            return SchemaType(resolve_schema_type(item))
-        case (
-            TypeName()
-            | TypeVariable()
-            | LiteralType()
-            | MapValueType()
-            | RuntimeInputType()
-        ):
-            return expression
-        case _ as unreachable:
-            assert_never(unreachable)
-
-
-def _resolve_schema_map_member(
-    subject: TypeExpression,
-    cases: tuple[MapCase, ...],
-    default: TypeExpression,
-) -> TypeExpression:
-    for index, case in enumerate(cases):
-        if is_predicate(case.test):
-            result = resolve_schema_predicate(case.test)
-            if result is True:
-                return resolve_schema_type(case.output_type)
-            if result is None:
-                return union_types_for_schema(
-                    (
-                        resolve_schema_type(case.output_type),
-                        _resolve_schema_map_member(
-                            subject, cases[index + 1 :], default
-                        ),
-                    )
-                )
-            continue
-        matched, capture = _match_schema_pattern(case.test, subject, None)
-        if matched:
-            return resolve_schema_type(
-                _substitute_schema_capture(case.output_type, capture)
-            )
-    return resolve_schema_type(default)
-
-
-def _match_schema_pattern(
-    pattern: TypeExpression,
-    subject: TypeExpression,
-    capture: TypeExpression | None,
-) -> tuple[bool, TypeExpression | None]:
-    if isinstance(pattern, MapValueType):
-        if capture is not None and capture != subject:
-            return False, capture
-        return True, subject
-    if isinstance(pattern, TypeApplication) and isinstance(subject, TypeApplication):
-        if resolve_schema_type(pattern.constructor) != resolve_schema_type(
-            subject.constructor
-        ) or len(pattern.arguments) != len(subject.arguments):
-            return False, capture
-        current = capture
-        for nested_pattern, nested_subject in zip(
-            pattern.arguments, subject.arguments, strict=True
-        ):
-            matched, current = _match_schema_pattern(
-                nested_pattern, nested_subject, current
-            )
-            if not matched:
-                return False, current
-        return True, current
-    return resolve_schema_type(pattern) == subject, capture
-
-
-def _substitute_schema_capture(
-    expression: TypeExpression,
-    capture: TypeExpression | None,
-) -> TypeExpression:
-    return rewrite_type(
-        expression,
-        lambda current: (
-            (capture or TypeName("object"))
-            if isinstance(current, MapValueType)
-            else None
-        ),
-    )
-
-
-def resolve_schema_predicate(predicate: Predicate) -> bool | None:
-    match predicate:
-        case EqualPredicate(left, right):
-            if _type_has_variable(left) or _type_has_variable(right):
-                return None
-            return resolve_schema_type(left) == resolve_schema_type(right)
-        case AssignablePredicate(source, target):
-            if _type_has_variable(source) or _type_has_variable(target):
-                return None
-            return _schema_assignable(
-                resolve_schema_type(source), resolve_schema_type(target)
-            )
-        case AllPredicate(predicates):
-            values = tuple(resolve_schema_predicate(item) for item in predicates)
-            if False in values:
-                return False
-            return True if all(value is True for value in values) else None
-        case AnyPredicate(predicates):
-            values = tuple(resolve_schema_predicate(item) for item in predicates)
-            if True in values:
-                return True
-            return False if all(value is False for value in values) else None
-        case NotPredicate(item):
-            value = resolve_schema_predicate(item)
-            return None if value is None else not value
-        case _ as unreachable:
-            assert_never(unreachable)
-
-
-def _schema_assignable(source: TypeExpression, target: TypeExpression) -> bool:
-    if source == target or target == TypeName("object"):
-        return True
-    if isinstance(source, UnionExpression):
-        return all(_schema_assignable(member, target) for member in source.members)
-    if isinstance(target, UnionExpression):
-        return any(_schema_assignable(source, member) for member in target.members)
-    return False
-
-
-def _type_has_variable(expression: TypeExpression) -> bool:
-    return any(
-        isinstance(node, TypeVariable | RuntimeInputType)
-        for node in walk_type(expression)
-    )
-
-
-def union_types_for_schema(expressions: tuple[TypeExpression, ...]) -> TypeExpression:
-    members: list[TypeExpression] = []
-    for expression in expressions:
-        candidates = (
-            expression.members
-            if isinstance(expression, UnionExpression)
-            else (expression,)
-        )
-        for candidate in candidates:
-            if candidate != TypeName("Never") and candidate not in members:
-                members.append(candidate)
-    if not members:
-        return TypeName("Never")
-    if len(members) == 1:
-        return members[0]
-    return UnionExpression(tuple(members))
-
-
 @safe(exceptions=(AdaptationError,))
 def adapt_alias(
     alias: SourceTypeAlias,
+    *,
+    aliases: tuple[SemanticRelationshipAlias, ...],
 ) -> TypeAliasDeclaration:
     parameter_names = tuple(parameter.name for parameter in alias.type_parameters)
     type_parameters = tuple(
@@ -508,7 +477,7 @@ def adapt_alias(
     )
     return TypeAliasDeclaration(
         alias.name,
-        _adapt_alias_fallback(alias.name, alias.value, parameter_names),
+        _adapt_alias_fallback(alias.name, alias.value, parameter_names, aliases),
         type_parameters,
     )
 
@@ -516,29 +485,40 @@ def adapt_alias(
 @safe(exceptions=(AdaptationError,))
 def adapt_class(
     source_class: SourceClass,
+    aliases: tuple[SemanticRelationshipAlias, ...] = (),
 ) -> ClassDeclaration:
-    return _adapt_class(source_class)
+    return _adapt_class(source_class, aliases)
 
 
-def _adapt_class(source_class: SourceClass) -> ClassDeclaration:
+def _adapt_class(
+    source_class: SourceClass,
+    aliases: tuple[SemanticRelationshipAlias, ...] = (),
+) -> ClassDeclaration:
     parameter_names = tuple(
         parameter.name for parameter in source_class.type_parameters
     )
     bases = _adapt_type_expressions(
-        source_class.bases, source_class.name, parameter_names
+        source_class.bases,
+        source_class.name,
+        parameter_names,
+        aliases,
     )
     fields = tuple(
         ClassField(
             field.name,
             _adapt_type_expression(
-                field.annotation, source_class.name, parameter_names
+                field.annotation,
+                source_class.name,
+                parameter_names,
+                aliases,
             ),
             "..." if field.has_default else None,
         )
         for field in source_class.fields
     )
     methods = tuple(
-        _adapt_function(method, parameter_names) for method in source_class.methods
+        _adapt_function(method, parameter_names, aliases)
+        for method in source_class.methods
     )
     return ClassDeclaration(
         name=source_class.name,
@@ -557,16 +537,22 @@ def _adapt_alias_fallback(
     declaration: str,
     expression: SourceTypeExpression,
     type_parameters: tuple[str, ...],
+    aliases: tuple[SemanticRelationshipAlias, ...] = (),
 ) -> TypeExpression:
     if not isinstance(expression, MarkerTypeExpression):
-        return _adapt_type_expression(expression, declaration, type_parameters)
+        return _adapt_type_expression(
+            expression,
+            declaration,
+            type_parameters,
+            aliases,
+        )
     marker = _normalize_marker(declaration, expression)
     match marker:
         case EachMarker(item=item):
-            return _adapt_alias_fallback(declaration, item, type_parameters)
+            return _adapt_alias_fallback(declaration, item, type_parameters, aliases)
         case CollectMarker(item=item):
             return HomogeneousTuple(
-                _adapt_alias_fallback(declaration, item, type_parameters)
+                _adapt_alias_fallback(declaration, item, type_parameters, aliases)
             )
         case MapMarker() | MapFieldsMarker():
             return TypeName("object")
@@ -581,7 +567,7 @@ def _adapt_alias_fallback(
             | OptionalFieldMarker(value=value)
             | ReadonlyFieldMarker(value=value)
         ):
-            return _adapt_alias_fallback(declaration, value, type_parameters)
+            return _adapt_alias_fallback(declaration, value, type_parameters, aliases)
         case DropMarker():
             return TypeName("Never")
         case KeyMarker():
@@ -594,13 +580,16 @@ def _adapt_alias_fallback(
 def adapt_function(
     function: SourceFunction,
     enclosing_type_parameters: tuple[str, ...] = (),
+    *,
+    aliases: tuple[SemanticRelationshipAlias, ...],
 ) -> FunctionDeclaration:
-    return _adapt_function(function, enclosing_type_parameters)
+    return _adapt_function(function, enclosing_type_parameters, aliases)
 
 
 def _adapt_function(
     function: SourceFunction,
     enclosing_type_parameters: tuple[str, ...] = (),
+    aliases: tuple[SemanticRelationshipAlias, ...] = (),
 ) -> FunctionDeclaration:
     parameter_names = tuple(parameter.name for parameter in function.type_parameters)
     visible_type_parameters = (*enclosing_type_parameters, *parameter_names)
@@ -615,6 +604,7 @@ def _adapt_function(
                 parameter.annotation,
                 function.name,
                 visible_type_parameters,
+                aliases,
             )
         parameters.append(
             Parameter(
@@ -630,6 +620,7 @@ def _adapt_function(
             function.returns,
             function.name,
             visible_type_parameters,
+            aliases,
         )
     return FunctionDeclaration(
         name=function.name,
@@ -646,8 +637,10 @@ def adapt_type_expression(
     declaration: str,
     expression: SourceTypeExpression,
     type_parameters: tuple[str, ...],
+    *,
+    aliases: tuple[SemanticRelationshipAlias, ...],
 ) -> TypeExpression:
-    return _adapt_type_expression(expression, declaration, type_parameters)
+    return _adapt_type_expression(expression, declaration, type_parameters, aliases)
 
 
 @singledispatch
@@ -655,6 +648,7 @@ def _adapt_type_expression(
     expression: SourceTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
+    aliases: tuple[SemanticRelationshipAlias, ...] = (),
 ) -> TypeExpression:
     raise AdaptationError(
         declaration,
@@ -668,6 +662,7 @@ def _(
     expression: SchemaTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
+    aliases: tuple[SemanticRelationshipAlias, ...] = (),
 ) -> TypeExpression:
     if len(expression.arguments) != 1:
         raise AdaptationError(
@@ -675,8 +670,11 @@ def _(
             expression.source,
             "Schema requires one type argument",
         )
-    return SchemaType(
-        _adapt_type_expression(expression.arguments[0], declaration, type_parameters)
+    return _adapt_schema_type(
+        expression.arguments[0],
+        declaration,
+        type_parameters,
+        aliases,
     )
 
 
@@ -685,6 +683,7 @@ def _(
     expression: RuntimeInputTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
+    aliases: tuple[SemanticRelationshipAlias, ...] = (),
 ) -> TypeExpression:
     return RuntimeInputType()
 
@@ -694,6 +693,7 @@ def _(
     expression: NameTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
+    aliases: tuple[SemanticRelationshipAlias, ...] = (),
 ) -> TypeExpression:
     if expression.source in type_parameters:
         return TypeVariable(expression.source)
@@ -705,6 +705,7 @@ def _(
     expression: RawTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
+    aliases: tuple[SemanticRelationshipAlias, ...] = (),
 ) -> TypeExpression:
     return TypeName(expression.source)
 
@@ -714,9 +715,15 @@ def _(
     expression: UnionTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
+    aliases: tuple[SemanticRelationshipAlias, ...] = (),
 ) -> TypeExpression:
     return UnionExpression(
-        _adapt_type_expressions(expression.members, declaration, type_parameters)
+        _adapt_type_expressions(
+            expression.members,
+            declaration,
+            type_parameters,
+            aliases,
+        )
     )
 
 
@@ -725,9 +732,15 @@ def _(
     expression: StarredTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
+    aliases: tuple[SemanticRelationshipAlias, ...] = (),
 ) -> TypeExpression:
     return UnpackedType(
-        _adapt_type_expression(expression.item, declaration, type_parameters)
+        _adapt_type_expression(
+            expression.item,
+            declaration,
+            type_parameters,
+            aliases,
+        )
     )
 
 
@@ -736,10 +749,21 @@ def _(
     expression: AppliedTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
+    aliases: tuple[SemanticRelationshipAlias, ...] = (),
 ) -> TypeExpression:
     return TypeApplication(
-        _adapt_type_expression(expression.constructor, declaration, type_parameters),
-        _adapt_type_expressions(expression.arguments, declaration, type_parameters),
+        _adapt_type_expression(
+            expression.constructor,
+            declaration,
+            type_parameters,
+            aliases,
+        ),
+        _adapt_type_expressions(
+            expression.arguments,
+            declaration,
+            type_parameters,
+            aliases,
+        ),
     )
 
 
@@ -748,6 +772,7 @@ def _(
     expression: MarkerTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
+    aliases: tuple[SemanticRelationshipAlias, ...] = (),
 ) -> TypeExpression:
     marker = _normalize_marker(declaration, expression)
     match marker:
@@ -756,8 +781,18 @@ def _(
         case MapMarker(subject=subject, entries=entries):
             cases = tuple(
                 MapCase(
-                    _adapt_map_test(entry.test, declaration, type_parameters),
-                    _adapt_type_expression(entry.output, declaration, type_parameters),
+                    _adapt_map_test(
+                        entry.test,
+                        declaration,
+                        type_parameters,
+                        aliases,
+                    ),
+                    _adapt_type_expression(
+                        entry.output,
+                        declaration,
+                        type_parameters,
+                        aliases,
+                    ),
                 )
                 for entry in entries
                 if isinstance(entry, CaseMarker)
@@ -770,19 +805,29 @@ def _(
                 TypeName("Never")
                 if default_entry is None
                 else _adapt_type_expression(
-                    default_entry.output, declaration, type_parameters
+                    default_entry.output,
+                    declaration,
+                    type_parameters,
+                    aliases,
                 )
             )
             return MapType(
-                _adapt_type_expression(subject, declaration, type_parameters),
+                _adapt_type_expression(
+                    subject,
+                    declaration,
+                    type_parameters,
+                    aliases,
+                ),
                 cases,
                 default,
             )
         case EachMarker(item=item):
-            return EachType(_adapt_type_expression(item, declaration, type_parameters))
+            return EachType(
+                _adapt_type_expression(item, declaration, type_parameters, aliases)
+            )
         case CollectMarker(item=item):
             return CollectType(
-                _adapt_type_expression(item, declaration, type_parameters)
+                _adapt_type_expression(item, declaration, type_parameters, aliases)
             )
         case _:
             raise AdaptationError(
@@ -797,14 +842,16 @@ def adapt_predicate(
     declaration: str,
     expression: SourceTypeExpression,
     type_parameters: tuple[str, ...],
+    aliases: tuple[SemanticRelationshipAlias, ...] = (),
 ) -> Predicate:
-    return _adapt_predicate(expression, declaration, type_parameters)
+    return _adapt_predicate(expression, declaration, type_parameters, aliases)
 
 
 def _adapt_map_test(
     expression: SourceTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
+    aliases: tuple[SemanticRelationshipAlias, ...] = (),
 ) -> TypeExpression | Predicate:
     if isinstance(expression, MarkerTypeExpression):
         marker = _normalize_marker(declaration, expression)
@@ -812,14 +859,25 @@ def _adapt_map_test(
             marker,
             EqualMarker | AssignableMarker | AllMarker | AnyMarker | NotMarker,
         ):
-            return _adapt_predicate(expression, declaration, type_parameters)
-    return _adapt_type_expression(expression, declaration, type_parameters)
+            return _adapt_predicate(
+                expression,
+                declaration,
+                type_parameters,
+                aliases,
+            )
+    return _adapt_type_expression(
+        expression,
+        declaration,
+        type_parameters,
+        aliases,
+    )
 
 
 def _adapt_predicate(
     expression: SourceTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
+    aliases: tuple[SemanticRelationshipAlias, ...] = (),
 ) -> Predicate:
     if not isinstance(expression, MarkerTypeExpression):
         raise AdaptationError(
@@ -831,30 +889,32 @@ def _adapt_predicate(
     match marker:
         case EqualMarker(left=left, right=right):
             return EqualPredicate(
-                _adapt_type_expression(left, declaration, type_parameters),
-                _adapt_type_expression(right, declaration, type_parameters),
+                _adapt_type_expression(left, declaration, type_parameters, aliases),
+                _adapt_type_expression(right, declaration, type_parameters, aliases),
             )
         case AssignableMarker(left=left, right=right):
             return AssignablePredicate(
-                _adapt_type_expression(left, declaration, type_parameters),
-                _adapt_type_expression(right, declaration, type_parameters),
+                _adapt_type_expression(left, declaration, type_parameters, aliases),
+                _adapt_type_expression(right, declaration, type_parameters, aliases),
             )
         case AllMarker(items=items):
             return AllPredicate(
                 tuple(
-                    _adapt_predicate(item, declaration, type_parameters)
+                    _adapt_predicate(item, declaration, type_parameters, aliases)
                     for item in items
                 )
             )
         case AnyMarker(items=items):
             return AnyPredicate(
                 tuple(
-                    _adapt_predicate(item, declaration, type_parameters)
+                    _adapt_predicate(item, declaration, type_parameters, aliases)
                     for item in items
                 )
             )
         case NotMarker(item=item):
-            return NotPredicate(_adapt_predicate(item, declaration, type_parameters))
+            return NotPredicate(
+                _adapt_predicate(item, declaration, type_parameters, aliases)
+            )
         case _:
             raise AdaptationError(
                 declaration,
@@ -881,9 +941,10 @@ def _adapt_type_expressions(
     expressions: tuple[SourceTypeExpression, ...],
     declaration: str,
     type_parameters: tuple[str, ...],
+    aliases: tuple[SemanticRelationshipAlias, ...] = (),
 ) -> tuple[TypeExpression, ...]:
     return tuple(
-        _adapt_type_expression(expression, declaration, type_parameters)
+        _adapt_type_expression(expression, declaration, type_parameters, aliases)
         for expression in expressions
     )
 

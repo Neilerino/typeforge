@@ -33,12 +33,14 @@ from typeforge.semantics.domain.models import (
     Expression,
     FieldExpression,
     FieldName,
+    IndeterminateCondition,
     InputReference,
     KeyReference,
     MapExpression,
     MapFieldsExpression,
     NotExpression,
     OptionalFieldExpression,
+    ParameterizedTypeResolution,
     ParameterizedTypeShape,
     ParameterizedTypeTemplate,
     ReadonlyFieldExpression,
@@ -46,6 +48,8 @@ from typeforge.semantics.domain.models import (
     ResolvedType,
     TypeReference,
     UnionExpression,
+    UnresolvedType,
+    UnresolvedTypeReference,
     ValueReference,
 )
 from typeforge.semantics.map_evaluation import evaluate_map
@@ -94,6 +98,15 @@ def _[T](
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
     return ResolvedType(expression.value)
+
+
+@_evaluate.register(UnresolvedTypeReference)
+def _[T](
+    expression: UnresolvedTypeReference[T],
+    type_system: TypeSystem[T],
+    context: EvaluationContext[T],
+) -> EvaluationValue[T]:
+    return UnresolvedType(expression.value)
 
 
 @_evaluate.register(FieldName)
@@ -159,15 +172,22 @@ def _[T](
     type_system: TypeSystem[T],
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
-    arguments = tuple(
+    resolved_arguments = tuple(
         expect_type(
             _evaluate(argument, type_system, context),
             "parameterized type arguments must evaluate to types",
-        ).value
+        )
         for argument in expression.arguments
     )
+    arguments = tuple(argument.value for argument in resolved_arguments)
     shape = ParameterizedTypeShape(expression.origin, arguments)
-    return ResolvedType(type_system.build(shape).unwrap())
+    value = type_system.build(shape).unwrap()
+    if any(isinstance(argument, UnresolvedType) for argument in resolved_arguments):
+        return UnresolvedType(
+            value,
+            ParameterizedTypeResolution(expression.origin, resolved_arguments),
+        )
+    return ResolvedType(value)
 
 
 @_evaluate.register(FieldExpression | OptionalFieldExpression | ReadonlyFieldExpression)
@@ -242,14 +262,18 @@ def _[T](
     type_system: TypeSystem[T],
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
-    members = tuple(
+    resolved_members = tuple(
         expect_type(
             _evaluate(member, type_system, context),
             "union members must evaluate to types",
-        ).value
+        )
         for member in expression.members
     )
-    return ResolvedType(type_system.union(members).unwrap())
+    members = tuple(member.value for member in resolved_members)
+    value = type_system.union(members).unwrap()
+    if any(isinstance(member, UnresolvedType) for member in resolved_members):
+        return UnresolvedType(value)
+    return ResolvedType(value)
 
 
 @_evaluate.register(EqualExpression)
@@ -262,7 +286,12 @@ def _[T](
     right = _evaluate(expression.right, type_system, context)
 
     if isinstance(left, ResolvedType) and isinstance(right, ResolvedType):
-        return type_system.equal(left.value, right.value).unwrap()
+        equal = type_system.equal(left.value, right.value).unwrap()
+        if equal:
+            return True
+        if isinstance(left, UnresolvedType) or isinstance(right, UnresolvedType):
+            return IndeterminateCondition()
+        return False
 
     if isinstance(left, FieldName) and isinstance(right, FieldName):
         return left == right
@@ -287,7 +316,12 @@ def _[T](
         "Assignable operands must both be types",
     )
 
-    return type_system.assignable(source.value, target.value).unwrap()
+    assignable = type_system.assignable(source.value, target.value).unwrap()
+    if assignable:
+        return True
+    if isinstance(source, UnresolvedType) or isinstance(target, UnresolvedType):
+        return IndeterminateCondition()
+    return False
 
 
 @_evaluate.register(AnyExpression | AllExpression)
@@ -296,15 +330,22 @@ def _[T](
     type_system: TypeSystem[T],
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
+    has_indeterminate = False
     for condition in expression.conditions:
-        matched = expect_condition(_evaluate(condition, type_system, context))
+        evaluated = _evaluate(condition, type_system, context)
+        if isinstance(evaluated, IndeterminateCondition):
+            has_indeterminate = True
+            continue
 
+        matched = expect_condition(evaluated)
         if isinstance(expression, AllExpression) and not matched:
             return False
 
         if isinstance(expression, AnyExpression) and matched:
             return True
 
+    if has_indeterminate:
+        return IndeterminateCondition()
     return isinstance(expression, AllExpression)
 
 
@@ -314,7 +355,10 @@ def _[T](
     type_system: TypeSystem[T],
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
-    return not expect_condition(_evaluate(expression.condition, type_system, context))
+    condition = _evaluate(expression.condition, type_system, context)
+    if isinstance(condition, IndeterminateCondition):
+        return condition
+    return not expect_condition(condition)
 
 
 @_evaluate.register(MapExpression)

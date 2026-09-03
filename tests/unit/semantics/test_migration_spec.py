@@ -33,6 +33,7 @@ from typeforge.semantics import (
     Expression,
     FieldExpression,
     FieldName,
+    IndeterminateCondition,
     InputReference,
     KeyReference,
     MapExpression,
@@ -56,6 +57,8 @@ from typeforge.semantics import (
     UnboundKeySemanticError,
     UnboundValueSemanticError,
     UnionExpression,
+    UnresolvedType,
+    UnresolvedTypeReference,
     ValueReference,
     evaluate,
     type_ref,
@@ -763,6 +766,44 @@ def test_bound_input_evaluates_the_map_instead_of_deferring_it() -> None:
     )
 
     assert result == Success(ResolvedType("str"))
+
+
+def test_indeterminate_conditions_preserve_first_match_order() -> None:
+    unresolved = UnresolvedTypeReference("T")
+    unknown_case = CaseExpression(
+        EqualExpression(unresolved, TypeReference("int")),
+        TypeReference("str"),
+    )
+
+    assert evaluate(
+        MapExpression(
+            TypeReference("int"),
+            (
+                CaseExpression(TypeReference("int"), TypeReference("float")),
+                unknown_case,
+            ),
+            TypeReference("bytes"),
+        ),
+        NameTypeSystem(),
+    ) == Success(ResolvedType("float"))
+    assert evaluate(
+        MapExpression(
+            TypeReference("int"),
+            (
+                CaseExpression(
+                    EqualExpression(TypeReference("int"), TypeReference("str")),
+                    TypeReference("float"),
+                ),
+                unknown_case,
+            ),
+            TypeReference("bytes"),
+        ),
+        NameTypeSystem(),
+    ) == Success(UnresolvedType("str | bytes"))
+    assert evaluate(
+        EqualExpression(unresolved, TypeReference("int")),
+        NameTypeSystem(),
+    ) == Success(IndeterminateCondition())
 
 
 def test_conditions_short_circuit_nested_failures() -> None:

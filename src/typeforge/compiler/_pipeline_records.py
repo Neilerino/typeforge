@@ -19,11 +19,8 @@ from typeforge.compiler._pipeline_models import (
     RecordMaterialization,
 )
 from typeforge.compiler._pipeline_utils import merge_imports
-from typeforge.compiler._semantic_lowering import (
-    SemanticLoweringError,
-    lower_semantic_expression,
-)
-from typeforge.compiler._type_system import COMPILER_TYPE_SYSTEM
+from typeforge.compiler._semantic_evaluation import evaluate_source_semantics
+from typeforge.compiler._static_type_adaptation import static_type_expression
 from typeforge.compiler._type_tree import rewrite_type
 from typeforge.compiler.emitter import emit_stub_module
 from typeforge.compiler.lowering import (
@@ -39,7 +36,6 @@ from typeforge.compiler.lowering import (
     TypeApplication,
     TypeExpression,
     TypeName,
-    UnionExpression,
     VariableDeclaration,
 )
 from typeforge.compiler.model import (
@@ -57,20 +53,8 @@ from typeforge.compiler.model import (
 from typeforge.compiler.model import (
     TypeExpression as SourceTypeExpression,
 )
-from typeforge.compiler.records import (
-    NamedType,
-    NeverType,
-    ParameterizedType,
-    StaticType,
-    UnionType,
-)
-from typeforge.semantics import (
-    MapFieldsExpression,
-    RecordFamily,
-    RecordField,
-    RecordShape,
-    evaluate,
-)
+from typeforge.compiler.records import NamedType, StaticType
+from typeforge.semantics import RecordFamily, RecordField, RecordShape
 
 
 @safe(exceptions=(AdaptationError,))
@@ -219,7 +203,7 @@ def typed_dict_declaration(shape: RecordShape[StaticType]) -> ClassDeclaration:
 
 
 def _typed_dict_field_type(field: RecordField[StaticType]) -> TypeExpression:
-    annotation = _static_type_expression(field.value)
+    annotation = static_type_expression(field.value, never_name="tf_typing.Never")
     if field.readonly:
         annotation = TypeApplication(
             TypeName("tf_typing.ReadOnly"),
@@ -231,27 +215,6 @@ def _typed_dict_field_type(field: RecordField[StaticType]) -> TypeExpression:
             (annotation,),
         )
     return annotation
-
-
-def _static_type_expression(value: StaticType) -> TypeExpression:
-    match value:
-        case NamedType(name):
-            return TypeName(name)
-        case NeverType():
-            return TypeName("tf_typing.Never")
-        case ParameterizedType(origin, arguments):
-            return TypeApplication(
-                _static_type_expression(origin),
-                tuple(_static_type_expression(argument) for argument in arguments),
-            )
-        case UnionType(members):
-            return UnionExpression(
-                tuple(_static_type_expression(member) for member in members)
-            )
-        case RecordShape(name=name):
-            return TypeName(name or "object")
-        case _ as unreachable:
-            assert_never(unreachable)
 
 
 def render_typed_dict(shape: RecordShape[StaticType]) -> str:
@@ -384,22 +347,11 @@ def _derive_record_shapes(
         parameter = alias.type_parameters[0].name
         for source_shape in source_shapes:
             output_name = f"{alias.name}_{source_shape.name}"
-            try:
-                semantic_expression = lower_semantic_expression(
-                    value, ((parameter, source_shape),), output_name
-                )
-            except SemanticLoweringError as error:
-                raise AdaptationError(
-                    alias.name, alias.value.source, error.message
-                ) from error
-            if not isinstance(semantic_expression, MapFieldsExpression):
-                raise AdaptationError(
-                    alias.name,
-                    alias.value.source,
-                    "alias must evaluate to MapFields",
-                )
-
-            evaluated_result = evaluate(semantic_expression, COMPILER_TYPE_SYSTEM)
+            evaluated_result = evaluate_source_semantics(
+                value,
+                ((parameter, source_shape),),
+                output_name,
+            )
             if isinstance(evaluated_result, Failure):
                 raise AdaptationError(
                     alias.name,

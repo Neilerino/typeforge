@@ -1,6 +1,7 @@
 """Lower compiler source expressions into the shared semantic model."""
 
 import ast
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import singledispatch
 
@@ -24,6 +25,7 @@ from typeforge.compiler._markers import (
     ValueMarker,
     normalize_marker,
 )
+from typeforge.compiler._source_type_tree import rewrite_source_type_children
 from typeforge.compiler.model import (
     AppliedTypeExpression,
     MarkerTypeExpression,
@@ -36,7 +38,12 @@ from typeforge.compiler.model import (
 from typeforge.compiler.model import (
     TypeExpression as SourceTypeExpression,
 )
-from typeforge.compiler.records import NamedType, ParameterizedType, StaticType
+from typeforge.compiler.records import (
+    NamedType,
+    ParameterizedType,
+    StaticType,
+    union_of,
+)
 from typeforge.semantics import (
     AllExpression,
     AnyExpression,
@@ -61,10 +68,19 @@ from typeforge.semantics import (
     TypePattern,
     TypeReference,
     TypeTemplate,
+    UnionExpression,
+    UnresolvedTypePattern,
+    UnresolvedTypeReference,
     ValueReference,
 )
 
-type SemanticEnvironment = tuple[tuple[str, StaticType], ...]
+
+@dataclass(frozen=True, slots=True)
+class UnresolvedTypeBinding:
+    value: StaticType
+
+
+type SemanticEnvironment = tuple[tuple[str, StaticType | UnresolvedTypeBinding], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,16 +106,32 @@ def _(
     output_name: str | None = None,
 ) -> Expression[StaticType]:
     bound = dict(environment).get(expression.source)
+    if isinstance(bound, UnresolvedTypeBinding):
+        return UnresolvedTypeReference(bound.value)
     return TypeReference(bound if bound is not None else NamedType(expression.source))
 
 
 @lower_semantic_expression.register
 def _(
-    expression: RawTypeExpression | UnionTypeExpression | StarredTypeExpression,
+    expression: RawTypeExpression | StarredTypeExpression,
     environment: SemanticEnvironment,
     output_name: str | None = None,
 ) -> Expression[StaticType]:
     return TypeReference(NamedType(expression.source))
+
+
+@lower_semantic_expression.register
+def _(
+    expression: UnionTypeExpression,
+    environment: SemanticEnvironment,
+    output_name: str | None = None,
+) -> Expression[StaticType]:
+    return UnionExpression(
+        tuple(
+            lower_semantic_expression(member, environment)
+            for member in expression.members
+        )
+    )
 
 
 @lower_semantic_expression.register
@@ -120,6 +152,8 @@ def _(
     field_name = field_name_literal(expression)
     if field_name is not None:
         return field_name
+    if _source_uses_unresolved_binding(expression, environment):
+        return _lower_type_template(expression, environment)
     return TypeReference(_lower_concrete_type(expression, environment))
 
 
@@ -142,39 +176,42 @@ def _(
         case DropMarker():
             return DropExpression()
         case FieldMarker(key=key, value=value):
-            return FieldExpression(lower(key), lower(value))
+            return FieldExpression(
+                _lower_field_name_expression(key, environment),
+                lower(value),
+            )
         case OptionalFieldMarker(key=key, value=value):
-            return OptionalFieldExpression(lower(key), lower(value))
+            return OptionalFieldExpression(
+                _lower_field_name_expression(key, environment),
+                lower(value),
+            )
         case ReadonlyFieldMarker(key=key, value=value):
-            return ReadonlyFieldExpression(lower(key), lower(value))
+            return ReadonlyFieldExpression(
+                _lower_field_name_expression(key, environment),
+                lower(value),
+            )
         case MapFieldsMarker(record=record, transform=transform):
             return MapFieldsExpression(
                 lower(record),
                 lower(transform),
                 output_name,
             )
-        case MapMarker(subject=subject, entries=entries):
-            cases = tuple(
-                CaseExpression(
-                    _lower_case_test(entry.test, environment),
-                    _lower_case_output(entry.output, environment),
-                )
-                for entry in entries
-                if isinstance(entry, CaseMarker)
+        case MapMarker():
+            return _lower_map_expression(
+                marker,
+                environment,
+                lower_output=_lower_case_output,
             )
-            default = next(
-                (
-                    lower(entry.output)
-                    for entry in entries
-                    if isinstance(entry, DefaultMarker)
-                ),
-                None,
-            )
-            return MapExpression(lower(subject), cases, default)
         case EqualMarker(left=left, right=right):
-            return EqualExpression(lower(left), lower(right))
+            return EqualExpression(
+                _lower_condition_operand(left, environment),
+                _lower_condition_operand(right, environment),
+            )
         case AssignableMarker(left=left, right=right):
-            return AssignableExpression(lower(left), lower(right))
+            return AssignableExpression(
+                _lower_condition_operand(left, environment),
+                _lower_condition_operand(right, environment),
+            )
         case AllMarker(items=items):
             return AllExpression(tuple(lower(item) for item in items))
         case AnyMarker(items=items):
@@ -188,6 +225,79 @@ def _(
             )
 
 
+def _lower_map_expression(
+    marker: MapMarker,
+    environment: SemanticEnvironment,
+    *,
+    lower_output: Callable[
+        [SourceTypeExpression, SemanticEnvironment], Expression[StaticType]
+    ],
+) -> MapExpression[StaticType]:
+    cases = tuple(
+        CaseExpression(
+            _lower_case_test(entry.test, environment),
+            lower_output(entry.output, environment),
+        )
+        for entry in marker.entries
+        if isinstance(entry, CaseMarker)
+    )
+    default = next(
+        (
+            lower_output(entry.output, environment)
+            for entry in marker.entries
+            if isinstance(entry, DefaultMarker)
+        ),
+        None,
+    )
+    return MapExpression(
+        lower_semantic_expression(marker.subject, environment),
+        cases,
+        default,
+    )
+
+
+def _lower_field_name_expression(
+    expression: SourceTypeExpression,
+    environment: SemanticEnvironment,
+) -> Expression[StaticType]:
+    if isinstance(expression, AppliedTypeExpression):
+        field_name = field_name_literal(expression)
+        if field_name is not None:
+            return field_name
+
+    if isinstance(expression, MarkerTypeExpression):
+        marker = _normalize_semantic_marker(expression)
+        if isinstance(marker, MapMarker):
+            return _lower_map_expression(
+                marker,
+                environment,
+                lower_output=_lower_field_name_expression,
+            )
+
+    return lower_semantic_expression(expression, environment)
+
+
+def _source_uses_unresolved_binding(
+    expression: SourceTypeExpression,
+    environment: SemanticEnvironment,
+) -> bool:
+    if isinstance(expression, NameTypeExpression):
+        return isinstance(
+            dict(environment).get(expression.source),
+            UnresolvedTypeBinding,
+        )
+
+    found = False
+
+    def inspect(child: SourceTypeExpression) -> SourceTypeExpression:
+        nonlocal found
+        found = found or _source_uses_unresolved_binding(child, environment)
+        return child
+
+    rewrite_source_type_children(expression, inspect)
+    return found
+
+
 def _lower_concrete_type(
     expression: SourceTypeExpression,
     environment: SemanticEnvironment,
@@ -195,6 +305,8 @@ def _lower_concrete_type(
     match expression:
         case NameTypeExpression(source=source):
             bound = dict(environment).get(source)
+            if isinstance(bound, UnresolvedTypeBinding):
+                return bound.value
             return bound if bound is not None else NamedType(source)
         case AppliedTypeExpression(constructor=constructor, arguments=arguments):
             return ParameterizedType(
@@ -204,8 +316,32 @@ def _lower_concrete_type(
                     for argument in arguments
                 ),
             )
+        case UnionTypeExpression(members=members):
+            return union_of(
+                *(_lower_concrete_type(member, environment) for member in members)
+            )
         case _:
             return NamedType(expression.source)
+
+
+def _lower_condition_operand(
+    expression: SourceTypeExpression,
+    environment: SemanticEnvironment,
+) -> Expression[StaticType]:
+    match expression:
+        case AppliedTypeExpression():
+            field_name = field_name_literal(expression)
+            if field_name is not None:
+                return field_name
+            return _lower_type_template(expression, environment)
+        case UnionTypeExpression(members=members):
+            return UnionExpression(
+                tuple(
+                    _lower_condition_operand(member, environment) for member in members
+                )
+            )
+        case _:
+            return lower_semantic_expression(expression, environment)
 
 
 def _lower_case_test(
@@ -240,6 +376,15 @@ def _lower_type_pattern(
                     _lower_type_pattern(argument, environment) for argument in arguments
                 ),
             )
+        case NameTypeExpression(source=source):
+            bound = dict(environment).get(source)
+            if isinstance(bound, UnresolvedTypeBinding):
+                return UnresolvedTypePattern(bound.value)
+            return ExactTypePattern(bound if bound is not None else NamedType(source))
+        case UnionTypeExpression() if _source_uses_unresolved_binding(
+            expression, environment
+        ):
+            return UnresolvedTypePattern(_lower_concrete_type(expression, environment))
         case MarkerTypeExpression():
             marker = _normalize_semantic_marker(expression)
             if isinstance(marker, ValueMarker):
@@ -256,12 +401,15 @@ def _lower_case_output(
     expression: SourceTypeExpression,
     environment: SemanticEnvironment,
 ) -> Expression[StaticType]:
-    if isinstance(expression, AppliedTypeExpression):
-        field_name = field_name_literal(expression)
-        if field_name is not None:
-            return field_name
-        return _lower_type_template(expression, environment)
-    return lower_semantic_expression(expression, environment)
+    match expression:
+        case AppliedTypeExpression():
+            return _lower_type_template(expression, environment)
+        case UnionTypeExpression(members=members):
+            return UnionExpression(
+                tuple(_lower_case_output(member, environment) for member in members)
+            )
+        case _:
+            return lower_semantic_expression(expression, environment)
 
 
 def _lower_type_template(
@@ -277,6 +425,15 @@ def _lower_type_template(
                     for argument in arguments
                 ),
             )
+        case UnionTypeExpression(members=members):
+            return UnionExpression(
+                tuple(_lower_case_output(member, environment) for member in members)
+            )
+        case NameTypeExpression(source=source):
+            bound = dict(environment).get(source)
+            if isinstance(bound, UnresolvedTypeBinding):
+                return UnresolvedTypeReference(bound.value)
+            return TypeReference(bound if bound is not None else NamedType(source))
         case MarkerTypeExpression():
             marker = _normalize_semantic_marker(expression)
             if isinstance(marker, ValueMarker):
