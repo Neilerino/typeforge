@@ -1,6 +1,6 @@
 from returns.result import Failure, Success
 
-from typeforge.compiler.emitter import emit_stub_module
+from typeforge.compiler.emission import emit_stub_module
 from typeforge.compiler.specialization import (
     ArityFrontier,
     LoweringErrorCode,

@@ -1,7 +1,13 @@
 from io import StringIO
 from threading import Barrier
 
-from scripts.check import Check, CheckResult, build_checks, report_results, run_checks
+from scripts.check import (
+    Check,
+    CheckResult,
+    build_checks,
+    report_results,
+    run_checks,
+)
 
 
 def test_checks_use_their_default_paths() -> None:
@@ -9,6 +15,22 @@ def test_checks_use_their_default_paths() -> None:
         Check("pytest", ("pytest", "tests")),
         Check("ruff check", ("ruff", "check", ".")),
         Check("ruff format", ("ruff", "format", "--check", ".")),
+        Check(
+            "flake8 block spacing",
+            (
+                "flake8",
+                "--isolated",
+                "--require-plugins",
+                "flake8-bas",
+                "--select",
+                "BAS6,BAS7",
+                "--ignore",
+                "BAS601,BAS602,BAS603,BAS701,BAS702,BAS703",
+                "--extend-exclude",
+                ".venv,.typeforge",
+                ".",
+            ),
+        ),
         Check("mypy", ("mypy", "src")),
         Check("pyright", ("pyright", "src")),
     )
@@ -22,6 +44,23 @@ def test_paths_are_routed_to_applicable_checks() -> None:
         Check("pytest", ("pytest", test)),
         Check("ruff check", ("ruff", "check", source, test)),
         Check("ruff format", ("ruff", "format", "--check", source, test)),
+        Check(
+            "flake8 block spacing",
+            (
+                "flake8",
+                "--isolated",
+                "--require-plugins",
+                "flake8-bas",
+                "--select",
+                "BAS6,BAS7",
+                "--ignore",
+                "BAS601,BAS602,BAS603,BAS701,BAS702,BAS703",
+                "--extend-exclude",
+                ".venv,.typeforge",
+                source,
+                test,
+            ),
+        ),
         Check("mypy", ("mypy", source)),
         Check("pyright", ("pyright", source)),
     )
@@ -32,6 +71,22 @@ def test_parent_path_uses_the_relevant_default_scope() -> None:
         Check("pytest", ("pytest", "tests")),
         Check("ruff check", ("ruff", "check", ".")),
         Check("ruff format", ("ruff", "format", "--check", ".")),
+        Check(
+            "flake8 block spacing",
+            (
+                "flake8",
+                "--isolated",
+                "--require-plugins",
+                "flake8-bas",
+                "--select",
+                "BAS6,BAS7",
+                "--ignore",
+                "BAS601,BAS602,BAS603,BAS701,BAS702,BAS703",
+                "--extend-exclude",
+                ".venv,.typeforge",
+                ".",
+            ),
+        ),
         Check("mypy", ("mypy", "src")),
         Check("pyright", ("pyright", "src")),
     )

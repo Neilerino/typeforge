@@ -77,9 +77,11 @@ def run_proxy(streams: ProxyStreams, configuration: ProxyConfiguration) -> None:
         )
     except OSError as error:
         raise ProxyError(str(error), ProxyErrorCode.SPAWN) from error
+
     if backend.stdin is None or backend.stdout is None:
         backend.kill()
         raise ProxyError("backend pipes unavailable", ProxyErrorCode.SPAWN)
+
     backend_input = cast(BinaryIO, backend.stdout)
     backend_output = cast(BinaryIO, backend.stdin)
     incoming: queue.Queue[_Envelope] = queue.Queue()
@@ -95,15 +97,19 @@ def run_proxy(streams: ProxyStreams, configuration: ProxyConfiguration) -> None:
             envelope = incoming.get()
             if envelope.error is not None:
                 raise envelope.error
+
             if envelope.message is None:
                 if envelope.peer is _Peer.EDITOR:
                     return
+
                 if editor_exited:
                     return
+
                 raise ProxyError(
                     f"backend exited with status {backend.poll()}",
                     ProxyErrorCode.BACKEND_EXIT,
                 )
+
             if envelope.peer is _Peer.EDITOR:
                 handled = _handle_editor_message(
                     envelope.message,
@@ -114,6 +120,7 @@ def run_proxy(streams: ProxyStreams, configuration: ProxyConfiguration) -> None:
                 )
                 if isinstance(handled, Failure):
                     raise handled.failure()
+
                 editor_exited = envelope.message.get("method") == "exit"
                 if editor_exited:
                     return
@@ -139,6 +146,7 @@ def _start_reader(
     reader = stream
     if isinstance(stream, BufferedReader):
         reader = cast(_BufferedBinaryReader, stream).raw
+
     thread = threading.Thread(
         target=_read_loop,
         args=(reader, peer, incoming),
@@ -154,6 +162,7 @@ def _read_loop(stream: BinaryIO, peer: _Peer, incoming: queue.Queue[_Envelope]) 
         if isinstance(result, Failure):
             incoming.put(_Envelope(peer, error=ProxyError(result.failure().message)))
             return
+
         incoming.put(_Envelope(peer, message=result.unwrap()))
         if result.unwrap() is None:
             return
@@ -174,12 +183,14 @@ def _handle_editor_message(
         opened = _open_document(message, configuration)
         if isinstance(opened, Failure):
             return opened
+
         uri, state, transformed = opened.unwrap()
         documents[uri] = state
     elif method == "textDocument/didChange":
         changed = _change_document(message, configuration, documents)
         if isinstance(changed, Failure):
             return changed
+
         uri, state, transformed = changed.unwrap()
         documents[uri] = state
     elif method == "textDocument/didClose":
@@ -204,6 +215,7 @@ def _handle_editor_message(
             request_uri,
             _authored_request_position(message, request_uri, documents),
         )
+
     return _write_message(backend_output, transformed)
 
 
@@ -227,6 +239,7 @@ def _handle_backend_message(
         )
         if isinstance(mapped, dict):
             transformed = mapped
+
     request_id = _request_id(message)
     if request_id is not None and "method" not in message:
         request = pending.pop(request_id, None)
@@ -249,6 +262,7 @@ def _handle_backend_message(
             )
             if isinstance(mapped, dict):
                 transformed = mapped
+
             if request.method == "textDocument/hover":
                 transformed = _add_hover_documentation(
                     transformed,
@@ -256,6 +270,7 @@ def _handle_backend_message(
                     configuration,
                     documents,
                 )
+
     return _write_message(editor_output, transformed)
 
 
@@ -276,6 +291,7 @@ def _add_hover_documentation(
     state = documents.get(request.uri) if request.uri is not None else None
     if state is None or request.position is None:
         return message
+
     query = DocumentationQuery(
         document=state.document,
         position=request.position,
@@ -288,9 +304,11 @@ def _add_hover_documentation(
     documentation = configuration.documentation(query)
     if isinstance(documentation, Failure):
         return message
+
     documentation_value = documentation.unwrap()
     if documentation_value is None:
         return message
+
     return append_hover_documentation(message, documentation_value.markdown)
 
 
@@ -299,13 +317,16 @@ def _map_capabilities(message: JsonObject) -> JsonObject:
     capabilities = _object(result.get("capabilities")) if result else None
     if result is None or capabilities is None:
         return message
+
     semantic = _object(capabilities.get("semanticTokensProvider"))
     completion = _object(capabilities.get("completionProvider"))
     mapped = dict(capabilities)
     if semantic is not None:
         mapped["semanticTokensProvider"] = {**semantic, "full": True}
+
     if completion is not None:
         mapped["completionProvider"] = {**completion, "resolveProvider": False}
+
     mapped.pop("notebookDocumentSync", None)
     return {**message, "result": {**result, "capabilities": mapped}}
 
@@ -325,6 +346,7 @@ def _map_semantic_token_response(
         or not all(isinstance(item, int) for item in data)
     ):
         return message
+
     return {
         **message,
         "result": {
@@ -345,11 +367,13 @@ def _open_document(
     text_document = _object(parameters.get("textDocument")) if parameters else None
     if parameters is None or text_document is None:
         raise ProxyError("didOpen requires textDocument")
+
     uri = text_document.get("uri")
     text = text_document.get("text")
     version = text_document.get("version")
     if not isinstance(uri, str) or not isinstance(text, str):
         raise ProxyError("didOpen requires uri and text")
+
     transformed = _transform(
         uri,
         text,
@@ -358,6 +382,7 @@ def _open_document(
     )
     if isinstance(transformed, Failure):
         raise transformed.failure()
+
     document = transformed.unwrap()
     forwarded: JsonObject = {
         **message,
@@ -383,13 +408,16 @@ def _change_document(
     changes = parameters.get("contentChanges") if parameters else None
     if parameters is None or text_document is None or not isinstance(changes, list):
         raise ProxyError("didChange requires document and changes")
+
     uri = text_document.get("uri")
     version = text_document.get("version")
     if not isinstance(uri, str) or uri not in documents:
         raise ProxyError("didChange references an unopened document")
+
     authored = _apply_changes(documents[uri].document.authored_text, changes)
     if isinstance(authored, Failure):
         raise authored.failure()
+
     transformed = _transform(
         uri,
         authored.unwrap(),
@@ -398,6 +426,7 @@ def _change_document(
     )
     if isinstance(transformed, Failure):
         raise transformed.failure()
+
     document = transformed.unwrap()
     forwarded: JsonObject = {
         **message,
@@ -416,19 +445,24 @@ def _apply_changes(source: str, changes: list[JsonValue]) -> str:
         change = _object(change_value)
         if change is None:
             raise ProxyError("invalid content change")
+
         replacement = change.get("text")
         if not isinstance(replacement, str):
             raise ProxyError("invalid content change")
+
         range_value = _object(change.get("range"))
         if range_value is None:
             current = replacement
             continue
+
         span = _source_span(current, range_value)
         if span is None:
             raise ProxyError("invalid content change range")
+
         current = (
             current[: span.start.offset] + replacement + current[span.end.offset :]
         )
+
     return current
 
 
@@ -440,11 +474,13 @@ def _map_diagnostics(
     parameters = _object(message.get("params"))
     if parameters is None:
         return message
+
     uri = parameters.get("uri")
     values = parameters.get("diagnostics")
     state = documents.get(uri) if isinstance(uri, str) else None
     if state is None or not isinstance(values, list):
         return message
+
     mapped = _map_diagnostic_values(values, state.document, configuration)
     return {**message, "params": {**parameters, "diagnostics": mapped}}
 
@@ -460,6 +496,7 @@ def _map_diagnostic_response(
     values = result.get("items") if result is not None else None
     if state is None or result is None or not isinstance(values, list):
         return message
+
     return {
         **message,
         "result": {
@@ -482,10 +519,12 @@ def _map_diagnostic_values(
         if diagnostic is None or range_value is None:
             mapped.append(value)
             continue
+
         generated = _source_span(document.generated_text, range_value)
         if generated is None:
             mapped.append(value)
             continue
+
         authored = generated_span_to_authored(document, generated)
         mapping = mapping_for_generated_offset(
             document.mappings, generated.start.offset
@@ -497,8 +536,10 @@ def _map_diagnostic_values(
             and authored.start.offset in verified_offsets
         ):
             continue
+
         if configuration.suppress_diagnostic(diagnostic, document, authored):
             continue
+
         presented = configuration.present_diagnostic(diagnostic, document, authored)
         message = presented.get("message")
         if provenance is not None and isinstance(message, str):
@@ -506,6 +547,7 @@ def _map_diagnostic_values(
                 **presented,
                 "message": render_return_check(provenance, message),
             }
+
         normalized = map_message_payload(
             presented,
             {document.uri: DocumentState(document)},
@@ -513,6 +555,7 @@ def _map_diagnostic_values(
             document.uri,
         )
         mapped.append(normalized)
+
     return mapped
 
 
@@ -525,14 +568,17 @@ def _verification_diagnostic_offsets(
         range_value = _object(diagnostic.get("range")) if diagnostic else None
         if range_value is None:
             continue
+
         generated = _source_span(document.generated_text, range_value)
         if generated is None:
             continue
+
         mapping = mapping_for_generated_offset(
             document.mappings, generated.start.offset
         )
         if mapping is not None and mapping.provenance is not None:
             offsets.add(mapping.authored.start.offset)
+
     return frozenset(offsets)
 
 
@@ -545,6 +591,7 @@ def _transform(
     path = _uri_path(uri)
     if path is None:
         return Success(_identity_document(uri, Path(uri), source, version))
+
     transformed = transform_source(
         source,
         path,
@@ -553,6 +600,7 @@ def _transform(
     )
     if isinstance(transformed, Failure):
         return Success(_identity_document(uri, path, source, version))
+
     return Success(transformed.unwrap())
 
 
@@ -580,10 +628,12 @@ def _source_span(source: str, value: JsonObject) -> SourceSpan | None:
     end = _object(value.get("end"))
     if start is None or end is None:
         return None
+
     start_position = _source_position(source, start)
     end_position = _source_position(source, end)
     if start_position is None or end_position is None:
         return None
+
     return SourceSpan(start_position, end_position)
 
 
@@ -592,6 +642,7 @@ def _source_position(source: str, value: JsonObject) -> SourcePosition | None:
     character = value.get("character")
     if not isinstance(line, int) or not isinstance(character, int) or line < 0:
         return None
+
     return source_position_from_utf16(source, line, character)
 
 
@@ -612,6 +663,7 @@ def _authored_request_position(
     position = _object(parameters.get("position")) if parameters is not None else None
     if state is None or position is None:
         return None
+
     return _source_position(state.document.authored_text, position)
 
 
@@ -628,12 +680,14 @@ def _uri_path(uri: str) -> Path | None:
     parsed = urlparse(uri)
     if parsed.scheme != "file":
         return None
+
     return Path(unquote(parsed.path))
 
 
 def _stop_backend(backend: subprocess.Popen[bytes], backend_output: BinaryIO) -> None:
     if backend.poll() is not None:
         return
+
     try:
         backend_output.close()
         backend.wait(timeout=1.0)

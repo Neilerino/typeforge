@@ -29,6 +29,7 @@ class NameTypeSystem:
     def union_members(self, value: str) -> Result[tuple[str, ...], SemanticIssue]:
         if value == "Never":
             return Success(())
+
         return Success(tuple(value.split(" | ")))
 
     def union(self, members: tuple[str, ...]) -> Result[str, SemanticIssue]:

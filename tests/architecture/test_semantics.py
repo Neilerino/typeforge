@@ -35,6 +35,7 @@ def architecture(typeforge: ArchModule) -> LayeredArchitecture:
     architecture = project_layers(typeforge.path.parent.as_posix())
     for layer in typeforge.layers:
         architecture.layer(layer.name).defined_by(layer.pattern)
+
     return architecture
 
 

@@ -13,6 +13,7 @@ def authored_to_generated(
     mapping = mapping_for_authored_offset(document.mappings, position.offset)
     if mapping is None:
         return position_from_offset(document.generated_text, position.offset)
+
     relative = position.offset - mapping.authored.start.offset
     generated_offset = min(
         mapping.generated.start.offset + max(relative, 0),
@@ -31,6 +32,7 @@ def generated_span_to_authored(
         and mapping.provenance is not None
     ):
         return mapping.authored
+
     return SourceSpan(
         generated_to_authored(document, span.start),
         generated_to_authored(document, span.end),
@@ -43,8 +45,10 @@ def generated_to_authored(
     mapping = mapping_for_generated_offset(document.mappings, position.offset)
     if mapping is None:
         return position_from_offset(document.authored_text, position.offset)
+
     if mapping.origin is MappingKind.GENERATED:
         return mapping.authored.start
+
     relative = position.offset - mapping.generated.start.offset
     authored_offset = min(
         mapping.authored.start.offset + max(relative, 0),
@@ -69,6 +73,7 @@ def mapping_for_authored_offset(
     )
     if found is not None:
         return found
+
     return next(
         (
             mapping
@@ -92,6 +97,7 @@ def mapping_for_generated_offset(
     )
     if found is not None:
         return found
+
     return next(
         (
             mapping

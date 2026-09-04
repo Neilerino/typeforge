@@ -20,6 +20,7 @@ def collect_authored_callables(source: str) -> tuple[AuthoredCallable, ...]:
     parsed = parse_source(source)
     if isinstance(parsed, Failure):
         return ()
+
     return tuple(
         AuthoredCallable(
             qualified_name=function.qualified_name,

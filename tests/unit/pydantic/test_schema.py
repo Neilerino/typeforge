@@ -101,9 +101,12 @@ def test_schema_time_resolution_emits_no_python_validator() -> None:
         if isinstance(value, dict):
             if str(value.get("type", "")).startswith("function-"):
                 return True
+
             return any(contains_function_schema(item) for item in value.values())
+
         if isinstance(value, list | tuple):
             return any(contains_function_schema(item) for item in value)
+
         return False
 
     assert not contains_function_schema(adapter.core_schema)

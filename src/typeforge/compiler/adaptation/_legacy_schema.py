@@ -63,6 +63,7 @@ def resolve_schema_type(expression: StubTypeExpression) -> StubTypeExpression:
                         resolve_schema_type(default),
                     )
                 )
+
             members = (
                 subject.members if isinstance(subject, UnionExpression) else (subject,)
             )
@@ -108,6 +109,7 @@ def _resolve_schema_map_member(
             result = resolve_schema_predicate(case.test)
             if result is True:
                 return resolve_schema_type(case.output_type)
+
             if result is None:
                 return union_types_for_schema(
                     (
@@ -117,12 +119,15 @@ def _resolve_schema_map_member(
                         ),
                     )
                 )
+
             continue
+
         matched, capture = _match_schema_pattern(case.test, subject, None)
         if matched:
             return resolve_schema_type(
                 _substitute_schema_capture(case.output_type, capture)
             )
+
     return resolve_schema_type(default)
 
 
@@ -134,12 +139,15 @@ def _match_schema_pattern(
     if isinstance(pattern, MapValueType):
         if capture is not None and capture != subject:
             return False, capture
+
         return True, subject
+
     if isinstance(pattern, TypeApplication) and isinstance(subject, TypeApplication):
         if resolve_schema_type(pattern.constructor) != resolve_schema_type(
             subject.constructor
         ) or len(pattern.arguments) != len(subject.arguments):
             return False, capture
+
         current = capture
         for nested_pattern, nested_subject in zip(
             pattern.arguments, subject.arguments, strict=True
@@ -149,7 +157,9 @@ def _match_schema_pattern(
             )
             if not matched:
                 return False, current
+
         return True, current
+
     return resolve_schema_type(pattern) == subject, capture
 
 
@@ -172,10 +182,12 @@ def resolve_schema_predicate(predicate: Predicate) -> bool | None:
         case EqualPredicate(left, right):
             if _type_has_variable(left) or _type_has_variable(right):
                 return None
+
             return resolve_schema_type(left) == resolve_schema_type(right)
         case AssignablePredicate(source, target):
             if _type_has_variable(source) or _type_has_variable(target):
                 return None
+
             return _schema_assignable(
                 resolve_schema_type(source), resolve_schema_type(target)
             )
@@ -183,11 +195,13 @@ def resolve_schema_predicate(predicate: Predicate) -> bool | None:
             values = tuple(resolve_schema_predicate(item) for item in predicates)
             if False in values:
                 return False
+
             return True if all(value is True for value in values) else None
         case AnyPredicate(predicates):
             values = tuple(resolve_schema_predicate(item) for item in predicates)
             if True in values:
                 return True
+
             return False if all(value is False for value in values) else None
         case NotPredicate(item):
             value = resolve_schema_predicate(item)
@@ -199,10 +213,13 @@ def resolve_schema_predicate(predicate: Predicate) -> bool | None:
 def _schema_assignable(source: StubTypeExpression, target: StubTypeExpression) -> bool:
     if source == target or target == TypeName("object"):
         return True
+
     if isinstance(source, UnionExpression):
         return all(_schema_assignable(member, target) for member in source.members)
+
     if isinstance(target, UnionExpression):
         return any(_schema_assignable(source, member) for member in target.members)
+
     return False
 
 
@@ -226,8 +243,11 @@ def union_types_for_schema(
         for candidate in candidates:
             if candidate != TypeName("Never") and candidate not in members:
                 members.append(candidate)
+
     if not members:
         return TypeName("Never")
+
     if len(members) == 1:
         return members[0]
+
     return UnionExpression(tuple(members))

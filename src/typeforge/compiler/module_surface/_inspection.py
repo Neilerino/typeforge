@@ -5,12 +5,35 @@ from pathlib import Path
 
 from returns.result import Failure, Result, Success
 
-from typeforge.compiler._pipeline_models import (
-    ModuleVariables,
+from typeforge.compiler.module_surface._models import (
+    ModuleSurface,
     UnsupportedPublicDeclaration,
 )
 from typeforge.compiler.source import SourceModule, static_export_names
-from typeforge.compiler.stub_ir import ImportFrom, TypeName, VariableDeclaration
+from typeforge.compiler.stub_ir import (
+    ImportFrom,
+    TypeName,
+    VariableDeclaration,
+    merge_imports,
+)
+
+
+def inspect_module_surface(
+    module: SourceModule,
+) -> Result[ModuleSurface, UnsupportedPublicDeclaration]:
+    validation = validate_public_surface(module)
+    if isinstance(validation, Failure):
+        return validation
+
+    variables = collect_module_variables(module.path)
+    return Success(
+        ModuleSurface(
+            declarations=variables.declarations,
+            imports=merge_imports(
+                (*_collect_public_imports(module.path), *variables.imports)
+            ),
+        )
+    )
 
 
 def validate_public_surface(
@@ -29,6 +52,7 @@ def validate_public_surface(
                     unsupported,
                 )
             )
+
     return Success(None)
 
 
@@ -42,6 +66,7 @@ def _unsupported_public_statement(
         case ast.Import(names=aliases):
             if all(alias.name == "typeforge" for alias in aliases):
                 return None
+
             return "plain imports are not yet supported; use a from import"
         case ast.Expr(value=value):
             public_bindings = tuple(
@@ -54,10 +79,12 @@ def _unsupported_public_statement(
                 return (
                     "assignment expressions that create public names are not supported"
                 )
+
             return None
         case ast.ClassDef(name=name):
             if name in typed_dict_names or name.startswith("_"):
                 return None
+
             return _unsupported_class_body(statement)
         case ast.TypeAlias() | ast.AnnAssign():
             return None
@@ -68,11 +95,14 @@ def _unsupported_public_statement(
             if names == ("__all__",):
                 if static_export_names(value) is not None:
                     return None
+
                 return "__all__ must be a literal list or tuple of names"
+
             return None
         case ast.If(orelse=otherwise) if _is_runtime_main_guard(statement):
             if otherwise:
                 return "runtime main guards with an else branch are not supported"
+
             return None
         case _:
             return (
@@ -87,10 +117,12 @@ def _unsupported_class_body(declaration: ast.ClassDef) -> str | None:
             ast.FunctionDef | ast.AsyncFunctionDef | ast.AnnAssign | ast.Pass,
         ):
             continue
+
         if isinstance(statement, ast.Expr) and isinstance(
             statement.value, ast.Constant
         ):
             continue
+
         if isinstance(statement, ast.Assign):
             names = tuple(
                 target.id
@@ -99,10 +131,12 @@ def _unsupported_class_body(declaration: ast.ClassDef) -> str | None:
             )
             if names and all(name.startswith("_") for name in names):
                 continue
+
         return (
             f"class {declaration.name} contains unsupported "
             f"{type(statement).__name__} declarations"
         )
+
     return None
 
 
@@ -110,10 +144,13 @@ def _is_runtime_main_guard(statement: ast.If) -> bool:
     test = statement.test
     if not isinstance(test, ast.Compare):
         return False
+
     if len(test.ops) != 1 or not isinstance(test.ops[0], ast.Eq):
         return False
+
     if len(test.comparators) != 1:
         return False
+
     left = test.left
     right = test.comparators[0]
     return (_is_dunder_name(left) and _is_main_literal(right)) or (
@@ -129,7 +166,60 @@ def _is_main_literal(expression: ast.expr) -> bool:
     return isinstance(expression, ast.Constant) and expression.value == "__main__"
 
 
-def collect_module_variables(path: Path) -> ModuleVariables:
+def _collect_public_imports(path: Path) -> tuple[ImportFrom, ...]:
+    source = path.read_text(encoding="utf-8")
+    module = ast.parse(source, filename=str(path), type_comments=True)
+    exported_names = _collect_export_names(module)
+    imports: list[ImportFrom] = []
+    for statement in module.body:
+        if not isinstance(statement, ast.ImportFrom):
+            continue
+
+        if (
+            statement.level == 0
+            and statement.module is not None
+            and (
+                statement.module == "typeforge"
+                or statement.module.startswith("typeforge.")
+            )
+        ):
+            continue
+
+        names = tuple(
+            _render_import_name(alias, exported_names) for alias in statement.names
+        )
+        module_name = f"{'.' * statement.level}{statement.module or ''}"
+        imports.append(ImportFrom(module_name, names))
+
+    return tuple(imports)
+
+
+def _collect_export_names(module: ast.Module) -> frozenset[str]:
+    for statement in module.body:
+        if not isinstance(statement, ast.Assign):
+            continue
+
+        if not any(
+            isinstance(target, ast.Name) and target.id == "__all__"
+            for target in statement.targets
+        ):
+            continue
+
+        names = static_export_names(statement.value)
+        return frozenset(names or ())
+
+    return frozenset()
+
+
+def _render_import_name(alias: ast.alias, exported_names: frozenset[str]) -> str:
+    local_name = alias.asname or alias.name
+    if alias.asname is not None or local_name in exported_names:
+        return f"{alias.name} as {local_name}"
+
+    return alias.name
+
+
+def collect_module_variables(path: Path) -> ModuleSurface:
     source = path.read_text(encoding="utf-8")
     module = ast.parse(source, filename=str(path), type_comments=True)
     declarations: list[VariableDeclaration] = []
@@ -138,20 +228,25 @@ def collect_module_variables(path: Path) -> ModuleVariables:
         if isinstance(statement, ast.AnnAssign):
             if not isinstance(statement.target, ast.Name):
                 continue
+
             name = statement.target.id
             if name.startswith("_"):
                 continue
+
             annotation = ast.unparse(statement.annotation)
             declarations.append(VariableDeclaration(name, TypeName(annotation)))
             requires_any = requires_any or _annotation_contains_any(annotation)
             continue
+
         if not isinstance(statement, ast.Assign):
             continue
+
         if any(
             isinstance(target, ast.Name) and target.id == "__all__"
             for target in statement.targets
         ):
             continue
+
         if (
             statement.type_comment is not None
             and len(statement.targets) == 1
@@ -165,16 +260,20 @@ def collect_module_variables(path: Path) -> ModuleVariables:
                 requires_any = requires_any or _annotation_contains_any(
                     statement.type_comment
                 )
+
             continue
+
         for target in statement.targets:
             bindings = _infer_assignment_bindings(target, statement.value)
             for name, annotation in bindings:
                 if name.startswith("_"):
                     continue
+
                 declarations.append(VariableDeclaration(name, TypeName(annotation)))
                 requires_any = requires_any or _annotation_contains_any(annotation)
+
     imports = (ImportFrom("typing", ("Any",)),) if requires_any else ()
-    return ModuleVariables(tuple(declarations), imports)
+    return ModuleSurface(tuple(declarations), imports)
 
 
 def _infer_assignment_bindings(
@@ -193,10 +292,12 @@ def _infer_assignment_bindings(
                     pass
                 case _:
                     values = []
+
             if len(values) != len(targets):
                 return tuple(
                     (name, "Any") for name in _collect_assignment_target_names(target)
                 )
+
             return tuple(
                 binding
                 for item, item_value in zip(targets, values, strict=True)
@@ -238,6 +339,7 @@ def _infer_value_type(value: ast.expr) -> str:
             keys = tuple(key for key in raw_keys if key is not None)
             if len(keys) != len(raw_keys):
                 return "dict[Any, Any]"
+
             key_type = _infer_collection_item_type(keys)
             value_type = _infer_collection_item_type(values)
             return f"dict[{key_type}, {value_type}]"
@@ -249,6 +351,7 @@ def _infer_value_type(value: ast.expr) -> str:
             operand_type = _infer_value_type(operand)
             if operand_type in {"int", "float", "complex"}:
                 return operand_type
+
             return "Any"
         case ast.BinOp(left=left_expression, right=right_expression):
             left = _infer_value_type(left_expression)
@@ -261,6 +364,7 @@ def _infer_value_type(value: ast.expr) -> str:
                 "bytes",
             }:
                 return left
+
             return "Any"
         case ast.Call(func=constructor_expression):
             return _infer_constructor_type(constructor_expression) or "Any"
@@ -273,8 +377,10 @@ def _infer_value_type(value: ast.expr) -> str:
 def _infer_constant_type(value: object) -> str:
     if value is None:
         return "None"
+
     if value is Ellipsis:
         return "Any"
+
     return type(value).__name__
 
 
@@ -283,6 +389,7 @@ def _infer_collection_item_type(
 ) -> str:
     if not values:
         return "Any"
+
     return _union_annotations(tuple(_infer_value_type(value) for value in values))
 
 
@@ -294,6 +401,7 @@ def _infer_constructor_type(function: ast.expr) -> str | None:
     name = _constructor_name(function)
     if name is None:
         return None
+
     terminal = name.rsplit(".", 1)[-1].split("[", 1)[0]
     if terminal[:1].isupper() or terminal in {
         "bytes",
@@ -307,6 +415,7 @@ def _infer_constructor_type(function: ast.expr) -> str | None:
         "tuple",
     }:
         return name
+
     return None
 
 
@@ -323,6 +432,7 @@ def _annotation_contains_any(annotation: str) -> bool:
         parsed = ast.parse(annotation, mode="eval")
     except SyntaxError:
         return annotation == "Any"
+
     return any(
         isinstance(node, ast.Name) and node.id == "Any" for node in ast.walk(parsed)
     )

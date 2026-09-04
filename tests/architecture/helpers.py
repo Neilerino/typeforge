@@ -47,6 +47,7 @@ class ArchModule:
     def __post_init__(self) -> None:
         for module in self.sub_modules:
             module.parent = self
+
         for file in self.files:
             file.module = self
 
@@ -58,6 +59,7 @@ class ArchModule:
     def path(self) -> Path:
         if self.parent is None:
             return SOURCE_PATH / self.name
+
         return self.parent.path / self.name
 
     @cached_property
@@ -118,6 +120,7 @@ class ArchModule:
                 raise ValueError(
                     f"Module {name} does not exist or is not registered"
                 ) from error
+
         return current_module
 
     def file(self, name: str) -> ArchFile:

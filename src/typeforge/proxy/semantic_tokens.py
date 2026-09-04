@@ -28,6 +28,7 @@ def map_semantic_tokens(data: list[int], document: VirtualDocument) -> list[int]
         mapping = mapping_for_generated_offset(document.mappings, generated.offset)
         if mapping is None or mapping.origin is MappingKind.GENERATED:
             continue
+
         generated_end = source_position_from_utf16(
             document.generated_text,
             token.line,
@@ -37,11 +38,13 @@ def map_semantic_tokens(data: list[int], document: VirtualDocument) -> list[int]
         authored_end = generated_to_authored(document, generated_end)
         if authored.line != authored_end.line:
             continue
+
         length = utf16_character(
             document.authored_text, authored_end
         ) - utf16_character(document.authored_text, authored)
         if length <= 0:
             continue
+
         mapped.append(
             SemanticToken(
                 line=authored.line,
@@ -51,6 +54,7 @@ def map_semantic_tokens(data: list[int], document: VirtualDocument) -> list[int]
                 modifiers=token.modifiers,
             )
         )
+
     return encode_tokens(sorted(set(mapped)))
 
 
@@ -65,6 +69,7 @@ def decode_tokens(data: list[int]) -> tuple[SemanticToken, ...]:
         line += delta_line
         character = delta_character if delta_line else character + delta_character
         tokens.append(SemanticToken(line, character, length, token_type, modifiers))
+
     return tuple(tokens)
 
 
@@ -88,4 +93,5 @@ def encode_tokens(tokens: list[SemanticToken]) -> list[int]:
         )
         previous_line = token.line
         previous_character = token.character
+
     return data

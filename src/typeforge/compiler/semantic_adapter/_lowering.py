@@ -120,6 +120,7 @@ def _(
     field_name = field_name_literal(expression)
     if field_name is not None:
         return field_name
+
     return TypeReference(_lower_concrete_type(expression, environment))
 
 
@@ -217,11 +218,13 @@ def _lower_case_test(
             field_name = field_name_literal(expression)
             if field_name is not None:
                 return field_name
+
             return _lower_type_pattern(expression, environment)
         case MarkerTypeExpression():
             marker = _normalize_semantic_marker(expression)
             if isinstance(marker, ValueMarker):
                 return CaptureValuePattern()
+
         case _:
             pass
 
@@ -244,6 +247,7 @@ def _lower_type_pattern(
             marker = _normalize_semantic_marker(expression)
             if isinstance(marker, ValueMarker):
                 return CaptureValuePattern()
+
             raise SemanticLoweringError(
                 "unsupported type pattern "
                 f"{type(marker).__name__.removesuffix('Marker')}"
@@ -260,7 +264,9 @@ def _lower_case_output(
         field_name = field_name_literal(expression)
         if field_name is not None:
             return field_name
+
         return _lower_type_template(expression, environment)
+
     return lower_semantic_expression(expression, environment)
 
 
@@ -281,6 +287,7 @@ def _lower_type_template(
             marker = _normalize_semantic_marker(expression)
             if isinstance(marker, ValueMarker):
                 return ValueReference()
+
             raise SemanticLoweringError(
                 "unsupported type template "
                 f"{type(marker).__name__.removesuffix('Marker')}"
@@ -302,13 +309,17 @@ def field_name_literal(expression: AppliedTypeExpression) -> FieldName | None:
     """Lower a one-string Literal application into a semantic field name."""
     if not isinstance(expression.constructor, NameTypeExpression):
         return None
+
     if expression.constructor.source != "Literal" or len(expression.arguments) != 1:
         return None
+
     argument = expression.arguments[0]
     if not isinstance(argument, RawTypeExpression):
         return None
+
     try:
         value = ast.literal_eval(argument.source)
     except SyntaxError, ValueError:
         return None
+
     return FieldName(value) if isinstance(value, str) else None

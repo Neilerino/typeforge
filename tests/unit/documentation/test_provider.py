@@ -461,6 +461,7 @@ def _position(source: str, symbol: str, occurrence: int) -> SourcePosition:
     offset = -1
     for _ in range(occurrence):
         offset = source.index(symbol, offset + 1)
+
     prefix = source[:offset]
     line = prefix.count("\n")
     line_start = prefix.rfind("\n") + 1

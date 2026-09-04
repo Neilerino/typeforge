@@ -56,6 +56,7 @@ def parse_module(path: Path) -> Result[SourceModule, FrontendError]:
     source = _read_source(path)
     if isinstance(source, Failure):
         return source
+
     return parse_source(source.unwrap(), path)
 
 
@@ -66,6 +67,7 @@ def parse_source(
         tree = ast.parse(source, filename=str(path), type_comments=True)
     except SyntaxError as error:
         return Failure(_syntax_error(path, error))
+
     bindings = _collect_import_bindings(tree)
     scoped_statements = _scoped_statements(tree)
     functions = tuple(
@@ -120,6 +122,7 @@ def _collect_import_bindings(module: ast.Module) -> _ImportBindings:
                 qualified_name = tuple(alias.name.split("."))
                 if alias.asname is None:
                     qualified_name = (qualified_name[0],)
+
                 bindings.append((local_name, qualified_name))
         elif isinstance(statement, ast.ImportFrom) and statement.module is not None:
             module_name = tuple(statement.module.split("."))
@@ -128,6 +131,7 @@ def _collect_import_bindings(module: ast.Module) -> _ImportBindings:
                     bindings.append(
                         (alias.asname or alias.name, (*module_name, alias.name))
                     )
+
     return _ImportBindings(names=tuple(bindings))
 
 
@@ -148,6 +152,7 @@ def _scoped_statements(
                 visit_statements(statement.body, scope)
                 for handler in statement.handlers:
                     visit_statements(handler.body, scope)
+
                 visit_statements(statement.orelse, scope)
                 visit_statements(statement.finalbody, scope)
             elif isinstance(statement, ast.With | ast.AsyncWith):
@@ -195,6 +200,7 @@ def _parse_type_alias(
         value = RawTypeExpression(
             source=ast.unparse(node.value), span=_span(path, node.value)
         )
+
     return TypeAliasDeclaration(
         name=node.name.id,
         qualified_name=(*scope, node.name.id),
@@ -279,9 +285,11 @@ def _parse_class_field(
         annotation = RawTypeExpression(
             source=ast.unparse(node.annotation), span=_span(path, node.annotation)
         )
+
     target = node.target
     if not isinstance(target, ast.Name):
         raise AssertionError("class fields require named targets")
+
     return ClassField(
         target.id,
         annotation,
@@ -307,6 +315,7 @@ def _parse_typed_dicts(
             )
             declarations.append(declaration)
             known.add(declaration.qualified_name)
+
     return tuple(declarations)
 
 
@@ -372,14 +381,18 @@ def _resolve_base_name(
     resolved = _resolve_ast_name(node, bindings)
     if resolved is not None:
         return resolved
+
     if not isinstance(node, ast.Name | ast.Attribute):
         return None
+
     name = _expression_name(node)
     scoped_name = (*scope, *name)
     if scoped_name in known:
         return scoped_name
+
     if name in known:
         return name
+
     return None
 
 
@@ -391,6 +404,7 @@ def _typed_dict_total(node: ast.ClassDef) -> bool:
             and isinstance(keyword.value.value, bool)
         ):
             return keyword.value.value
+
     return True
 
 
@@ -409,9 +423,11 @@ def _parse_typed_dict_field(
         annotation = RawTypeExpression(
             source=ast.unparse(value_node), span=_span(path, value_node)
         )
+
     target = node.target
     if not isinstance(target, ast.Name):
         raise AssertionError("TypedDict fields require named targets")
+
     return TypedDictField(
         name=target.id,
         annotation=annotation,
@@ -435,8 +451,10 @@ def _typed_dict_field_attributes(
             readonly,
             bindings,
         )
+
     if not isinstance(node, ast.Subscript):
         return required, readonly, node
+
     qualified_name = _resolve_ast_name(node.value, bindings)
     arguments = node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
     if qualified_name in {
@@ -444,31 +462,37 @@ def _typed_dict_field_attributes(
         ("typing_extensions", "Required"),
     }:
         return _typed_dict_field_attributes(arguments[-1], True, readonly, bindings)
+
     if qualified_name in {
         ("typing", "NotRequired"),
         ("typing_extensions", "NotRequired"),
     }:
         return _typed_dict_field_attributes(arguments[-1], False, readonly, bindings)
+
     if qualified_name in {
         ("typing", "ReadOnly"),
         ("typing_extensions", "ReadOnly"),
     }:
         return _typed_dict_field_attributes(arguments[-1], required, True, bindings)
+
     if qualified_name in {
         ("typeforge", "Field"),
         ("typeforge", "_markers", "Field"),
     }:
         return required, readonly, arguments[-1]
+
     if qualified_name in {
         ("typeforge", "OptionalField"),
         ("typeforge", "_markers", "OptionalField"),
     }:
         return False, readonly, arguments[-1]
+
     if qualified_name in {
         ("typeforge", "ReadonlyField"),
         ("typeforge", "_markers", "ReadonlyField"),
     }:
         return required, True, arguments[-1]
+
     return required, readonly, node
 
 
@@ -492,6 +516,7 @@ def _parse_parameters(
                 bindings,
             )
         )
+
     for offset, argument in enumerate(arguments.args, start=len(arguments.posonlyargs)):
         parameters.append(
             _parse_parameter(
@@ -503,6 +528,7 @@ def _parse_parameters(
                 bindings,
             )
         )
+
     if arguments.vararg is not None:
         parameters.append(
             _parse_parameter(
@@ -514,6 +540,7 @@ def _parse_parameters(
                 bindings,
             )
         )
+
     for argument, default in zip(
         arguments.kwonlyargs, arguments.kw_defaults, strict=True
     ):
@@ -527,6 +554,7 @@ def _parse_parameters(
                 bindings,
             )
         )
+
     if arguments.kwarg is not None:
         parameters.append(
             _parse_parameter(
@@ -538,6 +566,7 @@ def _parse_parameters(
                 bindings,
             )
         )
+
     return tuple(parameters)
 
 
@@ -569,6 +598,7 @@ def _parse_type_parameter(
         kind = TypeParameterKind.TYPE_VAR_TUPLE
     else:
         kind = TypeParameterKind.PARAM_SPEC
+
     return TypeParameter(
         name=parameter.name,
         kind=kind,
@@ -585,11 +615,13 @@ def _parse_annotation(
 ) -> SourceTypeExpression | None:
     if node is None:
         return None
+
     rendered = ast.get_source_segment(source, node) or ast.unparse(node)
     span = _span(path, node)
     annotated_value = _annotated_value(node, bindings)
     if annotated_value is not None:
         return _parse_annotation(path, source, annotated_value, bindings)
+
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
         members = tuple(
             expression
@@ -598,11 +630,14 @@ def _parse_annotation(
             is not None
         )
         return UnionTypeExpression(rendered, span, members)
+
     if isinstance(node, ast.Starred):
         item = _parse_annotation(path, source, node.value, bindings)
         if item is None:
             return RawTypeExpression(source=rendered, span=span)
+
         return StarredTypeExpression(rendered, span, item)
+
     if isinstance(node, ast.Name | ast.Attribute):
         name = _expression_name(node)
         name_expression = NameTypeExpression(
@@ -613,6 +648,7 @@ def _parse_annotation(
         )
         if _is_runtime_input(name_expression):
             return RuntimeInputTypeExpression(rendered, span)
+
         marker = _marker_kind(name_expression)
         if marker is not None:
             return MarkerTypeExpression(
@@ -621,11 +657,14 @@ def _parse_annotation(
                 marker=marker,
                 arguments=(),
             )
+
         return name_expression
+
     if isinstance(node, ast.Subscript):
         constructor = _parse_annotation(path, source, node.value, bindings)
         if constructor is None:
             return RawTypeExpression(source=rendered, span=span)
+
         slice_nodes = (
             node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
         )
@@ -634,6 +673,7 @@ def _parse_annotation(
             argument = _parse_annotation(path, source, slice_node, bindings)
             if argument is not None:
                 argument_values.append(argument)
+
         arguments = tuple(argument_values)
         if _is_schema_boundary(constructor):
             return SchemaTypeExpression(
@@ -641,6 +681,7 @@ def _parse_annotation(
                 span=span,
                 arguments=arguments,
             )
+
         marker = _marker_kind(constructor)
         if marker is not None:
             return MarkerTypeExpression(
@@ -649,40 +690,48 @@ def _parse_annotation(
                 marker=marker,
                 arguments=arguments,
             )
+
         return AppliedTypeExpression(
             source=rendered,
             span=span,
             constructor=constructor,
             arguments=arguments,
         )
+
     return RawTypeExpression(source=rendered, span=span)
 
 
 def _annotated_value(node: ast.expr, bindings: _ImportBindings) -> ast.expr | None:
     if not isinstance(node, ast.Subscript):
         return None
+
     if _resolve_ast_name(node.value, bindings) not in {
         ("typing", "Annotated"),
         ("typing_extensions", "Annotated"),
     }:
         return None
+
     arguments = node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
     if len(arguments) < 2:
         return None
+
     return arguments[0]
 
 
 def _flatten_union_nodes(node: ast.expr) -> tuple[ast.expr, ...]:
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
         return (*_flatten_union_nodes(node.left), *_flatten_union_nodes(node.right))
+
     return (node,)
 
 
 def _expression_name(node: ast.Name | ast.Attribute) -> tuple[str, ...]:
     if isinstance(node, ast.Name):
         return (node.id,)
+
     if isinstance(node.value, ast.Name | ast.Attribute):
         return (*_expression_name(node.value), node.attr)
+
     return (node.attr,)
 
 
@@ -691,9 +740,11 @@ def _resolve_name(
 ) -> tuple[str, ...] | None:
     if not name:
         return None
+
     imported = dict(bindings.names).get(name[0])
     if imported is None:
         return None
+
     return (*imported, *name[1:])
 
 
@@ -702,23 +753,28 @@ def _resolve_ast_name(
 ) -> tuple[str, ...] | None:
     if not isinstance(node, ast.Name | ast.Attribute):
         return None
+
     return _resolve_name(_expression_name(node), bindings)
 
 
 def _marker_kind(expression: SourceTypeExpression) -> MarkerKind | None:
     if isinstance(expression, MarkerTypeExpression):
         return expression.marker
+
     if not isinstance(expression, NameTypeExpression):
         return None
+
     qualified_name = expression.qualified_name
     marker_names = {marker.value: marker for marker in MarkerKind}
     if qualified_name is None or len(qualified_name) < 2:
         return None
+
     if qualified_name[:-1] not in {
         ("typeforge",),
         ("typeforge", "_markers"),
     }:
         return None
+
     return marker_names.get(qualified_name[-1])
 
 

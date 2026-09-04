@@ -23,13 +23,16 @@ def map_message_payload(
             map_message_payload(item, documents, direction, default_uri)
             for item in value
         ]
+
     if not isinstance(value, dict):
         return value
+
     uri = document_uri(value) or default_uri
     state = documents.get(uri) if uri is not None else None
     document = state.document if state is not None else None
     if document is not None and is_position(value):
         return map_position(value, document, direction)
+
     mapped: JsonObject = {}
     for key, item in value.items():
         if key in {"command", "data"}:
@@ -46,8 +49,10 @@ def map_message_payload(
             }
         else:
             mapped[key] = map_message_payload(item, documents, direction, uri)
+
     if document is not None and is_folding_range(mapped):
         return map_folding_range(mapped, document, direction)
+
     return mapped
 
 
@@ -60,6 +65,7 @@ def map_position(
     character = value.get("character")
     if not isinstance(line, int) or not isinstance(character, int):
         return value
+
     source = (
         document.authored_text
         if direction is MappingDirection.AUTHORED_TO_GENERATED
@@ -92,6 +98,7 @@ def map_folding_range(
     end_line = value.get("endLine")
     if not isinstance(start_line, int) or not isinstance(end_line, int):
         return value
+
     start = map_position(
         {
             "line": start_line,
@@ -115,8 +122,10 @@ def map_folding_range(
     }
     if "startCharacter" in value:
         mapped["startCharacter"] = start["character"]
+
     if "endCharacter" in value:
         mapped["endCharacter"] = end["character"]
+
     return mapped
 
 
@@ -124,11 +133,13 @@ def document_uri(value: JsonObject) -> str | None:
     uri = value.get("uri")
     if isinstance(uri, str):
         return uri
+
     text_document = value.get("textDocument")
     if isinstance(text_document, dict):
         nested_uri = text_document.get("uri")
         if isinstance(nested_uri, str):
             return nested_uri
+
     return None
 
 

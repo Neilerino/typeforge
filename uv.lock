@@ -89,15 +89,16 @@ wheels = [
 ]
 
 [[package]]
-name = "flake8-clean-block"
-version = "0.1.2"
+name = "flake8-bas"
+version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "flake8" },
+    { name = "setuptools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/31/98/5a64a773cff79046fdad28eb25de18322d7d2e26e3895cd7c1abed8134fa/flake8_clean_block-0.1.2.tar.gz", hash = "sha256:0a1f8a58be210a013715810a78dda029a65660373f585b7e14e36c3b85c7791d", size = 3655, upload-time = "2022-10-02T19:27:45.195Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ff/80/d07792a4e54415ad5c413ede790beb2a4c2736122062d3e56aa943724348/flake8_bas-1.1.0.tar.gz", hash = "sha256:29e25966cfab09d3741ebbc300cf421ea5eb8f488522f359b1c4a8b41521bdfa", size = 7828, upload-time = "2026-01-03T12:44:37.88Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0b/d3/cc0037b86f87c1ec28fa970d7325e1b6b6ba54c26f853501d0c5e5d764df/flake8_clean_block-0.1.2-py2.py3-none-any.whl", hash = "sha256:9684c26a6b087e25f73966fe8f4a38f6abb3e9737a9f781140115e0e2c14a93c", size = 4204, upload-time = "2022-10-02T19:27:44.149Z" },
+    { url = "https://files.pythonhosted.org/packages/a1/e9/c9998a814b75621710be7dec0faf733bdae99a7b04f21527354c230500d2/flake8_bas-1.1.0-py3-none-any.whl", hash = "sha256:460b9cd1acdecb51fcbc719207eb0bc7ce6d7053aaed1ef2aaaf122207198228", size = 8247, upload-time = "2026-01-03T12:44:36.646Z" },
 ]
 
 [[package]]
@@ -486,6 +487,15 @@ wheels = [
 ]
 
 [[package]]
+name = "setuptools"
+version = "84.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6d/44/f5da03a8ef95d369145c5bb53050e7877c9f3d312e128605fd9504829143/setuptools-84.0.0.tar.gz", hash = "sha256:f4695c21257f0d9b537ec2692c941d02ee143b7cc1276941349a546573b2ef73", size = 1168449, upload-time = "2026-08-08T18:27:58.365Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/95/9c/c510029fc6ef33a6275cd2c5d3cecd6613dfd6aa401d57c54f1c18852ccf/setuptools-84.0.0-py3-none-any.whl", hash = "sha256:51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670", size = 818216, upload-time = "2026-08-08T18:27:56.719Z" },
+]
+
+[[package]]
 name = "stubpy"
 version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -522,7 +532,7 @@ pyrefly = [
 dev = [
     { name = "archunitpython" },
     { name = "flake8" },
-    { name = "flake8-clean-block" },
+    { name = "flake8-bas" },
     { name = "mypy" },
     { name = "pydantic" },
     { name = "pyrefly" },
@@ -547,7 +557,7 @@ provides-extras = ["pydantic", "mypy", "pyrefly", "compiler"]
 dev = [
     { name = "archunitpython", specifier = ">=1.5,<2" },
     { name = "flake8", specifier = ">=7.3.0" },
-    { name = "flake8-clean-block", specifier = ">=0.1.2" },
+    { name = "flake8-bas", specifier = ">=1.1.0" },
     { name = "mypy", specifier = ">=2.2,<3" },
     { name = "pydantic", specifier = ">=2.13.4,<3" },
     { name = "pyrefly", specifier = ">=1.1.1" },

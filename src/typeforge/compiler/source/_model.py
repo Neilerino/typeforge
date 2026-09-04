@@ -212,21 +212,27 @@ def contains_marker(
     if isinstance(expression, MarkerTypeExpression):
         if marker is None or expression.marker is marker:
             return True
+
         return any(
             contains_marker(argument, marker) for argument in expression.arguments
         )
+
     if isinstance(expression, SchemaTypeExpression):
         return any(
             contains_marker(argument, marker) for argument in expression.arguments
         )
+
     if isinstance(expression, AppliedTypeExpression):
         return contains_marker(expression.constructor, marker) or any(
             contains_marker(argument, marker) for argument in expression.arguments
         )
+
     if isinstance(expression, UnionTypeExpression):
         return any(contains_marker(member, marker) for member in expression.members)
+
     if isinstance(expression, StarredTypeExpression):
         return contains_marker(expression.item, marker)
+
     return False
 
 
@@ -238,6 +244,7 @@ def is_enriched(function: FunctionDeclaration) -> bool:
     )
     if function.returns is not None:
         annotations += (function.returns,)
+
     return any(contains_marker(annotation) for annotation in annotations)
 
 

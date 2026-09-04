@@ -54,6 +54,7 @@ def rewrite_type(
     replacement = transform(expression)
     if replacement is not None:
         return replacement
+
     return rewrite_type_children(
         expression,
         lambda child: rewrite_type(child, transform),
@@ -154,9 +155,11 @@ def walk_type(expression: StubTypeExpression) -> Iterator[StubTypeExpression]:
             yield from walk_type(constructor)
             for argument in arguments:
                 yield from walk_type(argument)
+
         case FixedTuple(items):
             for item in items:
                 yield from walk_type(item)
+
         case (
             HomogeneousTuple(item)
             | EachType(item)
@@ -168,6 +171,7 @@ def walk_type(expression: StubTypeExpression) -> Iterator[StubTypeExpression]:
         case UnionExpression(members):
             for member in members:
                 yield from walk_type(member)
+
         case MapType(subject, cases, default):
             yield from walk_type(subject)
             for case in cases:
@@ -175,7 +179,9 @@ def walk_type(expression: StubTypeExpression) -> Iterator[StubTypeExpression]:
                     yield from _walk_predicate_types(case.test)
                 else:
                     yield from walk_type(case.test)
+
                 yield from walk_type(case.output_type)
+
             yield from walk_type(default)
         case FieldType(name, value):
             yield from walk_type(name)
@@ -206,6 +212,7 @@ def _walk_predicate_types(predicate: Predicate) -> Iterator[StubTypeExpression]:
         case AllPredicate(predicates) | AnyPredicate(predicates):
             for item in predicates:
                 yield from _walk_predicate_types(item)
+
         case NotPredicate(item):
             yield from _walk_predicate_types(item)
         case _ as unreachable:

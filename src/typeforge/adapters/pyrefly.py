@@ -108,6 +108,7 @@ class PyreflyAdapter:
                     detail=f"{lsp_error.code.value}: {lsp_error.message}",
                 )
             )
+
         lsp_analysis = lsp_result.unwrap()
         diagnostics = tuple(
             normalize_diagnostic(document, item)
@@ -134,21 +135,26 @@ def is_overlay_artifact(document: VirtualDocument, diagnostic: LspDiagnostic) ->
         )
         if mapping is not None and mapping.origin is MappingKind.GENERATED:
             return True
+
     if diagnostic.code != "unused-import":
         return False
+
     match = re.fullmatch(r"Import `([^`]+)` is unused", diagnostic.message)
     if match is None:
         return False
+
     imported_name = match.group(1)
     pattern = rf"\b{re.escape(imported_name)}\b"
     if len(re.findall(pattern, document.authored_text)) <= len(
         re.findall(pattern, document.generated_text)
     ):
         return False
+
     try:
         tree = ast.parse(document.authored_text)
     except SyntaxError:
         return False
+
     return any(
         statement.module == "typeforge"
         and any(
@@ -190,10 +196,12 @@ def normalize_diagnostic(
 def normalize_hover(document: VirtualDocument, hover: LspHover) -> HoverResult | None:
     if hover.contents is None:
         return None
+
     span = None
     if hover.range is not None:
         generated_span = lsp_range_to_source_span(document.generated_text, hover.range)
         span = generated_span_to_authored(document, generated_span)
+
     return HoverResult(
         checker="pyrefly",
         path=document.path,
@@ -205,10 +213,13 @@ def normalize_hover(document: VirtualDocument, hover: LspHover) -> HoverResult |
 def normalize_severity(value: int | None) -> DiagnosticSeverity:
     if value == 2:
         return DiagnosticSeverity.WARNING
+
     if value == 3:
         return DiagnosticSeverity.INFORMATION
+
     if value == 4:
         return DiagnosticSeverity.HINT
+
     return DiagnosticSeverity.ERROR
 
 

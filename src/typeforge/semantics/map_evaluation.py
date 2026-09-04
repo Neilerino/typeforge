@@ -166,6 +166,7 @@ def _evaluate_map_member[T](
         else:
             test = fn(case.test, type_system, context)
             matched = _map_values_are_equal(subject, test, type_system)
+
         if matched:
             return fn(case.output, type_system, output_context)
 

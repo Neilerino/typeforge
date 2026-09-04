@@ -3,6 +3,7 @@ from typing import assert_never
 
 from returns.result import Failure, Result, Success
 
+from typeforge.compiler.emission._models import EmissionError
 from typeforge.compiler.stub_ir import (
     ClassDeclaration,
     ClassField,
@@ -28,9 +29,11 @@ from typeforge.compiler.stub_ir import (
 )
 
 
-def emit_stub_module(module: StubModule) -> Result[str, str]:
+def emit_stub_module(module: StubModule) -> Result[str, EmissionError]:
     declarations = _collect(_emit_declaration(item) for item in module.declarations)
-    return declarations.map(lambda items: _render_stub_module(module, items))
+    return declarations.map(lambda items: _render_stub_module(module, items)).alt(
+        EmissionError
+    )
 
 
 def _render_stub_module(module: StubModule, declarations: tuple[str, ...]) -> str:
@@ -59,8 +62,10 @@ def _emit_import(declaration: Import | ImportFrom) -> str:
             return f"from {module} import {', '.join(names)}"
 
 
-def emit_type_expression(expression: StubTypeExpression) -> Result[str, str]:
-    return _emit_type(expression)
+def emit_type_expression(
+    expression: StubTypeExpression,
+) -> Result[str, EmissionError]:
+    return _emit_type(expression).alt(EmissionError)
 
 
 def _emit_declaration(declaration: Declaration) -> Result[str, str]:
@@ -170,9 +175,11 @@ def _emit_parameters(parameters: tuple[Parameter, ...]) -> Result[str, str]:
         ):
             rendered.append("*")
             keyword_only_started = True
+
         annotation = _emit_type(parameter.annotation)
         if isinstance(annotation, Failure):
             return annotation
+
         prefix = ""
         if parameter.kind is ParameterKind.VAR_POSITIONAL:
             prefix = "*"
@@ -180,40 +187,52 @@ def _emit_parameters(parameters: tuple[Parameter, ...]) -> Result[str, str]:
             keyword_only_started = True
         elif parameter.kind is ParameterKind.VAR_KEYWORD:
             prefix = "**"
+
         value = f"{prefix}{parameter.name}: {annotation.unwrap()}"
         if parameter.default is not None:
             value = f"{value} = {parameter.default}"
+
         rendered.append(value)
         if parameter.kind is ParameterKind.POSITIONAL_ONLY:
             positional_only_end = len(rendered)
+
     if positional_only_end:
         rendered.insert(positional_only_end, "/")
+
     return Success(", ".join(rendered))
 
 
 def _emit_type(expression: StubTypeExpression) -> Result[str, str]:
     if isinstance(expression, (TypeName, TypeVariable)):
         return Success(expression.name)
+
     if isinstance(expression, TypeApplication):
         return Result.do(
             f"{constructor}[{', '.join(arguments)}]"
             for constructor in _emit_type(expression.constructor)
             for arguments in _emit_types(expression.arguments)
         )
+
     if isinstance(expression, FixedTuple):
         if not expression.items:
             return Success("tuple[()]")
+
         return _emit_types(expression.items).map(
             lambda items: f"tuple[{', '.join(items)}]"
         )
+
     if isinstance(expression, HomogeneousTuple):
         return _emit_type(expression.item).map(lambda item: f"tuple[{item}, ...]")
+
     if isinstance(expression, LiteralType):
         return Success(f"Literal[{expression.value!r}]")
+
     if isinstance(expression, UnionExpression):
         return _emit_types(expression.members).map(" | ".join)
+
     if isinstance(expression, UnpackedType):
         return _emit_type(expression.item).map(lambda item: f"*{item}")
+
     return Failure(f"unlowered type expression: {type(expression).__name__}")
 
 
@@ -230,5 +249,7 @@ def _collect[ValueType, ErrorType](
     for result in results:
         if isinstance(result, Failure):
             return result
+
         values.append(result.unwrap())
+
     return Success(tuple(values))

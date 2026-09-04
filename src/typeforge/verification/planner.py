@@ -6,7 +6,7 @@ from returns.result import Failure, Result, Success
 
 from typeforge.analysis.model import SourcePosition, SourceSpan
 from typeforge.analysis.positions import source_position_from_utf8
-from typeforge.compiler.emitter import emit_type_expression
+from typeforge.compiler.emission import emit_type_expression
 from typeforge.compiler.pipeline import (
     AdaptationError,
     SemanticRelationshipAlias,
@@ -64,18 +64,22 @@ def plan_implementation_verification(
             or _is_overload(function.decorators)
         ):
             continue
+
         enclosing = _enclosing_type_parameters(module, function.qualified_name)
         contract_result = build_return_contract(function, aliases, enclosing)
         if isinstance(contract_result, Failure):
             return contract_result
+
         contract = contract_result.unwrap()
         if contract is None:
             continue
+
         initial = FlowState(tuple(item.index for item in contract.alternatives))
         context = _PlanningContext(source, contract, never_functions)
         analyzed = _analyze_statements(node.body, (initial,), context)
         obligations.extend(analyzed.obligations)
         obligations.extend(_fallthrough_obligations(node, analyzed.continuing, context))
+
     reserved = tuple(
         sorted(
             {item.id for item in ast.walk(tree) if isinstance(item, ast.Name)}
@@ -106,9 +110,11 @@ def _analyze_statements(
     for statement in statements:
         if not continuing:
             break
+
         result = _analyze_statement(statement, _join_states(continuing), context)
         continuing = result.continuing
         obligations.extend(result.obligations)
+
     return _FlowResult(continuing, tuple(obligations))
 
 
@@ -120,21 +126,27 @@ def _analyze_statement(
     if isinstance(statement, ast.Return):
         state = _merged_state(states)
         return _FlowResult((), (_return_obligation(statement, state, context),))
+
     if isinstance(statement, ast.Raise | ast.Break | ast.Continue):
         return _FlowResult((), ())
+
     if isinstance(statement, ast.Expr) and _is_never_call(
         statement.value, context.never_functions
     ):
         return _FlowResult((), ())
+
     if isinstance(statement, ast.If):
         return _analyze_if(statement, states, context)
+
     if isinstance(statement, ast.Assert):
         positive, _ = _partition_expression(
             statement.test, _merged_state(states), context.contract
         )
         return _FlowResult((positive,), ())
+
     if isinstance(statement, ast.Match):
         return _analyze_match(statement, states, context)
+
     if isinstance(statement, ast.For | ast.AsyncFor):
         entered = tuple(
             _invalidate_if_bound(state, statement.target, context.contract)
@@ -146,6 +158,7 @@ def _analyze_statement(
             _join_states((*states, *otherwise.continuing)),
             (*body.obligations, *otherwise.obligations),
         )
+
     if isinstance(statement, ast.While):
         positive, _ = _partition_expression(
             statement.test, _merged_state(states), context.contract
@@ -156,6 +169,7 @@ def _analyze_statement(
             _join_states((*states, *otherwise.continuing)),
             (*body.obligations, *otherwise.obligations),
         )
+
     if isinstance(statement, ast.With | ast.AsyncWith):
         current = states
         for item in statement.items:
@@ -164,9 +178,12 @@ def _analyze_statement(
                     _invalidate_if_bound(state, item.optional_vars, context.contract)
                     for state in current
                 )
+
         return _analyze_statements(statement.body, current, context)
+
     if isinstance(statement, ast.Try | ast.TryStar):
         return _analyze_try(statement, states, context)
+
     if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
         return _FlowResult(
             tuple(
@@ -175,6 +192,7 @@ def _analyze_statement(
             ),
             (),
         )
+
     if isinstance(statement, ast.Assign):
         return _FlowResult(
             tuple(
@@ -183,6 +201,7 @@ def _analyze_statement(
             ),
             (),
         )
+
     if isinstance(statement, ast.AnnAssign | ast.AugAssign):
         return _FlowResult(
             tuple(
@@ -191,6 +210,7 @@ def _analyze_statement(
             ),
             (),
         )
+
     if isinstance(statement, ast.Delete):
         return _FlowResult(
             tuple(
@@ -199,6 +219,7 @@ def _analyze_statement(
             ),
             (),
         )
+
     return _FlowResult(states, ())
 
 
@@ -236,6 +257,7 @@ def _analyze_match(
             ).obligations
         )
         return _FlowResult(states, unmatched_obligations)
+
     remaining = _merged_state(states)
     continuing: list[FlowState] = []
     obligations: list[ReturnObligation] = []
@@ -253,16 +275,20 @@ def _analyze_match(
                 )
         else:
             selected, remaining = _partition_guard(guard, remaining, context.contract)
+
         if case.guard is not None:
             selected, rejected = _partition_expression(
                 case.guard, selected, context.contract
             )
             remaining = _union_states((remaining, rejected))
+
         result = _analyze_statements(case.body, (selected,), context)
         continuing.extend(result.continuing)
         obligations.extend(result.obligations)
+
     if remaining.alternatives:
         continuing.append(remaining)
+
     return _FlowResult(_join_states(tuple(continuing)), tuple(obligations))
 
 
@@ -310,7 +336,9 @@ def _partition_expression(
                 )
                 negative_parts.append(item_negative)
                 positive = item_positive
+
             return positive, _union_states(tuple(negative_parts))
+
         negative = state
         positive_parts: list[FlowState] = []
         for item in expression.values:
@@ -319,10 +347,13 @@ def _partition_expression(
             )
             positive_parts.append(item_positive)
             negative = item_negative
+
         return _union_states(tuple(positive_parts)), negative
+
     recognized = recognize_guard(expression, contract.controller_parameter)
     if recognized is None or not state.controller_valid:
         return state, state
+
     guard, positive_polarity = recognized
     matched, unmatched = _partition_guard(guard, state, contract)
     return (matched, unmatched) if positive_polarity else (unmatched, matched)
@@ -363,6 +394,7 @@ def _partition_guard(
         positive_indices = explicit_matches | unresolved
         if default is not None and _render_output(default) != "Never":
             positive_indices.add(default.index)
+
         negative_indices = unresolved | {
             item.index for item in available if item.index not in explicit_matches
         }
@@ -371,9 +403,11 @@ def _partition_guard(
         positive_indices = explicit_matches | unresolved
         if not positive_indices and default is not None:
             positive_indices.add(default.index)
+
         negative_indices = unresolved | {
             item.index for item in available if item.index not in explicit_matches
         }
+
     return (
         FlowState(
             tuple(sorted(positive_indices)),
@@ -437,6 +471,7 @@ def _fallthrough_obligations(
 ) -> tuple[ReturnObligation, ...]:
     if not states or not node.body:
         return ()
+
     state = _merged_state(states)
     end = _node_span(context.source, node.body[-1]).end
     line_end = context.source.find("\n", end.offset)
@@ -465,6 +500,7 @@ def _expected_types(
 ) -> tuple[StubTypeExpression, ...]:
     if not state.refined or not state.controller_valid:
         return (aggregate_output(contract),)
+
     values = tuple(
         item.output_type
         for item in contract.alternatives
@@ -474,24 +510,29 @@ def _expected_types(
     for value in values:
         if value not in deduplicated:
             deduplicated.append(value)
+
     return tuple(deduplicated)
 
 
 def _join_states(states: tuple[FlowState, ...]) -> tuple[FlowState, ...]:
     if not states:
         return ()
+
     unique: list[FlowState] = []
     for state in states:
         if state.alternatives and state not in unique:
             unique.append(state)
+
     return tuple(unique)
 
 
 def _merged_state(states: tuple[FlowState, ...]) -> FlowState:
     if not states:
         return FlowState(())
+
     if len(states) == 1:
         return states[0]
+
     return FlowState(
         alternatives=tuple(
             sorted({item for state in states for item in state.alternatives})
@@ -505,6 +546,7 @@ def _union_states(states: tuple[FlowState, ...]) -> FlowState:
     reachable = tuple(state for state in states if state.alternatives)
     if not reachable:
         return FlowState(())
+
     return FlowState(
         alternatives=tuple(
             sorted({item for state in reachable for item in state.alternatives})
@@ -522,6 +564,7 @@ def _invalidate_for_targets(
     result = state
     for target in targets:
         result = _invalidate_if_bound(result, target, contract)
+
     return result
 
 
@@ -535,6 +578,7 @@ def _invalidate_if_bound(
         for item in ast.walk(target)
     ):
         return FlowState(state.alternatives, False, False)
+
     return state
 
 
@@ -553,6 +597,7 @@ def _invalidate_symbol(
 def _render_input(alternative: Alternative) -> str | None:
     if alternative.input_type is None:
         return None
+
     return emit_type_expression(alternative.input_type).value_or(None)
 
 
@@ -567,6 +612,7 @@ def _known_runtime_subclass(candidate: str | None, parents: tuple[str, ...]) -> 
 def _normalize_type(value: str | None) -> str | None:
     if value is None:
         return None
+
     try:
         return ast.unparse(ast.parse(value, mode="eval").body)
     except SyntaxError:
@@ -593,6 +639,7 @@ def _function_nodes(
                 visit(statement.body, scope)
                 for handler in statement.handlers:
                     visit(handler.body, scope)
+
                 visit(statement.orelse, scope)
                 visit(statement.finalbody, scope)
             elif isinstance(statement, ast.With | ast.AsyncWith):
@@ -610,6 +657,7 @@ def _enclosing_type_parameters(
 ) -> tuple[str, ...]:
     if len(qualified_name) != 2:
         return ()
+
     owner = next(
         (item for item in module.classes if item.name == qualified_name[0]),
         None,
@@ -642,6 +690,7 @@ def _is_generator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     finder = YieldFinder()
     for statement in node.body:
         finder.visit(statement)
+
     return finder.found
 
 

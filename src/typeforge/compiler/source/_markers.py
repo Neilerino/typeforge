@@ -182,6 +182,7 @@ type NormalizedMarker = (
 def schema_inner_expression(expression: SourceTypeExpression) -> SourceTypeExpression:
     if isinstance(expression, SchemaTypeExpression) and len(expression.arguments) == 1:
         return expression.arguments[0]
+
     return expression
 
 
@@ -201,10 +202,12 @@ def normalize_marker(expression: MarkerTypeExpression) -> NormalizedMarker:
         case MarkerKind.ALL:
             for argument in arguments:
                 _validate_predicate_role(argument)
+
             return AllMarker(source, arguments)
         case MarkerKind.ANY:
             for argument in arguments:
                 _validate_predicate_role(argument)
+
             return AnyMarker(source, arguments)
         case MarkerKind.NOT:
             _validate_predicate_role(arguments[0])
@@ -222,6 +225,7 @@ def normalize_marker(expression: MarkerTypeExpression) -> NormalizedMarker:
                 MarkerKind.NOT,
             }:
                 _validate_predicate_role(arguments[0])
+
             return CaseMarker(source, arguments[0], arguments[1])
         case MarkerKind.DEFAULT:
             return DefaultMarker(source, arguments[0])
@@ -263,20 +267,25 @@ def _normalize_map(
                 expression.source,
                 "Map entries must be Case[Test, Output] or Default[Output]",
             )
+
         entry = normalize_marker(expression)
         if not isinstance(entry, CaseMarker | DefaultMarker):
             raise MarkerNormalizationError(
                 expression.source,
                 "Map entries must be Case[Test, Output] or Default[Output]",
             )
+
         if isinstance(entry, DefaultMarker):
             if default_seen:
                 raise MarkerNormalizationError(
                     expression.source,
                     "Map may contain at most one Default",
                 )
+
             default_seen = True
+
         entries.append(entry)
+
     return MapMarker(source, arguments[0], tuple(entries))
 
 
@@ -286,6 +295,7 @@ def _validate_predicate_role(expression: SourceTypeExpression) -> None:
             expression.source,
             "condition must be a Typeforge predicate",
         )
+
     marker = normalize_marker(expression)
     if not isinstance(
         marker,

@@ -32,6 +32,7 @@ def configure_pyrefly_initialize(message: JsonObject) -> JsonObject:
     parameters = object_value(message.get("params"))
     if parameters is None:
         return message
+
     options = object_value(parameters.get("initializationOptions")) or {}
     pyrefly = object_value(options.get("pyrefly")) or {}
     configured_pyrefly: JsonObject = {
@@ -62,21 +63,26 @@ def suppress_pyrefly_artifact(
         for mapping in document.mappings
     ):
         return True
+
     if diagnostic.get("code") != "unused-import":
         return False
+
     lines = document.authored_text.splitlines()
     if (
         span.start.line >= len(lines)
         or "from typeforge import" not in lines[span.start.line]
     ):
         return False
+
     try:
         tree = ast.parse(document.authored_text, type_comments=True)
     except SyntaxError:
         return False
+
     imported = document.authored_text[span.start.offset : span.end.offset]
     if not imported.isidentifier():
         return False
+
     return any(
         isinstance(node, ast.Name)
         and isinstance(node.ctx, ast.Load)
@@ -95,9 +101,11 @@ def present_pyrefly_diagnostic(
     code = diagnostic.get("code")
     if not isinstance(message, str) or not isinstance(code, str):
         return diagnostic
+
     presented = present_pyrefly_message(document.authored_text, code, message)
     if presented == message:
         return diagnostic
+
     return {**diagnostic, "message": presented}
 
 

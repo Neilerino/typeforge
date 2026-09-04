@@ -87,6 +87,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if isinstance(project_result, Failure):
         _print_error(project_result.failure())
         return 1
+
     project = project_result.unwrap()
 
     if isinstance(invocation.command, ShowCommand):
@@ -94,6 +95,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if isinstance(generated, Failure):
             _print_error(generated.failure())
             return 1
+
         sys.stdout.write(generated.unwrap().content)
         return 0
 
@@ -107,19 +109,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     if isinstance(sources_result, Failure):
         _print_error(sources_result.failure())
         return 1
+
     for source in sources_result.unwrap():
         generated = _generate(project, source)
         if isinstance(generated, Failure):
             _print_error(generated.failure())
             return 1
+
         output_result = output_path(project, source)
         if isinstance(output_result, Failure):
             _print_error(output_result.failure())
             return 1
+
         written = write_generated(output_result.unwrap(), generated.unwrap().content)
         if isinstance(written, Failure):
             _print_error(written.failure())
             return 1
+
     return 0
 
 
@@ -144,6 +150,7 @@ def parse_invocation(argv: Sequence[str] | None = None) -> Invocation:
     config_path = _absolute(parsed.config)
     if parsed.command == "show":
         return Invocation(config_path, ShowCommand(_absolute(parsed.path)))
+
     if parsed.command == "check":
         checker = (
             AnalysisChecker(parsed.checker) if parsed.checker is not None else None
@@ -152,8 +159,10 @@ def parse_invocation(argv: Sequence[str] | None = None) -> Invocation:
             config_path,
             CheckCommand(tuple(_absolute(path) for path in parsed.paths), checker),
         )
+
     if parsed.command == "lsp":
         return Invocation(config_path, LspCommand(AnalysisChecker(parsed.checker)))
+
     return Invocation(
         config_path,
         GenerateCommand(tuple(_absolute(path) for path in parsed.paths)),
@@ -173,6 +182,7 @@ def resolve_sources(
 ) -> Result[tuple[Path, ...], CliError]:
     if not requested:
         return Success(discover_sources(project))
+
     sources: set[Path] = set()
     for requested_path in requested:
         path = _absolute_from(project.root, requested_path)
@@ -188,6 +198,7 @@ def resolve_sources(
                     path,
                 )
             )
+
     for source in sources:
         if _containing_root(project, source) is None:
             return Failure(
@@ -197,6 +208,7 @@ def resolve_sources(
                     source,
                 )
             )
+
     return Success(tuple(sorted(sources)))
 
 
@@ -219,6 +231,7 @@ def output_path(project: Project, source: Path) -> Result[Path, CliError]:
                 source,
             )
         )
+
     relative = source.relative_to(root).with_suffix(".pyi")
     return Success(project.output_directory / relative)
 
@@ -227,6 +240,7 @@ def write_generated(path: Path, content: str) -> Result[WriteState, CliError]:
     try:
         if path.exists() and path.read_text(encoding="utf-8") == content:
             return Success(WriteState.UNCHANGED)
+
         path.parent.mkdir(parents=True, exist_ok=True)
         descriptor, temporary_name = tempfile.mkstemp(
             dir=path.parent, prefix=".typeforge-"
@@ -235,11 +249,13 @@ def write_generated(path: Path, content: str) -> Result[WriteState, CliError]:
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
                 stream.write(content)
+
             temporary_path.replace(path)
         finally:
             temporary_path.unlink(missing_ok=True)
     except OSError as error:
         return Failure(CliError(CliErrorCode.WRITE, str(error), path))
+
     return Success(WriteState.WRITTEN)
 
 
@@ -266,6 +282,7 @@ def _check(project: Project, config_path: Path, command: CheckCommand) -> int:
     if isinstance(sources, Failure):
         _print_error(sources.failure())
         return 1
+
     adapter = checker_adapter(project.analysis, command.checker)
     has_errors = False
     for source in sources.unwrap():
@@ -287,7 +304,9 @@ def _check(project: Project, config_path: Path, command: CheckCommand) -> int:
             )
             if error.detail:
                 print(error.detail, file=sys.stderr)
+
             return 1
+
         for diagnostic in analyzed.unwrap().diagnostics:
             position = diagnostic.span.start
             code = f" [{diagnostic.code}]" if diagnostic.code else ""
@@ -296,6 +315,7 @@ def _check(project: Project, config_path: Path, command: CheckCommand) -> int:
                 f"{diagnostic.severity.value}: {diagnostic.message}{code}"
             )
             has_errors = has_errors or (diagnostic.severity is DiagnosticSeverity.ERROR)
+
     return 1 if has_errors else 0
 
 
@@ -307,6 +327,7 @@ def checker_adapter(
     command = configured.command if override in (None, configured.checker) else None
     if checker is AnalysisChecker.PYREFLY:
         return PyreflyAdapter(command=command or PYREFLY_COMMAND)
+
     return MypyAdapter(
         configuration=MypyConfiguration(
             command=command or (sys.executable, "-m", "mypy")
@@ -318,6 +339,7 @@ def _lsp(project: Project, command: LspCommand) -> int:
     if command.checker is not AnalysisChecker.PYREFLY:
         print("typeforge: checker does not provide an LSP adapter", file=sys.stderr)
         return 1
+
     backend_command = (
         project.analysis.command
         if project.analysis.checker is AnalysisChecker.PYREFLY
@@ -340,18 +362,22 @@ def _lsp(project: Project, command: LspCommand) -> int:
             file=sys.stderr,
         )
         return 1
+
     return 0
 
 
 def _discover_root(root: Path, output_directory: Path) -> tuple[Path, ...]:
     if not root.is_dir():
         return ()
+
     sources: list[Path] = []
     for source in root.rglob("*.py"):
         relative = source.relative_to(root)
         if _is_private(relative) or source.is_relative_to(output_directory):
             continue
+
         sources.append(source.resolve())
+
     return tuple(sorted(sources))
 
 

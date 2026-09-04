@@ -162,7 +162,7 @@
   <body>
     <div class="page-shell">
       <div class="utility-bar">
-        <nav aria-label="Reference links"><a href="../lessons/0001-from-feature-idea-to-executable-contract.html">Lesson 0001</a><a href="../MISSION.md">Learning mission</a><a href="../RESOURCES.md">Sources</a></nav>
+        <nav aria-label="Reference links"><a href="../lessons/0001-from-feature-idea-to-executable-contract.html">Lesson 0001</a><a href="../lessons/0002-agent-guided-specification-workflow.html">Lesson 0002</a><a href="../MISSION.md">Learning mission</a><a href="../RESOURCES.md">Sources</a></nav>
         <button class="theme-toggle" type="button" data-theme-toggle>Theme</button>
       </div>
 
@@ -171,7 +171,7 @@
           <span class="eyebrow">Typeforge field reference</span>
           <h1>Specification-first feature testing</h1>
         </div>
-        <aside><strong>The short version</strong><p>Specify the promise at a stable boundary. Prove the test fails for that missing promise. Park it with strict <code>xfail</code>. Expose red with <code>--runxfail</code>. Remove the marker when it passes.</p></aside>
+        <aside><strong>The short version</strong><p>Specify the promise at a stable seam. Prove the test fails for that missing promise. Park it with strict <code>xfail</code>. Expose red with <code>--runxfail</code>. Remove the marker when it passes.</p></aside>
       </header>
 
       <main class="reference-main">
@@ -193,7 +193,7 @@
           <span class="eyebrow">Recipe</span>
           <h2 id="recipe-title">From idea to regression</h2>
           <ol class="reference-list">
-            <li><span><strong>Name the system.</strong> Which boundary owns this promise?</span></li>
+            <li><span><strong>Name the module.</strong> Which seam owns this promise?</span></li>
             <li><span><strong>State one rule.</strong> Include examples, edges, and open questions.</span></li>
             <li><span><strong>Choose an observation.</strong> Output, typed failure, diagnostic, or import graph.</span></li>
             <li><span><strong>Write one test.</strong> See it fail at the final assertion for the right reason.</span></li>
@@ -204,11 +204,11 @@
         </section>
 
         <section class="wide" aria-labelledby="seams-title">
-          <span class="eyebrow">Typeforge boundary map</span>
+          <span class="eyebrow">Typeforge seam map</span>
           <h2 id="seams-title">Put each promise where it can survive refactoring</h2>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Boundary</th><th>Input</th><th>Observable result</th><th>Test area</th></tr></thead>
+              <thead><tr><th>Seam</th><th>Input</th><th>Observable result</th><th>Test area</th></tr></thead>
               <tbody>
                 <tr><td>Public compiler</td><td>Authored Python source</td><td>Complete deterministic stub or typed failure</td><td><code>tests/unit/compiler/test_pipeline.py</code></td></tr>
                 <tr><td>Semantic adapter</td><td>Compiler source model</td><td>Shared semantic expression</td><td><code>tests/unit/compiler/semantic_adapter/</code></td></tr>
@@ -240,8 +240,8 @@
           <h2 id="ready-title">Before marking xfail</h2>
           <ul class="checklist">
             <li>The rule is agreed, not speculative.</li>
-            <li>The system boundary is named.</li>
-            <li>The outcome is observable at that boundary.</li>
+            <li>The module seam is named.</li>
+            <li>The outcome is observable through that interface.</li>
             <li>The failure reaches the final behavior assertion.</li>
             <li>The reason describes a missing capability.</li>
             <li>The slice fits one short TDD loop.</li>

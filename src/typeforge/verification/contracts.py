@@ -33,16 +33,19 @@ def build_return_contract(
     adapted = adapt_function(function, enclosing_type_parameters)
     if isinstance(adapted, Failure):
         return adapted
+
     expanded = expand_function_map_aliases(adapted.unwrap(), aliases)
     relationship = expanded.return_type
     if not isinstance(relationship, MapType) or not isinstance(
         relationship.subject, TypeVariable
     ):
         return Success(None)
+
     controller = relationship.subject.name
     for case in relationship.cases:
         if not is_predicate(case.test):
             continue
+
         predicate_controller_result = predicate_controller(case.test)
         if (
             isinstance(predicate_controller_result, Failure)
@@ -50,6 +53,7 @@ def build_return_contract(
             or not predicate_is_supported(case.test, controller)
         ):
             return Success(None)
+
     mapping = MapType(
         relationship.subject,
         map_specializations(relationship, controller),
@@ -62,6 +66,7 @@ def build_return_contract(
     )
     if len(controller_parameters) != 1:
         return Success(None)
+
     alternatives = tuple(
         Alternative(
             index=index,
@@ -112,8 +117,11 @@ def union_types(expressions: tuple[StubTypeExpression, ...]) -> StubTypeExpressi
         for member in members:
             if member not in flattened:
                 flattened.append(member)
+
     if not flattened:
         return TypeName("Never")
+
     if len(flattened) == 1:
         return flattened[0]
+
     return UnionExpression(tuple(flattened))

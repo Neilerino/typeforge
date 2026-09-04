@@ -66,16 +66,20 @@ def lower_variadic_module(
             class_result = _lower_class(declaration, frontier)
             if isinstance(class_result, Failure):
                 return class_result
+
             lowered_class, class_has_overloads = class_result.unwrap()
             has_overloads = has_overloads or class_has_overloads
             lowered.append(lowered_class)
             continue
+
         if not isinstance(declaration, FunctionDeclaration):
             lowered.append(declaration)
             continue
+
         result = _lower_function(declaration, frontier)
         if isinstance(result, Failure):
             return result
+
         lowered_declaration = result.unwrap()
         has_overloads = has_overloads or isinstance(
             lowered_declaration, OverloadDeclaration
@@ -85,6 +89,7 @@ def lower_variadic_module(
     imports = module.imports
     if has_overloads:
         imports = _add_import(imports, ImportFrom("typing", ("overload",)))
+
     lowered_module = StubModule(module.name, tuple(lowered), imports)
     if _module_contains_literal(lowered_module):
         lowered_module = StubModule(
@@ -92,6 +97,7 @@ def lower_variadic_module(
             lowered_module.declarations,
             _add_import(lowered_module.imports, ImportFrom("typing", ("Literal",))),
         )
+
     return Success(lowered_module)
 
 
@@ -105,9 +111,11 @@ def _lower_class(
             methods.append(method)
             has_overloads = True
             continue
+
         lowered = _lower_function(method, frontier)
         if isinstance(lowered, Failure):
             return lowered
+
         lowered_method = lowered.unwrap()
         if not isinstance(
             lowered_method,
@@ -116,8 +124,10 @@ def _lower_class(
             raise AssertionError(
                 "function lowering produced a non-callable declaration"
             )
+
         methods.append(lowered_method)
         has_overloads = has_overloads or isinstance(lowered_method, OverloadDeclaration)
+
     return Success(
         (
             ClassDeclaration(
@@ -139,6 +149,7 @@ def _lower_function(
 ) -> Result[Declaration, LoweringError]:
     if isinstance(declaration.return_type, MapType):
         return _lower_map_function(declaration, declaration.return_type)
+
     return _lower_each_function(declaration, frontier)
 
 
@@ -152,6 +163,7 @@ def _lower_each_function(
     )
     if not each_parameters:
         return Success(declaration)
+
     if len(each_parameters) != 1:
         return Failure(
             LoweringError(
@@ -165,6 +177,7 @@ def _lower_each_function(
     each_annotation = each_parameter.annotation
     if not isinstance(each_annotation, EachType):
         return Success(declaration)
+
     if each_parameter.kind is not ParameterKind.VAR_POSITIONAL:
         return Failure(
             LoweringError(
@@ -183,6 +196,7 @@ def _lower_each_function(
                 "Each must contain exactly one type variable",
             )
         )
+
     captured_name = captured_names[0]
     signatures = tuple(
         signature
@@ -216,6 +230,7 @@ def _lower_map_function(
                 "Map subject must be a type parameter at a callable boundary",
             )
         )
+
     controller = mapping.subject.name
     if not _function_has_controller(declaration, controller):
         return Failure(
@@ -225,6 +240,7 @@ def _lower_map_function(
                 f"no parameter is controlled by {controller}",
             )
         )
+
     seen: set[StubTypeExpression | Predicate] = set()
     for case in mapping.cases:
         if case.test in seen:
@@ -235,6 +251,7 @@ def _lower_map_function(
                     "Map case tests must be unique",
                 )
             )
+
         seen.add(case.test)
         if is_predicate(case.test):
             predicate_controller_result = predicate_controller(case.test)
@@ -251,6 +268,7 @@ def _lower_map_function(
                         "to concrete types at a callable boundary",
                     )
                 )
+
     specializations = map_specializations(mapping, controller)
     signatures = tuple(
         _specialized_signature(
@@ -268,6 +286,7 @@ def _lower_map_function(
     )
     if not signatures:
         return Success(fallback)
+
     return Success(OverloadDeclaration(signatures, fallback))
 
 
@@ -284,6 +303,7 @@ def map_specializations(mapping: MapType, controller: str) -> tuple[MapCase, ...
         for test in tests:
             if test not in candidates:
                 candidates.append(test)
+
     return tuple(
         MapCase(candidate, _map_output_for_input(mapping, controller, candidate))
         for candidate in candidates
@@ -319,6 +339,7 @@ def _map_output_for_input(
         )
         if matched:
             return case.output_type
+
     return mapping.default
 
 
@@ -330,6 +351,7 @@ def _predicate_result_for_input(
     resolved = _resolve_predicate_for_input(predicate, controller, input_type)
     if resolved is not None:
         return resolved
+
     match = next(
         (
             candidate
@@ -363,6 +385,7 @@ def _resolve_predicate_for_input(
             )
             if False in values:
                 return False
+
             return True if all(value is True for value in values) else None
         case AnyPredicate(predicates):
             values = tuple(
@@ -371,6 +394,7 @@ def _resolve_predicate_for_input(
             )
             if True in values:
                 return True
+
             return False if all(value is False for value in values) else None
         case NotPredicate(item):
             value = _resolve_predicate_for_input(item, controller, input_type)
@@ -383,20 +407,25 @@ def _known_assignability(
 ) -> bool | None:
     if source == target or target == TypeName("object"):
         return True
+
     if isinstance(source, UnionExpression):
         values = tuple(
             _known_assignability(member, target) for member in source.members
         )
         if False in values:
             return False
+
         return True if all(value is True for value in values) else None
+
     if isinstance(target, UnionExpression):
         values = tuple(
             _known_assignability(source, member) for member in target.members
         )
         if True in values:
             return True
+
         return False if all(value is False for value in values) else None
+
     return (
         None
         if _collect_variable_names(source) or _collect_variable_names(target)
@@ -407,10 +436,13 @@ def _known_assignability(
 def predicate_default(predicate: Predicate) -> bool:
     if isinstance(predicate, NotPredicate):
         return not predicate_default(predicate.predicate)
+
     if isinstance(predicate, AllPredicate):
         return all(predicate_default(item) for item in predicate.predicates)
+
     if isinstance(predicate, AnyPredicate):
         return any(predicate_default(item) for item in predicate.predicates)
+
     return False
 
 
@@ -461,6 +493,7 @@ def predicate_controller(
     names = _predicate_variable_names(predicate)
     if len(names) != 1:
         return Failure(LoweringErrorCode.UNSUPPORTED_PREDICATE)
+
     return Success(names[0])
 
 
@@ -497,17 +530,22 @@ def predicate_matches(
             predicate.right, controller
         ):
             return (PredicateMatch(predicate.right, True),)
+
         if predicate.right == TypeVariable(controller) and not _has_variable(
             predicate.left, controller
         ):
             return (PredicateMatch(predicate.left, True),)
+
         return ()
+
     if isinstance(predicate, AssignablePredicate):
         if predicate.source == TypeVariable(controller) and not _has_variable(
             predicate.target, controller
         ):
             return (PredicateMatch(predicate.target, True),)
+
         return ()
+
     if isinstance(predicate, NotPredicate):
         return tuple(
             PredicateMatch(match.input_type, not match.result)
@@ -521,6 +559,7 @@ def predicate_matches(
         true_matches = _common_matches(child_matches, True)
         false_matches = _matching_results(child_matches, False)
         return _unique_matches((*true_matches, *false_matches))
+
     true_matches = _matching_results(child_matches, True)
     false_matches = _common_matches(child_matches, False)
     return _unique_matches((*true_matches, *false_matches))
@@ -536,12 +575,15 @@ def predicate_is_supported(predicate: Predicate, controller: str) -> bool:
             predicate.right == variable
             and not _has_variable(predicate.left, controller)
         )
+
     if isinstance(predicate, AssignablePredicate):
         return predicate.source == variable and not _has_variable(
             predicate.target, controller
         )
+
     if isinstance(predicate, NotPredicate):
         return predicate_is_supported(predicate.predicate, controller)
+
     return all(
         predicate_is_supported(child, controller) for child in predicate.predicates
     )
@@ -558,6 +600,7 @@ def _common_matches(
 ) -> tuple[PredicateMatch, ...]:
     if not groups:
         return ()
+
     first = tuple(match for match in groups[0] if match.result is result)
     return tuple(
         match
@@ -579,6 +622,7 @@ def _unique_matches(
     for match in matches:
         if match not in unique:
             unique.append(match)
+
     return tuple(unique)
 
 
@@ -604,8 +648,10 @@ def _union(expressions: tuple[StubTypeExpression, ...]) -> StubTypeExpression:
         for candidate in candidates:
             if candidate not in members:
                 members.append(candidate)
+
     if len(members) == 1:
         return members[0]
+
     return UnionExpression(tuple(members))
 
 
@@ -640,6 +686,7 @@ def _expand_signatures(
                 generated_types,
             ),
         )
+
     choices = tuple(
         tuple(_structural_map_choices(structural_map, generated_type))
         for generated_type in generated_types
@@ -677,6 +724,7 @@ def _expand_signature_with_types(
         if parameter is not each_parameter:
             expanded_parameters.append(parameter)
             continue
+
         positional_kind = _expanded_parameter_kind(tuple(expanded_parameters))
         expanded_parameters.extend(
             Parameter(
@@ -711,11 +759,13 @@ def _find_collected_map(
         and expression.item.subject == TypeVariable(captured_name)
     ):
         return expression.item
+
     if isinstance(expression, TypeApplication):
         for argument in expression.arguments:
             found = _find_collected_map(argument, captured_name)
             if found is not None:
                 return found
+
     if isinstance(expression, FixedTuple | UnionExpression):
         items = (
             expression.items
@@ -726,8 +776,10 @@ def _find_collected_map(
             found = _find_collected_map(item, captured_name)
             if found is not None:
                 return found
+
     if isinstance(expression, UnpackedType):
         return _find_collected_map(expression.item, captured_name)
+
     return None
 
 
@@ -757,6 +809,7 @@ def _structural_map_choices(
 def _map_subject_name(mapping: MapType) -> str:
     if isinstance(mapping.subject, TypeVariable):
         return mapping.subject.name
+
     return ""
 
 
@@ -765,6 +818,7 @@ def _replace_map_value(
 ) -> StubTypeExpression:
     if isinstance(expression, MapValueType):
         return replacement
+
     if isinstance(expression, TypeApplication):
         return TypeApplication(
             _replace_map_value(expression.constructor, replacement),
@@ -773,16 +827,19 @@ def _replace_map_value(
                 for argument in expression.arguments
             ),
         )
+
     if isinstance(expression, FixedTuple):
         return FixedTuple(
             tuple(_replace_map_value(item, replacement) for item in expression.items)
         )
+
     if isinstance(expression, UnionExpression):
         return UnionExpression(
             tuple(
                 _replace_map_value(member, replacement) for member in expression.members
             )
         )
+
     return expression
 
 
@@ -835,6 +892,7 @@ def _expanded_parameter_kind(
 ) -> ParameterKind:
     if all(parameter.kind is ParameterKind.POSITIONAL_ONLY for parameter in preceding):
         return ParameterKind.POSITIONAL_ONLY
+
     return ParameterKind.POSITIONAL_OR_KEYWORD
 
 
@@ -849,8 +907,10 @@ def _fresh_type_parameter_names(
         candidate_index += 1
         if candidate in reserved_names:
             continue
+
         names.append(candidate)
         reserved_names.add(candidate)
+
     return tuple(names)
 
 
@@ -889,6 +949,7 @@ def _substitute(
 ) -> StubTypeExpression:
     if isinstance(expression, TypeVariable):
         return replacement if expression.name == variable else expression
+
     if isinstance(expression, TypeApplication):
         return TypeApplication(
             _substitute(expression.constructor, variable, replacement),
@@ -897,14 +958,18 @@ def _substitute(
                 for argument in expression.arguments
             ),
         )
+
     if isinstance(expression, FixedTuple):
         return FixedTuple(
             tuple(_substitute(item, variable, replacement) for item in expression.items)
         )
+
     if isinstance(expression, HomogeneousTuple):
         return HomogeneousTuple(_substitute(expression.item, variable, replacement))
+
     if isinstance(expression, SchemaType):
         return SchemaType(_substitute(expression.item, variable, replacement))
+
     if isinstance(expression, UnionExpression):
         return UnionExpression(
             tuple(
@@ -912,6 +977,7 @@ def _substitute(
                 for member in expression.members
             )
         )
+
     return expression
 
 
@@ -923,7 +989,9 @@ def _substitute_collect(
     if isinstance(expression, CollectType):
         if _collects_variable(expression.item, variable):
             return FixedTuple(replacements)
+
         return expression
+
     if isinstance(expression, TypeApplication):
         arguments: list[StubTypeExpression] = []
         for argument in expression.arguments:
@@ -935,10 +1003,12 @@ def _substitute_collect(
                 arguments.extend(replacements)
             else:
                 arguments.append(_substitute_collect(argument, variable, replacements))
+
         return TypeApplication(
             _substitute_collect(expression.constructor, variable, replacements),
             tuple(arguments),
         )
+
     if isinstance(expression, FixedTuple):
         return FixedTuple(
             tuple(
@@ -946,10 +1016,12 @@ def _substitute_collect(
                 for item in expression.items
             )
         )
+
     if isinstance(expression, UnpackedType):
         return UnpackedType(
             _substitute_collect(expression.item, variable, replacements)
         )
+
     if isinstance(expression, UnionExpression):
         return UnionExpression(
             tuple(
@@ -957,6 +1029,7 @@ def _substitute_collect(
                 for member in expression.members
             )
         )
+
     return expression
 
 
@@ -975,22 +1048,31 @@ def _erase_markers(
         item = _erase_markers(expression.item, type_var_tuples, broad_type_var_tuples)
         for name in broad_type_var_tuples:
             item = _substitute(item, name, TypeName("object"))
+
         if isinstance(item, TypeVariable) and item.name in type_var_tuples:
             return UnpackedType(item)
+
         return item
+
     if isinstance(expression, CollectType):
         item = _erase_markers(expression.item, type_var_tuples, broad_type_var_tuples)
         if isinstance(item, TypeVariable) and item.name in broad_type_var_tuples:
             return HomogeneousTuple(TypeName("object"))
+
         if isinstance(item, TypeVariable) and item.name in type_var_tuples:
             return FixedTuple((UnpackedType(item),))
+
         return HomogeneousTuple(item)
+
     if isinstance(expression, SchemaType):
         return _erase_markers(expression.item, type_var_tuples, broad_type_var_tuples)
+
     if isinstance(expression, RuntimeInputType):
         return TypeName("object")
+
     if isinstance(expression, MapType):
         return TypeName("object")
+
     if isinstance(expression, TypeApplication):
         return TypeApplication(
             _erase_markers(
@@ -1001,6 +1083,7 @@ def _erase_markers(
                 for argument in expression.arguments
             ),
         )
+
     if isinstance(expression, FixedTuple):
         return FixedTuple(
             tuple(
@@ -1008,10 +1091,12 @@ def _erase_markers(
                 for item in expression.items
             )
         )
+
     if isinstance(expression, HomogeneousTuple):
         return HomogeneousTuple(
             _erase_markers(expression.item, type_var_tuples, broad_type_var_tuples)
         )
+
     if isinstance(expression, UnpackedType):
         if isinstance(expression.item, CollectType):
             collected_item = _erase_markers(
@@ -1022,14 +1107,17 @@ def _erase_markers(
                 and collected_item.name in broad_type_var_tuples
             ):
                 return UnpackedType(HomogeneousTuple(TypeName("object")))
+
             if (
                 isinstance(collected_item, TypeVariable)
                 and collected_item.name in type_var_tuples
             ):
                 return UnpackedType(collected_item)
+
         return UnpackedType(
             _erase_markers(expression.item, type_var_tuples, broad_type_var_tuples)
         )
+
     if isinstance(expression, UnionExpression):
         return _union(
             tuple(
@@ -1037,6 +1125,7 @@ def _erase_markers(
                 for member in expression.members
             )
         )
+
     return expression
 
 
@@ -1047,10 +1136,13 @@ def _module_contains_literal(module: StubModule) -> bool:
 def _declaration_contains_literal(declaration: Declaration) -> bool:
     if isinstance(declaration, FunctionDeclaration):
         return _function_contains_literal(declaration)
+
     if isinstance(declaration, TypeAliasDeclaration):
         return _contains_literal(declaration.value)
+
     if isinstance(declaration, VariableDeclaration):
         return _contains_literal(declaration.annotation)
+
     if isinstance(declaration, ClassDeclaration):
         fields_contain_literal = any(
             _contains_literal(field.annotation) for field in declaration.fields
@@ -1063,6 +1155,7 @@ def _declaration_contains_literal(declaration: Declaration) -> bool:
             for method in declaration.methods
         )
         return fields_contain_literal or methods_contain_literal
+
     return any(_function_contains_literal(item) for item in declaration.signatures) or (
         _function_contains_literal(declaration.fallback)
     )
@@ -1077,18 +1170,24 @@ def _function_contains_literal(declaration: FunctionDeclaration) -> bool:
 def _contains_literal(expression: StubTypeExpression) -> bool:
     if isinstance(expression, LiteralType):
         return True
+
     if isinstance(expression, TypeApplication):
         return _contains_literal(expression.constructor) or any(
             _contains_literal(argument) for argument in expression.arguments
         )
+
     if isinstance(expression, FixedTuple):
         return any(_contains_literal(item) for item in expression.items)
+
     if isinstance(expression, UnionExpression):
         return any(_contains_literal(member) for member in expression.members)
+
     if isinstance(expression, HomogeneousTuple | EachType | CollectType):
         return _contains_literal(expression.item)
+
     if isinstance(expression, UnpackedType):
         return _contains_literal(expression.item)
+
     return False
 
 
@@ -1100,7 +1199,9 @@ def _add_import(
     for item in (*imports, required):
         if isinstance(item, Import):
             continue
+
         names_by_module.setdefault(item.module, set()).update(item.names)
+
     return (
         *module_imports,
         *(

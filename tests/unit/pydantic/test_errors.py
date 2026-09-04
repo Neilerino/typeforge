@@ -20,6 +20,7 @@ from typeforge.pydantic import Input, Schema
 def test_unbound_field_placeholders_fail_during_schema_generation() -> None:
     with pytest.raises(Exception, match=r"unbound_key.*Key is only valid"):
         TypeAdapter(Schema[Key])
+
     with pytest.raises(Exception, match=r"unbound_value.*Value requires"):
         TypeAdapter(Schema[Value])
 

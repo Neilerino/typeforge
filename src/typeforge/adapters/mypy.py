@@ -91,6 +91,7 @@ def run_mypy_in_memory(
                 detail=str(error),
             )
         )
+
     stdout = StringIO()
     stderr = StringIO()
     try:
@@ -117,6 +118,7 @@ def run_mypy_in_memory(
                         detail=str(request.source_path),
                     )
                 )
+
             options.incremental = False
             options.cache_dir = os.devnull
             result = build(
@@ -141,12 +143,14 @@ def run_mypy_in_memory(
                 detail=stderr.getvalue() or stdout.getvalue() or str(exception),
             )
         )
+
     diagnostics: list[str] = []
     has_errors = False
     for path, errors in result.manager.errors.error_info_map.items():
         for info in errors:
             if info.hidden:
                 continue
+
             has_errors = has_errors or info.severity == "error"
             diagnostics.append(
                 json.dumps(
@@ -162,6 +166,7 @@ def run_mypy_in_memory(
                     }
                 )
             )
+
     output = "\n".join(diagnostics)
     return Success(
         MypyRunOutput(
@@ -187,6 +192,7 @@ def mypy_option_arguments(request: MypyRunRequest) -> tuple[str, ...]:
     config_arguments: tuple[str, ...] = ()
     if request.config_file is not None:
         config_arguments = ("--config-file", str(request.config_file))
+
     command_arguments = (
         request.command[3:]
         if request.command[1:3] == ("-m", "mypy")
@@ -228,6 +234,7 @@ def run_mypy_shadow_file(
                 detail=str(error),
             )
         )
+
     return Success(
         MypyRunOutput(
             return_code=completed.returncode,
@@ -252,6 +259,7 @@ class MypyAdapter:
             self.configuration.command
         ):
             return replace(MYPY_CAPABILITIES, in_memory_documents=False)
+
         return MYPY_CAPABILITIES
 
     def analyze(self, request: AnalysisRequest) -> Result[AnalysisResult, CheckerError]:
@@ -262,11 +270,13 @@ class MypyAdapter:
                     message="mypy does not support hover queries",
                 )
             )
+
         runner = self.runner
         if runner is run_mypy_in_memory and not uses_current_mypy(
             self.configuration.command
         ):
             runner = run_mypy_shadow_file
+
         run_result = runner(
             MypyRunRequest(
                 command=self.configuration.command,
@@ -279,6 +289,7 @@ class MypyAdapter:
         )
         if isinstance(run_result, Failure):
             return run_result
+
         run_output = run_result.unwrap()
         if run_output.return_code not in (0, 1):
             return Failure(
@@ -288,6 +299,7 @@ class MypyAdapter:
                     detail=run_output.stderr or run_output.stdout,
                 )
             )
+
         diagnostics = parse_mypy_diagnostics(
             run_output.stdout,
             request.document,
@@ -308,6 +320,7 @@ def build_mypy_arguments(
     config_arguments: tuple[str, ...] = ()
     if request.config_file is not None:
         config_arguments = ("--config-file", str(request.config_file))
+
     return (
         *request.command,
         "--output",
@@ -334,10 +347,13 @@ def parse_mypy_diagnostics(
     for line in output.splitlines():
         if not line:
             continue
+
         parsed = parse_mypy_diagnostic(line, document, project_root)
         if isinstance(parsed, Failure):
             return parsed
+
         diagnostics.append(parsed.unwrap())
+
     return Success(deduplicate_return_diagnostics(tuple(diagnostics)))
 
 
@@ -350,8 +366,10 @@ def parse_mypy_diagnostic(
         value: object = json.loads(line)
     except json.JSONDecodeError as error:
         return invalid_mypy_output(line, str(error))
+
     if not isinstance(value, Mapping):
         return invalid_mypy_output(line, "diagnostic is not an object")
+
     diagnostic = cast(Mapping[str, object], value)
 
     file = diagnostic.get("file")
@@ -377,9 +395,11 @@ def parse_mypy_diagnostic(
     path = Path(file)
     if not path.is_absolute():
         path = project_root / path
+
     document_path = document.path
     if not document_path.is_absolute():
         document_path = project_root / document_path
+
     start = source_position(document.generated_text, line_number - 1, column)
     end = source_position(document.generated_text, end_line - 1, end_column)
     generated_span = SourceSpan(start=start, end=end)
@@ -418,8 +438,10 @@ def source_position(text: str, line: int, column: int) -> SourcePosition:
 def mypy_severity(severity: str) -> DiagnosticSeverity:
     if severity == "warning":
         return DiagnosticSeverity.WARNING
+
     if severity == "note":
         return DiagnosticSeverity.INFORMATION
+
     return DiagnosticSeverity.ERROR
 
 

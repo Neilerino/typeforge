@@ -214,12 +214,14 @@ def response_for(
                 candidate = parameters.get("items")
                 if isinstance(candidate, list):
                     items = candidate
+
             result: JsonValue = [None for _ in items] if items else None
             send(
                 editor_output,
                 {"jsonrpc": "2.0", "id": server_id, "result": result},
             )
             continue
+
         if server_id == request_id:
             return message
 
@@ -536,6 +538,7 @@ assert_type(result_2, tuple[int, Position, Velocity | None] | None)
         ):
             diagnostic_response = candidate
             break
+
     assert diagnostic_response is not None
     diagnostic_result = diagnostic_response.get("result")
     assert isinstance(diagnostic_result, dict)

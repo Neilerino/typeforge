@@ -86,24 +86,31 @@ def parse_project_config(
 def analysis_value(path: Path, value: object) -> AnalysisConfig:
     if value is None:
         return AnalysisConfig()
+
     values = mapping_value(value)
     if values is None:
         raise ConfigError(path, "analysis must be a table")
+
     checker_value = values.get("checker", AnalysisChecker.MYPY.value)
     if not isinstance(checker_value, str):
         raise ConfigError(path, "analysis.checker must be mypy or pyrefly")
+
     try:
         checker = AnalysisChecker(checker_value)
     except ValueError:
         raise ConfigError(path, "analysis.checker must be mypy or pyrefly") from None
+
     command_value = values.get("command")
     if command_value is None:
         return AnalysisConfig(checker)
+
     if not isinstance(command_value, list) or not command_value:
         raise ConfigError(path, "analysis.command must be a non-empty string array")
+
     command_items = cast(list[object], command_value)
     if not all(isinstance(item, str) and item for item in command_items):
         raise ConfigError(path, "analysis.command must be a non-empty string array")
+
     return AnalysisConfig(checker, tuple(cast(list[str], command_items)))
 
 
@@ -111,11 +118,14 @@ def analysis_value(path: Path, value: object) -> AnalysisConfig:
 def source_roots_value(path: Path, value: object) -> tuple[Path, ...]:
     if not isinstance(value, list) or not value:
         raise ConfigError(path, "source-roots must be a non-empty string array")
+
     roots: list[Path] = []
     for root in cast(list[object], value):
         if not isinstance(root, str) or not root:
             raise ConfigError(path, "source-roots must be a non-empty string array")
+
         roots.append(Path(root))
+
     return tuple(roots)
 
 
@@ -123,6 +133,7 @@ def source_roots_value(path: Path, value: object) -> tuple[Path, ...]:
 def path_value(path: Path, name: str, value: object) -> Path:
     if not isinstance(value, str) or not value:
         raise ConfigError(path, f"{name} must be a non-empty string")
+
     return Path(value)
 
 
@@ -130,10 +141,12 @@ def path_value(path: Path, name: str, value: object) -> Path:
 def arity_value(path: Path, value: object) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value < 1:
         raise ConfigError(path, "max-arity must be a positive integer")
+
     return value
 
 
 def mapping_value(value: object) -> Mapping[str, object] | None:
     if not isinstance(value, dict):
         return None
+
     return cast(Mapping[str, object], value)

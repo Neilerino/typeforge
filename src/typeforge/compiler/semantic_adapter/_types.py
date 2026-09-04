@@ -43,11 +43,15 @@ def union_of(*members: StaticType) -> StaticType:
         for candidate in candidates:
             if isinstance(candidate, NeverType) or candidate in flattened:
                 continue
+
             flattened.append(candidate)
+
     if not flattened:
         return NEVER
+
     if len(flattened) == 1:
         return flattened[0]
+
     return UnionType(*flattened)
 
 

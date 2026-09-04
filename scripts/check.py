@@ -41,6 +41,22 @@ CHECK_DEFINITIONS = (
     CheckDefinition("pytest", ("pytest",), ("tests",), "tests"),
     CheckDefinition("ruff check", ("ruff", "check"), (".",)),
     CheckDefinition("ruff format", ("ruff", "format", "--check"), (".",)),
+    CheckDefinition(
+        "flake8 block spacing",
+        (
+            "flake8",
+            "--isolated",
+            "--require-plugins",
+            "flake8-bas",
+            "--select",
+            "BAS6,BAS7",
+            "--ignore",
+            "BAS601,BAS602,BAS603,BAS701,BAS702,BAS703",
+            "--extend-exclude",
+            ".venv,.typeforge",
+        ),
+        (".",),
+    ),
     CheckDefinition("mypy", ("mypy",), ("src",), "src"),
     CheckDefinition("pyright", ("pyright",), ("src",), "src"),
 )

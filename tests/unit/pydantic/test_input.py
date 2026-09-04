@@ -22,6 +22,7 @@ def test_input_map_dispatches_on_raw_exact_type() -> None:
     assert adapter.validate_python(str(identifier)) == identifier
     with pytest.raises(ValidationError):
         adapter.validate_python(True)
+
     with pytest.raises(ValidationError):
         adapter.validate_python(3.0)
 

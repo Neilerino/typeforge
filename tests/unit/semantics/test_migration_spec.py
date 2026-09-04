@@ -80,6 +80,7 @@ class NameTypeSystem:
     def union_members(self, value: str) -> Result[tuple[str, ...], SemanticIssue]:
         if value == "Never":
             return Success(())
+
         return Success(tuple(value.split(" | ")))
 
     def union(self, members: tuple[str, ...]) -> Result[str, SemanticIssue]:
@@ -89,6 +90,7 @@ class NameTypeSystem:
         shape = self._records.get(value)
         if shape is not None:
             return Success(shape)
+
         return Failure(
             ExpectedRecordSemanticError(f"{value} is not a supported record")
         )
@@ -109,6 +111,7 @@ class NameTypeSystem:
         )
         if value is not None:
             return Success(value)
+
         return Failure(SemanticAdapterError(f"cannot build {shape!r}"))
 
 
@@ -127,21 +130,26 @@ class PythonTypeSystem:
     def assignable(self, source: object, target: object) -> Result[bool, SemanticIssue]:
         if isinstance(source, type) and isinstance(target, type):
             return Success(issubclass(source, target))
+
         return Success(source == target)
 
     def union_members(self, value: object) -> Result[tuple[object, ...], SemanticIssue]:
         if value is Never:
             return Success(())
+
         if isinstance(value, tuple):
             return Success(value)
+
         return Success((value,))
 
     def union(self, members: tuple[object, ...]) -> Result[object, SemanticIssue]:
         unique_members = tuple(dict.fromkeys(members))
         if not unique_members:
             return Success(Never)
+
         if len(unique_members) == 1:
             return Success(unique_members[0])
+
         return Success(unique_members)
 
     def record(self, value: object) -> Result[RecordShape[object], SemanticIssue]:
@@ -167,6 +175,7 @@ class PythonTypeSystem:
         )
         if value is not None:
             return Success(value)
+
         return Failure(SemanticAdapterError(f"cannot build {shape!r}"))
 
 
@@ -195,26 +204,31 @@ class FailureInjectionTypeSystemProxy[T]:
     def equal(self, left: T, right: T) -> Result[bool, SemanticIssue]:
         if self._operation == "equal":
             return Failure(self._issue)
+
         return self._type_system.equal(left, right)
 
     def assignable(self, source: T, target: T) -> Result[bool, SemanticIssue]:
         if self._operation == "assignable":
             return Failure(self._issue)
+
         return self._type_system.assignable(source, target)
 
     def union_members(self, value: T) -> Result[tuple[T, ...], SemanticIssue]:
         if self._operation == "union_members":
             return Failure(self._issue)
+
         return self._type_system.union_members(value)
 
     def union(self, members: tuple[T, ...]) -> Result[T, SemanticIssue]:
         if self._operation == "union":
             return Failure(self._issue)
+
         return self._type_system.union(members)
 
     def record(self, value: T) -> Result[RecordShape[T], SemanticIssue]:
         if self._operation == "record":
             return Failure(self._issue)
+
         return self._type_system.record(value)
 
     def inspect(
@@ -222,11 +236,13 @@ class FailureInjectionTypeSystemProxy[T]:
     ) -> Result[ParameterizedTypeShape[T] | None, SemanticIssue]:
         if self._operation == "inspect":
             return Failure(self._issue)
+
         return self._type_system.inspect(value)
 
     def build(self, shape: ParameterizedTypeShape[T]) -> Result[T, SemanticIssue]:
         if self._operation == "build":
             return Failure(self._issue)
+
         return self._type_system.build(shape)
 
 

@@ -20,6 +20,7 @@ def expect_type[T](
 ) -> ResolvedType[T]:
     if isinstance(value, ResolvedType):
         return value
+
     raise ExpectedTypeSemanticError(message)
 
 
@@ -29,6 +30,7 @@ def expect_condition[T](
 ) -> bool:
     if isinstance(value, bool):
         return value
+
     raise ExpectedConditionSemanticError(message)
 
 
@@ -38,6 +40,7 @@ def expect_field_name[T](
 ) -> FieldName:
     if isinstance(value, FieldName):
         return value
+
     raise ExpectedFieldNameSemanticError(message)
 
 
@@ -47,4 +50,5 @@ def expect_field[T](
 ) -> RecordField[T]:
     if isinstance(value, RecordField):
         return value
+
     raise ExpectedFieldSemanticError(message)

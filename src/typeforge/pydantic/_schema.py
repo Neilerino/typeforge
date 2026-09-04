@@ -323,6 +323,7 @@ def _fixed_arity(
             name,
             f"{name} requires {count_name} arguments",
         )
+
     return factory(*arguments)
 
 
@@ -332,20 +333,24 @@ def _map_expression(arguments: tuple[RuntimeExpression, ...]) -> RuntimeExpressi
             "Map",
             "Map requires a subject and at least one Case or Default",
         )
+
     cases: list[CaseExpression] = []
     default: RuntimeExpression | None = None
     for entry in arguments[1:]:
         if isinstance(entry, CaseExpression):
             cases.append(entry)
             continue
+
         if isinstance(entry, DefaultExpression):
             if default is not None:
                 return MalformedMarkerExpression(
                     "Map",
                     "Map may contain only one Default",
                 )
+
             default = entry.output_type
             continue
+
         if isinstance(
             entry,
             ConcreteExpression
@@ -359,10 +364,12 @@ def _map_expression(arguments: tuple[RuntimeExpression, ...]) -> RuntimeExpressi
                 "Map",
                 "Map entries must be Case or Default",
             )
+
         return MalformedMarkerExpression(
             "Map",
             "Map entries must be Case[Test, Output] or Default[Output]",
         )
+
     return MapExpression(arguments[0], tuple(cases), default)
 
 
@@ -487,6 +494,7 @@ class _SchemaMetadata:
             evaluated = ok(evaluate_runtime_expression(parsed))
             if isinstance(evaluated, RecordShape):
                 evaluated = replace(evaluated, name=_schema_name(source_type))
+
             return ok(emit_core_schema(evaluated, handler, repr(source_type)))
         except SchemaIssue as issue:
             raise PydanticSchemaGenerationError(issue.render()) from issue
@@ -513,6 +521,7 @@ def _parse(
                 repr(value),
                 "a variadic type parameter must be unpacked",
             )
+
         return bound
 
     if value is Input:
@@ -533,14 +542,17 @@ def _parse(
                 repr(value),
                 f"could not resolve alias value: {error}",
             ) from error
+
         if alias in context.aliases:
             raise AliasCycleError(
                 "parsing",
                 repr(value),
                 "recursive aliases are not supported by this integration yet",
             )
+
         if not _contains_typeforge_alias(alias_value, (alias,)):
             return ConcreteExpression(value)
+
         bindings = _bind_alias(alias, get_args(value), context)
         return _parse(
             alias_value,
@@ -580,6 +592,7 @@ def _parse_arguments(
                     repr(argument),
                     "Unpack requires exactly one argument",
                 )
+
             bound = _lookup(context.environment, unpacked[0])
             if not isinstance(bound, tuple):
                 raise AliasArgumentsError(
@@ -587,9 +600,12 @@ def _parse_arguments(
                     repr(argument),
                     "Unpack did not refer to a bound variadic parameter",
                 )
+
             parsed.extend(bound)
             continue
+
         parsed.append(_parse(argument, context))
+
     return tuple(parsed)
 
 
@@ -614,26 +630,32 @@ def _bind_alias(
                     repr(alias),
                     "not enough arguments for generic alias",
                 )
+
             variadic: list[RuntimeExpression] = []
             for argument in arguments[argument_index:variadic_end]:
                 variadic.append(_parse(argument, context))
+
             bindings.append((parameter, tuple(variadic)))
             argument_index = variadic_end
             continue
+
         if argument_index >= len(arguments):
             raise AliasArgumentsError(
                 "parsing",
                 repr(alias),
                 "not enough arguments for generic alias",
             )
+
         bindings.append((parameter, _parse(arguments[argument_index], context)))
         argument_index += 1
+
     if argument_index != len(arguments):
         raise AliasArgumentsError(
             "parsing",
             repr(alias),
             "too many arguments for generic alias",
         )
+
     return tuple(bindings)
 
 
@@ -641,6 +663,7 @@ def _lookup(environment: _Environment, key: object) -> _Binding | None:
     for candidate, value in reversed(environment):
         if candidate is key:
             return value
+
     return None
 
 
@@ -665,6 +688,7 @@ def _(
 ) -> EvaluationValue:
     if isinstance(expression, LiteralExpression):
         return ResolvedType(Literal[expression.values])
+
     return ResolvedType(expression.value)
 
 
@@ -680,6 +704,7 @@ def _(
             "Input",
             "Input requires value-time schema evaluation",
         )
+
     return context.input_type
 
 
@@ -698,7 +723,9 @@ def _(
                 repr(expression.origin),
                 "synthesized records cannot be nested in a generic application yet",
             )
+
         arguments.append(value.value)
+
     return ResolvedType(_apply_type(expression.origin, tuple(arguments)))
 
 
@@ -714,6 +741,7 @@ def _(
             member.value for member in members if isinstance(member, ResolvedType)
         )
         return ResolvedType(_union_type(values))
+
     raise RebuildTypeError(
         "evaluation",
         repr(expression),
@@ -734,6 +762,7 @@ def _(
     )
     if isinstance(evaluated, RecordShape):
         return replace(evaluated, documentation=documentation)
+
     if isinstance(evaluated, ResolvedType):
         metadata = tuple(
             item for item in expression.metadata if not isinstance(item, Doc)
@@ -742,6 +771,7 @@ def _(
             Annotated[evaluated.value, *metadata] if metadata else evaluated.value
         )
         return ResolvedType(resolved_value, documentation)
+
     return evaluated
 
 
@@ -757,6 +787,7 @@ def _(
             "Key",
             "Key is only valid inside MapFields",
         )
+
     return FieldNameValue(context.key)
 
 
@@ -768,8 +799,10 @@ def _(
 ) -> EvaluationValue:
     if context.capture is not None:
         return context.capture
+
     if context.value is not None:
         return context.value
+
     raise UnboundValueError(
         "evaluation",
         "Value",
@@ -824,6 +857,7 @@ def _(
                 return True
             case _:
                 continue
+
     return isinstance(expression, AllExpression)
 
 
@@ -884,6 +918,7 @@ def _(
     )
     if _contains_input(expression.subject) and context.input_type is None:
         return RuntimeMapPlan(cases, expression.default, context)
+
     subject_value = ok(evaluate_runtime_expression(expression.subject, context))
     members: tuple[EvaluationValue, ...] = (
         tuple(ResolvedType(member) for member in _union_members(subject_value.value))
@@ -894,8 +929,10 @@ def _(
     for member in members:
         output = _map_member(member, cases, expression.default, context)
         outputs.append(output)
+
     if len(outputs) == 1:
         return outputs[0]
+
     if all(isinstance(output, ResolvedType) for output in outputs):
         return ResolvedType(
             _union_type(
@@ -906,6 +943,7 @@ def _(
                 )
             )
         )
+
     raise ExpectedTypeError(
         "evaluation",
         "Map",
@@ -928,16 +966,20 @@ def _map_member(
         else:
             matched = ok(evaluate_runtime_expression(case.test, context)) == subject
             captured = None
+
         if not matched:
             continue
+
         return ok(
             evaluate_runtime_expression(
                 case.output,
                 replace(context, capture=captured),
             )
         )
+
     if default is None:
         return ResolvedType(Never)
+
     return ok(evaluate_runtime_expression(default, context))
 
 
@@ -964,16 +1006,21 @@ def _match_pattern(
         candidate = ResolvedType(subject)
         if capture is not None and capture.value != subject:
             return False, capture
+
         return True, candidate
+
     if isinstance(pattern, AnnotatedExpression):
         return _match_pattern(pattern.value, subject, capture, context)
+
     if isinstance(pattern, ApplicationExpression):
         subject_origin = get_origin(subject)
         if subject_origin != pattern.origin:
             return False, capture
+
         subject_arguments = get_args(subject)
         if len(subject_arguments) != len(pattern.arguments):
             return False, capture
+
         current = capture
         for nested_pattern, nested_subject in zip(
             pattern.arguments, subject_arguments, strict=True
@@ -986,10 +1033,13 @@ def _match_pattern(
             )
             if not did_match:
                 return False, current
+
         return True, current
+
     value = _evaluate_type(pattern, context)
     if not isinstance(value, ResolvedType):
         return False, capture
+
     return value.value == subject, capture
 
 
@@ -1020,6 +1070,7 @@ def _(
             "MapFields",
             "the Pydantic integration currently supports TypedDict records only",
         )
+
     shape = _typed_dict_shape(source.value)
     fields: list[RecordField] = []
     names: set[str] = set()
@@ -1032,6 +1083,7 @@ def _(
         )
         if isinstance(value, DroppedValue):
             continue
+
         if not isinstance(value, RecordField):
             raise ExpectedFieldError(
                 "evaluation",
@@ -1039,14 +1091,17 @@ def _(
                 "the transform must produce Field, OptionalField, "
                 "ReadonlyField, or Drop",
             )
+
         if value.name in names:
             raise DuplicateFieldError(
                 "evaluation",
                 "MapFields",
                 f"multiple source fields produce {value.name!r}",
             )
+
         names.add(value.name)
         fields.append(value)
+
     return RecordShape(f"Typeforge_{shape.name}", tuple(fields))
 
 
@@ -1057,6 +1112,7 @@ def _typed_dict_shape(value: object) -> RecordShape:
             repr(value),
             "TypedDict record did not resolve to a class",
         )
+
     try:
         annotations = get_type_hints(value, include_extras=True)
     except NameError as error:
@@ -1065,6 +1121,7 @@ def _typed_dict_shape(value: object) -> RecordShape:
             value.__name__,
             f"could not resolve record annotations: {error}",
         ) from error
+
     required_keys: frozenset[str] = getattr(value, "__required_keys__", frozenset())
     fields: list[RecordField] = []
     for name, annotation in annotations.items():
@@ -1077,6 +1134,7 @@ def _typed_dict_shape(value: object) -> RecordShape:
                 readonly,
             )
         )
+
     return RecordShape(value.__name__, tuple(fields))
 
 
@@ -1091,13 +1149,16 @@ def _unwrap_field_annotation(annotation: object) -> tuple[object, bool]:
             current = arguments[0]
             metadata.extend(arguments[1:])
             continue
+
         if origin in {Required, NotRequired} and arguments:
             current = arguments[0]
             continue
+
         if origin is ReadOnly and arguments:
             readonly = True
             current = arguments[0]
             continue
+
         value = Annotated[current, *metadata] if metadata else current
         return value, readonly
 
@@ -1127,10 +1188,12 @@ def _(
         schema = handler.generate_schema(evaluated.value)
     except Exception as error:
         raise ExpectedTypeError("emission", expression, str(error)) from error
+
     if evaluated.documentation is not None:
         return _with_json_schema_updates(
             schema, {"description": evaluated.documentation}
         )
+
     return schema
 
 
@@ -1158,6 +1221,7 @@ def _(
                 "description": evaluated.documentation,
             }
         }
+
     return core_schema.typed_dict_schema(
         fields,
         cls_name=evaluated.name,
@@ -1187,9 +1251,11 @@ def _(
                 "value-time generic Map patterns are not supported; "
                 "match a concrete runtime type instead",
             )
+
         output = _evaluate_type(case.output, plan.context)
         choices[case.tag] = ok(emit_core_schema(output, handler, expression))
         outputs[case.tag] = output
+
     if plan.default is not None:
         default_output = _evaluate_type(plan.default, plan.context)
         choices["default"] = ok(emit_core_schema(default_output, handler, expression))
@@ -1211,8 +1277,10 @@ def _(
                     matched = False
             else:
                 matched = _match_runtime_pattern(case.test, value_type, value)
+
             if matched:
                 return case.tag
+
         return "default" if plan.default is not None else None
 
     return _dispatch_schema(
@@ -1259,6 +1327,7 @@ def _dispatch_schema(
         tag = select_input(value)
         if not isinstance(tag, str) or tag not in choices:
             raise PydanticCustomError(error_type, error_message)
+
         return {_DISPATCH_TAG: tag, _DISPATCH_VALUE: value}
 
     def serialize(
@@ -1276,6 +1345,7 @@ def _dispatch_schema(
         serialized: object = handler({_DISPATCH_TAG: tag, _DISPATCH_VALUE: value})
         if isinstance(serialized, dict):
             return cast(dict[str, object], serialized)[_DISPATCH_VALUE]
+
         return serialized
 
     return core_schema.no_info_before_validator_function(
@@ -1296,8 +1366,10 @@ def _unwrap_dispatch_value(value: dict[str, object]) -> object:
 def _evaluated_output_matches(output: EvaluatedType, value: object) -> bool:
     if isinstance(output, ResolvedType):
         return _runtime_type_matches(output.value, value, strict=True)
+
     if isinstance(output, RecordShape):
         return isinstance(value, dict)
+
     return False
 
 
@@ -1318,6 +1390,7 @@ def _match_runtime_pattern(
 ) -> bool:
     if isinstance(pattern, InputExpression):
         return True
+
     try:
         result = _evaluate_type(
             pattern,
@@ -1325,6 +1398,7 @@ def _match_runtime_pattern(
         )
     except SchemaIssue:
         return False
+
     return isinstance(result, ResolvedType) and _runtime_type_matches(
         result.value, value, strict=True
     )
@@ -1333,8 +1407,10 @@ def _match_runtime_pattern(
 def _contains_generic_runtime_pattern(pattern: RuntimeExpression) -> bool:
     if isinstance(pattern, ApplicationExpression):
         return True
+
     if isinstance(pattern, AnnotatedExpression):
         return _contains_generic_runtime_pattern(pattern.value)
+
     return False
 
 
@@ -1350,18 +1426,23 @@ def _runtime_type_matches(
         return bool(arguments) and _runtime_type_matches(
             arguments[0], value, strict=strict
         )
+
     if origin in {Union, PythonUnionType}:
         return any(
             _runtime_type_matches(member, value, strict=strict)
             for member in get_args(expected)
         )
+
     if origin is Literal:
         return value in get_args(expected)
+
     candidate = origin or expected
     if not isinstance(candidate, type):
         return False
+
     if strict:
         return type(value) is candidate
+
     return isinstance(value, candidate)
 
 
@@ -1372,6 +1453,7 @@ def _evaluate_type(
     value = ok(evaluate_runtime_expression(expression, context))
     if isinstance(value, ResolvedType | RecordShape | RuntimeMapPlan):
         return value
+
     raise ExpectedTypeError(
         "evaluation",
         repr(expression),
@@ -1386,6 +1468,7 @@ def _evaluate_condition(
     value = ok(evaluate_runtime_expression(expression, context))
     if isinstance(value, bool):
         return value
+
     raise ExpectedConditionError(
         "evaluation",
         repr(expression),
@@ -1401,8 +1484,10 @@ def _equal_values(
     right_field = _as_field_name(right)
     if left_field is not None or right_field is not None:
         return left_field is not None and left_field == right_field
+
     if isinstance(left, ResolvedType) and isinstance(right, ResolvedType):
         return left.value == right.value
+
     raise ExpectedTypeError(
         "evaluation",
         "Equal",
@@ -1420,27 +1505,34 @@ def _assignable_values(
             "Assignable",
             "Assignable operands must resolve to concrete types",
         )
+
     return _is_assignable(source.value, target.value)
 
 
 def _is_assignable(source: object, target: object) -> bool:
     if source is Never:
         return True
+
     if target is Any or target is object:
         return True
+
     source_members = _union_members(source)
     target_members = _union_members(target)
     if len(source_members) > 1:
         return all(_is_assignable(member, target) for member in source_members)
+
     if len(target_members) > 1:
         return any(_is_assignable(source, member) for member in target_members)
+
     source_origin = get_origin(source)
     target_origin = get_origin(target)
     if source_origin is Literal:
         literal_values = cast(tuple[object, ...], get_args(source))
         return all(_is_assignable(type(value), target) for value in literal_values)
+
     if target_origin is Literal:
         return source == target
+
     source_class = source_origin or source
     target_class = target_origin or target
     if isinstance(source_class, type) and isinstance(target_class, type):
@@ -1451,9 +1543,12 @@ def _is_assignable(source: object, target: object) -> bool:
                 return False
         except TypeError:
             return False
+
         if source_origin == target_origin and get_args(target):
             return get_args(source) == get_args(target)
+
         return True
+
     return source == target
 
 
@@ -1465,19 +1560,24 @@ def _field_name(value: EvaluationValue) -> str:
             "Field",
             "field name must be Key or a single string Literal",
         )
+
     return name
 
 
 def _as_field_name(value: EvaluationValue) -> str | None:
     if isinstance(value, FieldNameValue):
         return value.value
+
     if not isinstance(value, ResolvedType):
         return None
+
     if get_origin(value.value) is not Literal:
         return None
+
     arguments = get_args(value.value)
     if len(arguments) == 1 and isinstance(arguments[0], str):
         return arguments[0]
+
     return None
 
 
@@ -1488,6 +1588,7 @@ def _apply_type(
     try:
         if origin is PythonUnionType:
             return _union_type(arguments)
+
         subscription = arguments[0] if len(arguments) == 1 else arguments
         return getitem(cast(Any, origin), subscription)
     except (TypeError, ValueError) as error:
@@ -1508,11 +1609,15 @@ def _union_type(members: tuple[object, ...]) -> object:
     for member in members:
         if member is Never or member in unique:
             continue
+
         unique.append(member)
+
     if not unique:
         return Never
+
     if len(unique) == 1:
         return unique[0]
+
     return getitem(cast(Any, Union), tuple(unique))
 
 
@@ -1572,13 +1677,16 @@ def _contains_typeforge_alias(
     alias = origin if isinstance(origin, TypeAliasType) else value
     if alias in _MARKER_FACTORIES or alias is Input:
         return True
+
     if isinstance(alias, TypeAliasType):
         if alias in aliases:
             return False
+
         try:
             return _contains_typeforge_alias(alias.__value__, (*aliases, alias))
         except NameError:
             return False
+
     return any(
         _contains_typeforge_alias(argument, aliases) for argument in get_args(value)
     )
@@ -1590,6 +1698,7 @@ def _schema_name(value: object) -> str:
     candidate: object = getattr(base, "__qualname__", None)
     if not isinstance(candidate, str):
         candidate = getattr(base, "__name__", None)
+
     fallback: object = getattr(type(base), "__name__", None)
     name = (
         candidate
@@ -1601,9 +1710,11 @@ def _schema_name(value: object) -> str:
     module: object = getattr(base, "__module__", None)
     if isinstance(module, str):
         name = f"{module}.{name}"
+
     arguments = get_args(value)
     if arguments:
         name = "_".join((name, *(_schema_name(item) for item in arguments)))
+
     return "".join(character if character.isalnum() else "_" for character in name)
 
 

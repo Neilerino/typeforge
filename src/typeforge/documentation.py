@@ -65,18 +65,22 @@ def static_documentation(
     module = _module_for_document(context, query.document)
     if isinstance(module, Failure):
         return module
+
     module_value = module.unwrap()
     declaration = _declaration_at(module_value, query.position)
     if declaration is not None:
         direct = _direct_documentation(declaration.expression, module_value, context)
         if isinstance(direct, Failure):
             return direct
+
         direct_value = direct.unwrap()
         if direct_value is not None:
             return Success(
                 Documentation(direct_value, module_value.path, declaration.span)
             )
+
         return Success(None)
+
     reference = _reference_at(
         query.document.authored_text,
         module_value.tree,
@@ -85,8 +89,10 @@ def static_documentation(
     )
     if reference is None:
         return Success(None)
+
     if isinstance(reference, _ImportedSymbol):
         return _documentation_for_target(context, reference, ())
+
     return _documentation_for(context, module_value, reference, ())
 
 
@@ -159,9 +165,11 @@ def _load_module(
     source = _find_source(context, name)
     if isinstance(source, Failure):
         return source
+
     source_value = source.unwrap()
     if source_value is None:
         return Success(None)
+
     return _parse_module(name, source_value.path, source_value.text)
 
 
@@ -174,18 +182,22 @@ def _documentation_for(
     key = (module.path, symbol)
     if key in visited:
         return Success(None)
+
     next_visited = (*visited, key)
     definition = _definition(module.definitions, symbol)
     if definition is not None:
         direct = _direct_documentation(definition.expression, module, context)
         if isinstance(direct, Failure):
             return direct
+
         direct_value = direct.unwrap()
         if direct_value is not None:
             return Success(Documentation(direct_value, module.path, definition.span))
+
     imported = _lookup(module.imports, symbol)
     if imported is not None:
         return _documentation_for_target(context, imported, next_visited)
+
     return Success(None)
 
 
@@ -197,9 +209,11 @@ def _documentation_for_target(
     loaded = _load_module(context, target.module)
     if isinstance(loaded, Failure):
         return loaded
+
     loaded_module = loaded.unwrap()
     if loaded_module is None:
         return Success(None)
+
     return _documentation_for(context, loaded_module, target.name, visited)
 
 
@@ -213,18 +227,23 @@ def _is_special_form(
     target = _expression_symbol(expression, module)
     if target is None:
         return isinstance(expression, ast.Name) and expression.id == name
+
     if target in visited:
         return False
+
     if target.name != name:
         loaded_module = _load_module(context, target.module).value_or(None)
         if loaded_module is None:
             return False
+
         definition = _definition(loaded_module.definitions, target.name)
         if definition is None:
             imported = _lookup(loaded_module.imports, target.name)
             if imported is None:
                 return False
+
             return _target_is_special_form(context, imported, name, (*visited, target))
+
         return _is_special_form(
             context,
             definition.expression,
@@ -232,6 +251,7 @@ def _is_special_form(
             name,
             (*visited, target),
         )
+
     return target.module in _SPECIAL_FORM_MODULES
 
 
@@ -243,17 +263,21 @@ def _target_is_special_form(
 ) -> bool:
     if target.name == name and target.module in _SPECIAL_FORM_MODULES:
         return True
+
     loaded_module = _load_module(context, target.module).value_or(None)
     if loaded_module is None:
         return False
+
     definition = _definition(loaded_module.definitions, target.name)
     if definition is not None:
         return _is_special_form(
             context, definition.expression, loaded_module, name, visited
         )
+
     imported = _lookup(loaded_module.imports, target.name)
     if imported is None or imported in visited:
         return False
+
     return _target_is_special_form(context, imported, name, (*visited, imported))
 
 
@@ -272,6 +296,7 @@ def _find_source(
         buffered = workspace.get(resolved)
         if buffered is not None:
             return Success(buffered)
+
         try:
             if resolved.is_file():
                 return Success(_Source(resolved, resolved.read_text(encoding="utf-8")))
@@ -283,6 +308,7 @@ def _find_source(
                     str(error),
                 )
             )
+
     return Success(None)
 
 
@@ -304,6 +330,7 @@ def _parse_module(
                 error.msg,
             )
         )
+
     imports, module_imports = _imports(tree, name, path.name == "__init__.py")
     definitions, declarations = _definitions(tree, source)
     return Success(
@@ -338,12 +365,15 @@ def _imports(
             )
             if imported_module is None:
                 continue
+
             for alias in statement.names:
                 if alias.name == "*":
                     continue
+
                 symbols[alias.asname or alias.name] = _ImportedSymbol(
                     imported_module, alias.name
                 )
+
     return tuple(symbols.items()), tuple(modules.items())
 
 
@@ -355,13 +385,16 @@ def _absolute_import_module(
 ) -> str | None:
     if level == 0:
         return imported
+
     package = current.split(".") if is_package else current.split(".")[:-1]
     keep = len(package) - level + 1
     if keep < 0:
         return None
+
     parts = package[:keep]
     if imported:
         parts.extend(imported.split("."))
+
     return ".".join(parts)
 
 
@@ -378,6 +411,7 @@ def _definitions(
         declaration = _declaration(node, source)
         if declaration is not None:
             declarations.append(declaration)
+
     return definitions, tuple(declarations)
 
 
@@ -390,12 +424,14 @@ def _statement_definition(statement: ast.stmt, source: str) -> _TypeDefinition |
             statement.name,
             source,
         )
+
     if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
         target = statement.targets[0]
         if isinstance(target, ast.Name):
             return _type_definition(
                 target.id, statement.value, statement, target, source
             )
+
     if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name):
         expression = (
             statement.value
@@ -410,12 +446,14 @@ def _statement_definition(statement: ast.stmt, source: str) -> _TypeDefinition |
             statement.target,
             source,
         )
+
     return None
 
 
 def _declaration(node: ast.AST, source: str) -> _TypeDefinition | None:
     if isinstance(node, ast.stmt):
         return _statement_definition(node, source)
+
     if isinstance(node, ast.arg) and node.annotation is not None:
         return _type_definition(
             node.arg,
@@ -424,6 +462,7 @@ def _declaration(node: ast.AST, source: str) -> _TypeDefinition | None:
             node,
             source,
         )
+
     return None
 
 
@@ -457,6 +496,7 @@ def _direct_documentation(
         context, expression.value, module, "Annotated"
     ):
         return Success(None)
+
     elements = (
         expression.slice.elts
         if isinstance(expression.slice, ast.Tuple)
@@ -465,12 +505,14 @@ def _direct_documentation(
     nested = _direct_documentation(elements[0], module, context)
     if isinstance(nested, Failure):
         return nested
+
     documentation = nested.unwrap()
     for metadata in elements[1:]:
         if not isinstance(metadata, ast.Call) or not _is_special_form(
             context, metadata.func, module, "Doc"
         ):
             continue
+
         value = _doc_argument(metadata)
         if value is None:
             return Failure(
@@ -480,7 +522,9 @@ def _direct_documentation(
                     "Doc metadata requires one string literal",
                 )
             )
+
         documentation = value
+
     return Success(documentation)
 
 
@@ -492,8 +536,10 @@ def _doc_argument(call: ast.Call) -> str | None:
         keyword = call.keywords[0]
         if keyword.arg == "documentation":
             value = keyword.value
+
     if isinstance(value, ast.Constant) and isinstance(value.value, str):
         return cleandoc(value.value)
+
     return None
 
 
@@ -501,10 +547,12 @@ def _expression_symbol(expression: ast.expr, module: _Module) -> _ImportedSymbol
     if isinstance(expression, ast.Name):
         imported = _lookup(module.imports, expression.id)
         return imported or _ImportedSymbol(module.name, expression.id)
+
     if isinstance(expression, ast.Attribute):
         imported_module = _module_expression(expression.value, module)
         if imported_module is not None:
             return _ImportedSymbol(imported_module, expression.attr)
+
     return None
 
 
@@ -513,14 +561,18 @@ def _module_expression(expression: ast.expr, module: _Module) -> str | None:
         imported_module = _lookup(module.module_imports, expression.id)
         if imported_module is not None:
             return imported_module
+
         imported_symbol = _lookup(module.imports, expression.id)
         if imported_symbol is not None:
             return f"{imported_symbol.module}.{imported_symbol.name}"
+
         return None
+
     if isinstance(expression, ast.Attribute):
         parent = _module_expression(expression.value, module)
         if parent is not None:
             return f"{parent}.{expression.attr}"
+
     return None
 
 
@@ -533,6 +585,7 @@ def _reference_at(
     lines = source.splitlines()
     if position.line < 0 or position.line >= len(lines):
         return None
+
     line = lines[position.line]
     column = min(max(position.column, 0), len(line))
     match = next(
@@ -545,6 +598,7 @@ def _reference_at(
     )
     if match is None:
         return None
+
     symbol = match.group()
     byte_column = len(line[: match.start()].encode("utf-8"))
     for node in ast.walk(tree):
@@ -552,14 +606,17 @@ def _reference_at(
             node, position.line, byte_column
         ):
             return _expression_symbol(node, module)
+
     for node in ast.walk(tree):
         if not isinstance(node, (ast.Name, ast.alias)):
             continue
+
         start = getattr(node, "col_offset", -1)
         end = getattr(node, "end_col_offset", -1)
         node_line = getattr(node, "lineno", 0) - 1
         if node_line == position.line and start <= byte_column <= end:
             return symbol
+
     return None
 
 
@@ -626,6 +683,7 @@ def _name_span(source: str, node: ast.expr | ast.arg, name: str) -> SourceSpan:
 def _codepoint_column(lines: list[str], line: int, byte_column: int) -> int:
     if line >= len(lines):
         return 0
+
     return len(lines[line].encode("utf-8")[:byte_column].decode("utf-8"))
 
 
@@ -635,10 +693,13 @@ def _module_name(path: Path, roots: tuple[Path, ...]) -> str:
             relative = path.relative_to(root)
         except ValueError:
             continue
+
         parts = list(relative.with_suffix("").parts)
         if parts and parts[-1] == "__init__":
             parts.pop()
+
         return ".".join(parts)
+
     return path.stem
 
 
@@ -648,4 +709,5 @@ def _unique_paths(paths: tuple[Path, ...]) -> tuple[Path, ...]:
         resolved = path.resolve()
         if resolved not in unique:
             unique.append(resolved)
+
     return tuple(unique)

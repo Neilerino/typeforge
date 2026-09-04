@@ -4,10 +4,7 @@ from functools import singledispatch
 
 from returns.result import Result, safe
 
-from typeforge.compiler.adaptation._imports import (
-    annotation_contains_default_never,
-    collect_imports,
-)
+from typeforge.compiler.adaptation._imports import annotation_contains_default_never
 from typeforge.compiler.adaptation._legacy_schema import resolve_schema_type
 from typeforge.compiler.adaptation._models import (
     AdaptationError,
@@ -99,12 +96,13 @@ from typeforge.compiler.stub_ir import (
 def adapt_source_module(
     module: SourceModule,
 ) -> StubModule:
-    imports: tuple[ModuleImport, ...] = collect_imports(module.path)
+    imports: tuple[ModuleImport, ...] = ()
     semantic_aliases = _collect_semantic_relationship_aliases(module.aliases)
     declarations: list[tuple[int, Declaration]] = []
     for alias in module.aliases:
         if len(alias.qualified_name) != 1:
             continue
+
         parameter_names = tuple(parameter.name for parameter in alias.type_parameters)
         lowered_alias = TypeAliasDeclaration(
             alias.name,
@@ -121,6 +119,7 @@ def adapt_source_module(
                 ),
             )
         )
+
     for source_class in module.classes:
         declarations.append(
             (
@@ -128,9 +127,11 @@ def adapt_source_module(
                 expand_class_map_aliases(_adapt_class(source_class), semantic_aliases),
             )
         )
+
     for function in module.functions:
         if len(function.qualified_name) != 1:
             continue
+
         declarations.append(
             (
                 function.span.start.line,
@@ -139,6 +140,7 @@ def adapt_source_module(
                 ),
             )
         )
+
     all_functions = (
         *module.functions,
         *(method for source_class in module.classes for method in source_class.methods),
@@ -149,6 +151,7 @@ def adapt_source_module(
         for function in all_functions
     ):
         imports = merge_imports((*imports, ImportFrom("typing", ("Any",))))
+
     if any(
         annotation_contains_default_never(function.returns)
         or any(
@@ -158,6 +161,7 @@ def adapt_source_module(
         for function in module.functions
     ):
         imports = merge_imports((*imports, ImportFrom("typing", ("Never",))))
+
     ordered = tuple(
         declaration for _, declaration in sorted(declarations, key=lambda item: item[0])
     )
@@ -179,23 +183,29 @@ def _collect_semantic_relationship_aliases(
         value = schema_inner_expression(alias.value)
         if not isinstance(value, MarkerTypeExpression):
             continue
+
         try:
             normalized = normalize_marker(value)
         except MarkerNormalizationError:
             continue
+
         if not isinstance(normalized, MapMarker):
             continue
+
         if len(alias.type_parameters) != 1:
             raise AdaptationError(
                 alias.name,
                 alias.value.source,
                 "relationship aliases require exactly one type parameter",
             )
+
         parameter = alias.type_parameters[0].name
         relationship = _adapt_type_expression(value, alias.name, (parameter,))
         if not isinstance(relationship, MapType):
             raise AssertionError("relationship adaptation produced a plain type")
+
         semantic.append(SemanticRelationshipAlias(alias.name, parameter, relationship))
+
     return tuple(semantic)
 
 
@@ -269,8 +279,10 @@ def expand_map_aliases(
                     alias.parameter,
                     expand_map_aliases(argument, aliases),
                 )
+
         case _:
             pass
+
     return rewrite_type_children(
         expression,
         lambda child: expand_map_aliases(child, aliases),
@@ -339,6 +351,7 @@ def _adapt_alias_fallback(
 ) -> StubTypeExpression:
     if not isinstance(expression, MarkerTypeExpression):
         return _adapt_type_expression(expression, declaration, type_parameters)
+
     marker = _normalize_marker(declaration, expression)
     match marker:
         case EachMarker(item=item):
@@ -395,6 +408,7 @@ def _adapt_function(
                 function.name,
                 visible_type_parameters,
             )
+
         parameters.append(
             Parameter(
                 name=parameter.name,
@@ -403,6 +417,7 @@ def _adapt_function(
                 default="..." if parameter.has_default else None,
             )
         )
+
     return_type: StubTypeExpression = TypeName("Any")
     if function.returns is not None:
         return_type = _adapt_type_expression(
@@ -410,6 +425,7 @@ def _adapt_function(
             function.name,
             visible_type_parameters,
         )
+
     return FunctionDeclaration(
         name=function.name,
         parameters=tuple(parameters),
@@ -454,6 +470,7 @@ def _(
             expression.source,
             "Schema requires one type argument",
         )
+
     return SchemaType(
         _adapt_type_expression(expression.arguments[0], declaration, type_parameters)
     )
@@ -476,6 +493,7 @@ def _(
 ) -> StubTypeExpression:
     if expression.source in type_parameters:
         return TypeVariable(expression.source)
+
     return TypeName(expression.source)
 
 
@@ -592,6 +610,7 @@ def _adapt_map_test(
             EqualMarker | AssignableMarker | AllMarker | AnyMarker | NotMarker,
         ):
             return _adapt_predicate(expression, declaration, type_parameters)
+
     return _adapt_type_expression(expression, declaration, type_parameters)
 
 
@@ -606,6 +625,7 @@ def _adapt_predicate(
             expression.source,
             "condition must be a Typeforge predicate",
         )
+
     marker = _normalize_marker(declaration, expression)
     match marker:
         case EqualMarker(left=left, right=right):

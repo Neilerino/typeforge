@@ -58,7 +58,7 @@
   const copyButton = document.querySelector("[data-copy-contract]");
   const exampleButton = document.querySelector("[data-load-example]");
 
-  const fields = ["boundary", "rule", "example", "counterexample", "outcome", "reason"];
+  const fields = ["seam", "rule", "example", "counterexample", "outcome", "reason"];
   const values = () =>
     Object.fromEntries(
       fields.map((name) => [
@@ -79,7 +79,11 @@
       const draft = JSON.parse(raw);
       fields.forEach((name) => {
         const field = form.elements.namedItem(name);
-        if (field && typeof draft[name] === "string") field.value = draft[name];
+        const savedValue =
+          name === "seam" && typeof draft.boundary === "string"
+            ? draft.seam ?? draft.boundary
+            : draft[name];
+        if (field && typeof savedValue === "string") field.value = savedValue;
       });
     } catch {
       localStorage.removeItem(`${storagePrefix}contract`);
@@ -89,13 +93,13 @@
   const renderContract = (draft) => {
     if (!output) return;
     output.textContent = [
-      `SYSTEM BOUNDARY\n${draft.boundary}`,
+      `SYSTEM SEAM\n${draft.seam}`,
       `RULE\n${draft.rule}`,
       `EXAMPLE\n${draft.example}`,
       `COUNTEREXAMPLE / EDGE\n${draft.counterexample}`,
       `OBSERVABLE OUTCOME\n${draft.outcome}`,
       `XFAIL REASON\n${draft.reason}`,
-      "\nREADINESS CHECK\n□ Outcome is observable at the named boundary.\n□ Test will fail for the missing behavior, not a placeholder error.\n□ No private helper or call-count is part of the contract.\n□ The reason says what capability is missing.\n□ The slice is small enough for one red–green–refactor loop.",
+      "\nREADINESS CHECK\n□ Outcome is observable at the named seam.\n□ Test will fail for the missing behavior, not a placeholder error.\n□ No private helper or call-count is part of the contract.\n□ The reason says what capability is missing.\n□ The slice is small enough for one red–green cycle.",
     ].join("\n\n");
   };
 
@@ -119,7 +123,7 @@
   exampleButton?.addEventListener("click", () => {
     if (!form) return;
     const example = {
-      boundary: "typeforge.compiler.pipeline.generate_module",
+      seam: "typeforge.compiler.pipeline.generate_module",
       rule: "A public declaration that cannot be preserved makes generation fail explicitly.",
       example: "A module contains a public while statement at line 1.",
       counterexample: "Runtime code inside the __main__ guard is intentionally ignored.",
@@ -162,7 +166,29 @@
   completeButton?.addEventListener("click", () => {
     localStorage.setItem(`${storagePrefix}lesson-0001`, "complete");
     if (completeStatus) {
-      completeStatus.textContent = "Marked complete. Explain your boundary choice to your agent next.";
+      completeStatus.textContent = "Marked complete. Explain your seam choice to your agent next.";
     }
+  });
+
+  document.querySelectorAll("[data-copy-source]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const source = document.querySelector(button.dataset.copySource);
+      const feedback = document.querySelector(button.dataset.copyFeedback);
+      if (!source?.textContent) return;
+      try {
+        await navigator.clipboard.writeText(source.textContent.trim());
+      } catch {
+        const helper = document.createElement("textarea");
+        helper.value = source.textContent.trim();
+        helper.setAttribute("readonly", "");
+        helper.style.position = "fixed";
+        helper.style.opacity = "0";
+        document.body.appendChild(helper);
+        helper.select();
+        document.execCommand("copy");
+        helper.remove();
+      }
+      if (feedback) feedback.textContent = "Copied. Paste this into a fresh agent session.";
+    });
   });
 })();

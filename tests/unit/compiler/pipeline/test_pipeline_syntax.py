@@ -4,7 +4,7 @@ from returns.result import Success
 
 from typeforge.compiler.pipeline import generate_module
 
-FIXTURES = Path(__file__).parent / "fixtures"
+FIXTURES = Path(__file__).parent.parent / "fixtures"
 
 
 def test_conditionals_maps_and_record_maps_compile_to_portable_stubs() -> None:

@@ -4,7 +4,7 @@ from typing import assert_never
 
 from returns.result import Failure, safe
 
-from typeforge.compiler.emitter import emit_stub_module
+from typeforge.compiler.emission import emit_stub_module
 from typeforge.compiler.record_materialization._models import (
     DerivedRecord,
     RecordMaterialization,
@@ -71,6 +71,7 @@ def materialize_record_transforms(
 ) -> RecordMaterialization:
     if not module.typed_dicts:
         return RecordMaterialization((), (), ())
+
     source_shapes = build_record_shapes(module.typed_dicts)
     derived = _derive_record_shapes(module.aliases, source_shapes)
     replacements: list[tuple[str, OverloadDeclaration]] = []
@@ -87,11 +88,13 @@ def materialize_record_transforms(
     for name, source_function in source_functions.items():
         if name not in stub_functions or source_function.returns is None:
             continue
+
         alias_reference = map_fields_alias_reference(
             source_function.returns, module.aliases
         )
         if alias_reference is None:
             continue
+
         alias_name, controller = alias_reference
         specialized = tuple(
             specialize_record_function(
@@ -118,6 +121,7 @@ def materialize_record_transforms(
                     ),
                 )
             )
+
     declarations = tuple(
         typed_dict_declaration(shape)
         for shape in (*source_shapes, *(item.shape for item in derived))
@@ -217,11 +221,13 @@ def _typed_dict_field_type(field: RecordField[StaticType]) -> StubTypeExpression
             TypeName("tf_typing.ReadOnly"),
             (annotation,),
         )
+
     if not field.required:
         annotation = TypeApplication(
             TypeName("tf_typing.NotRequired"),
             (annotation,),
         )
+
     return annotation
 
 
@@ -250,7 +256,8 @@ def render_typed_dict(shape: RecordShape[StaticType]) -> str:
     """Render one TypedDict declaration for overlay consumers."""
     rendered = emit_stub_module(StubModule("", (typed_dict_declaration(shape),)))
     if isinstance(rendered, Failure):
-        raise ValueError(rendered.failure())
+        raise ValueError(rendered.failure().message)
+
     return rendered.unwrap().rstrip()
 
 
@@ -341,6 +348,7 @@ def build_record_shapes(
         )
         shapes.append(shape)
         by_name[declaration.qualified_name] = shape
+
     return tuple(shapes)
 
 
@@ -361,18 +369,22 @@ def _derive_record_shapes(
         value = schema_inner_expression(alias.value)
         if not isinstance(value, MarkerTypeExpression):
             continue
+
         try:
             marker = normalize_marker(value)
         except MarkerNormalizationError:
             continue
+
         if not isinstance(marker, MapFieldsMarker):
             continue
+
         if len(alias.type_parameters) != 1:
             raise RecordMaterializationError(
                 alias.name,
                 alias.value.source,
                 "MapFields aliases require exactly one type parameter",
             )
+
         parameter = alias.type_parameters[0].name
         for source_shape in source_shapes:
             output_name = f"{alias.name}_{source_shape.name}"
@@ -384,6 +396,7 @@ def _derive_record_shapes(
                 raise RecordMaterializationError(
                     alias.name, alias.value.source, error.message
                 ) from error
+
             if not isinstance(semantic_expression, MapFieldsExpression):
                 raise RecordMaterializationError(
                     alias.name,
@@ -398,6 +411,7 @@ def _derive_record_shapes(
                     alias.value.source,
                     evaluated_result.failure().message,
                 )
+
             evaluated = evaluated_result.unwrap()
             if not isinstance(evaluated, RecordShape):
                 raise RecordMaterializationError(
@@ -413,6 +427,7 @@ def _derive_record_shapes(
                     evaluated,
                 )
             )
+
     return tuple(derived)
 
 
@@ -422,18 +437,23 @@ def map_fields_alias_reference(
 ) -> tuple[str, str] | None:
     if not isinstance(expression, AppliedTypeExpression):
         return None
+
     if not isinstance(expression.constructor, NameTypeExpression):
         return None
+
     if len(expression.arguments) != 1:
         return None
+
     argument = expression.arguments[0]
     if not isinstance(argument, NameTypeExpression):
         return None
+
     alias_name = expression.constructor.source
     if any(
         alias.name == alias_name and is_map_fields_alias(alias) for alias in aliases
     ):
         return alias_name, argument.source
+
     return None
 
 
@@ -441,6 +461,7 @@ def is_map_fields_alias(alias: SourceTypeAlias) -> bool:
     value = schema_inner_expression(alias.value)
     if not isinstance(value, MarkerTypeExpression):
         return False
+
     try:
         return isinstance(normalize_marker(value), MapFieldsMarker)
     except MarkerNormalizationError:

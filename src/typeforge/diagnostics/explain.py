@@ -19,6 +19,7 @@ def explain_problem(
         explanation = rule(problem, callables)
         if explanation is not None:
             return explanation
+
     return None
 
 
@@ -28,6 +29,7 @@ def explain_authored_overload(
 ) -> Explanation | None:
     if problem.kind is not ProblemKind.NO_MATCHING_OVERLOAD:
         return None
+
     matches = tuple(
         candidate
         for candidate in callables
@@ -35,6 +37,7 @@ def explain_authored_overload(
     )
     if len(matches) != 1:
         return None
+
     callable_ = matches[0]
     parameters = tuple(
         parameter
@@ -61,6 +64,7 @@ def _format_parameter(parameter: AuthoredParameter) -> str:
         prefix = "*"
     elif parameter.kind is AuthoredParameterKind.VAR_KEYWORD:
         prefix = "**"
+
     annotation = f": {parameter.annotation}" if parameter.annotation else ""
     default = " = ..." if parameter.has_default else ""
     return f"{prefix}{parameter.name}{annotation}{default}"
@@ -74,6 +78,7 @@ def _reasons(parameters: tuple[AuthoredParameter, ...]) -> tuple[str, ...]:
     )
     if len(type_parameters) != 1:
         return ("The supplied arguments do not match this authored signature.",)
+
     parameter = type_parameters[0]
     return (
         f"`{parameter.name}` expects type objects rather than instances or other "

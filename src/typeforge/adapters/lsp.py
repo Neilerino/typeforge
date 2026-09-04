@@ -75,9 +75,11 @@ def analyze_document(
         )
     except OSError as error:
         raise LspSpawnError(str(error)) from error
+
     if process.stdin is None or process.stdout is None:
         process.kill()
         raise LspSpawnError("language server pipes unavailable")
+
     writer = cast(BinaryIO, process.stdin)
     reader_stream = cast(BinaryIO, process.stdout)
 
@@ -102,6 +104,7 @@ def analyze_document(
         )
         if isinstance(initialize, Failure):
             raise initialize.failure()
+
         initialized = _await_response(
             process,
             writer,
@@ -112,10 +115,12 @@ def analyze_document(
         )
         if isinstance(initialized, Failure):
             raise initialized.failure()
+
         next_request_id += 1
         notified = _notify(writer, "initialized", {})
         if isinstance(notified, Failure):
             raise notified.failure()
+
         opened = _notify(
             writer,
             "textDocument/didOpen",
@@ -143,6 +148,7 @@ def analyze_document(
             )
             if isinstance(pulled, Failure):
                 raise pulled.failure()
+
             diagnostic_response = _await_response(
                 process,
                 writer,
@@ -154,6 +160,7 @@ def analyze_document(
             next_request_id += 1
             if not _is_mutation_cancellation(diagnostic_response):
                 break
+
         if isinstance(diagnostic_response, Success):
             if diagnostic_response.unwrap().diagnostics is not None:
                 diagnostics = diagnostic_response.unwrap().diagnostics
@@ -161,6 +168,7 @@ def analyze_document(
                 report = _parse_diagnostic_report(diagnostic_response.unwrap().result)
                 if isinstance(report, Failure):
                     raise report.failure()
+
                 diagnostics = report.unwrap()
         elif "not found" not in diagnostic_response.failure().message.lower():
             raise diagnostic_response.failure()
@@ -181,6 +189,7 @@ def analyze_document(
                 )
                 if isinstance(sent, Failure):
                     raise sent.failure()
+
                 response = _await_response(
                     process,
                     writer,
@@ -192,13 +201,17 @@ def analyze_document(
                 next_request_id += 1
                 if not _is_mutation_cancellation(response):
                     break
+
             if isinstance(response, Failure):
                 raise response.failure()
+
             if response.unwrap().diagnostics is not None:
                 diagnostics = response.unwrap().diagnostics
+
             parsed_hover = _parse_hover(position, response.unwrap().result)
             if isinstance(parsed_hover, Failure):
                 raise parsed_hover.failure()
+
             hovers.append(parsed_hover.unwrap())
 
         if diagnostics is None:
@@ -211,7 +224,9 @@ def analyze_document(
             )
             if isinstance(published, Failure):
                 raise published.failure()
+
             diagnostics = published.unwrap()
+
         return LspAnalysis(diagnostics, tuple(hovers))
     finally:
         _stop_server(process, writer, next_request_id, deadline)
@@ -240,23 +255,30 @@ def _await_response(
         received = _next_message(process, messages, deadline)
         if isinstance(received, Failure):
             return received
+
         message = received.unwrap()
         published = _published_diagnostics(message, document_uri)
         if isinstance(published, Failure):
             return published
+
         if published.unwrap() is not None:
             diagnostics = published.unwrap()
             continue
+
         if _is_server_request(message):
             answered = _answer_server_request(writer, message)
             if isinstance(answered, Failure):
                 return answered
+
             continue
+
         if _message_id(message) != request_id:
             continue
+
         error = message.get("error")
         if isinstance(error, dict):
             return Failure(LspServerError(_server_error_message(error)))
+
         return Success(Response(message.get("result"), diagnostics))
 
 
@@ -271,13 +293,16 @@ def _await_diagnostics(
         received = _next_message(process, messages, deadline)
         if isinstance(received, Failure):
             return received
+
         message = received.unwrap()
         published = _published_diagnostics(message, document_uri)
         if isinstance(published, Failure):
             return published
+
         published_diagnostics = published.unwrap()
         if published_diagnostics is not None:
             return Success(published_diagnostics)
+
         if _is_server_request(message):
             answered = _answer_server_request(writer, message)
             if isinstance(answered, Failure):
@@ -292,17 +317,21 @@ def _next_message(
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         return Failure(LspTimeoutError("language server timed out"))
+
     try:
         incoming = messages.get(timeout=remaining)
     except queue.Empty:
         return Failure(LspTimeoutError("language server timed out"))
+
     if isinstance(incoming, Failure):
         return Failure(LspProtocolError(incoming.failure().message))
+
     message = incoming.unwrap()
     if message is None:
         return Failure(
             LspExitError(f"language server exited with status {process.poll()}")
         )
+
     return Success(message)
 
 
@@ -380,6 +409,7 @@ def _published_diagnostics(
 ) -> tuple[LspDiagnostic, ...] | None:
     if message.get("method") != "textDocument/publishDiagnostics":
         return None
+
     try:
         parsed = PublishedDiagnostics.model_validate(message)
     except ValidationError as error:
@@ -387,6 +417,7 @@ def _published_diagnostics(
 
     if parsed.params.uri != document_uri:
         return None
+
     return tuple(parsed.params.diagnostics)
 
 
@@ -396,12 +427,15 @@ def _parse_diagnostic_report(
 ) -> tuple[LspDiagnostic, ...] | None:
     if value is None:
         return None
+
     try:
         report = DiagnosticReport.model_validate(value)
     except ValidationError as error:
         raise LspProtocolError("invalid diagnostic report") from error
+
     if report.items is None:
         return None
+
     return tuple(report.items)
 
 
@@ -409,29 +443,37 @@ def _parse_diagnostic_report(
 def _parse_hover(position: LspPosition, value: JsonValue) -> LspHover:
     if value is None:
         return LspHover(position, None)
+
     try:
         hover = HoverResultPayload.model_validate(value)
     except ValidationError as error:
         raise LspProtocolError("invalid hover response") from error
+
     contents = _hover_contents(hover.contents)
     if contents is None:
         raise LspProtocolError("invalid hover contents")
+
     if hover.range is None:
         return LspHover(position, contents)
+
     return LspHover(position, contents, hover.range)
 
 
 def _hover_contents(value: JsonValue) -> str | None:
     if isinstance(value, str):
         return value
+
     if isinstance(value, dict):
         text = value.get("value")
         return text if isinstance(text, str) else None
+
     if isinstance(value, list):
         parts = tuple(_hover_contents(item) for item in value)
         if any(part is None for part in parts):
             return None
+
         return "\n\n".join(part for part in parts if part is not None)
+
     return None
 
 
@@ -455,6 +497,7 @@ def _answer_server_request(
     method = message.get("method")
     if not isinstance(request_id, int | str) or not isinstance(method, str):
         return Failure(LspProtocolError("invalid server request"))
+
     result: JsonValue = None
     if method == "workspace/configuration":
         parameters = message.get("params")
@@ -463,7 +506,9 @@ def _answer_server_request(
             candidate = parameters.get("items")
             if isinstance(candidate, list):
                 items = candidate
+
         result = [None for _ in items]
+
     return _write_message(
         writer, {"jsonrpc": "2.0", "id": request_id, "result": result}
     )
@@ -482,6 +527,7 @@ def _stop_server(
 ) -> None:
     if process.poll() is not None:
         return
+
     _request(writer, request_id, "shutdown", {})
     _notify(writer, "exit", {})
     remaining = max(deadline - time.monotonic(), 0.0)

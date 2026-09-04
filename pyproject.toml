@@ -35,7 +35,7 @@ compiler = [
 dev = [
     "archunitpython>=1.5,<2",
     "flake8>=7.3.0",
-    "flake8-clean-block>=0.1.2",
+    "flake8-bas>=1.1.0",
     "mypy>=2.2,<3",
     "pydantic>=2.13.4,<3",
     "pyrefly>=1.1.1",
@@ -86,3 +86,4 @@ target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+external = ["BAS"]

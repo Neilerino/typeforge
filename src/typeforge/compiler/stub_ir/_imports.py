@@ -11,7 +11,9 @@ def merge_imports(imports: tuple[ModuleImport, ...]) -> tuple[ModuleImport, ...]
     for item in imports:
         if isinstance(item, Import):
             continue
+
         merged.setdefault(item.module, set()).update(item.names)
+
     return (
         *module_imports,
         *(ImportFrom(module, tuple(sorted(names))) for module, names in merged.items()),

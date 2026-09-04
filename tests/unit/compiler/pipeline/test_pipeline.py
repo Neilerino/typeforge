@@ -10,7 +10,7 @@ from typeforge.compiler.pipeline import (
 
 
 def test_source_is_compiled_to_portable_overloads() -> None:
-    path = Path(__file__).parent / "fixtures" / "pipeline.py"
+    path = Path(__file__).parent.parent / "fixtures" / "pipeline.py"
     generated = generate_module(path, maximum_arity=2)
     assert isinstance(generated, Success)
     assert generated.unwrap().content == (

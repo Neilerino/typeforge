@@ -1,6 +1,6 @@
 # Compiler Module Reorganization
 
-Status: Proposed
+Status: In progress — package extractions complete; architecture closure remains
 Related task: `docs/in_progress_tasks/deferred-input-map-semantics.md`
 
 ## Goal
@@ -39,6 +39,21 @@ A package-first structure should make these distinctions explicit:
 - Do not introduce protocols for pure in-process transformations.
 - Do not retain new compatibility shims except where an existing downstream
   compiler interface requires one.
+
+## Current progress
+
+All proposed compiler domains have been extracted behind package interfaces. The
+remaining work is architecture closure: enforce the dependency graph and private
+implementation boundaries, then run full repository validation.
+
+The final three extraction seams are now active:
+
+- `compiler.module_surface.inspect_module_surface()` owns public-surface
+  validation, module variables, and authored public imports;
+- `compiler.emission.emit_stub_module()` and `emit_type_expression()` own Python
+  rendering and `EmissionError`;
+- `compiler.pipeline.generate_module()` owns orchestration and preserves the
+  existing pipeline compatibility exports used by downstream consumers.
 
 ## Target structure
 
@@ -89,6 +104,7 @@ src/typeforge/compiler/
 │
 ├── emission/
 │   ├── __init__.py
+│   ├── _models.py
 │   └── _python.py
 │
 └── pipeline/
@@ -164,7 +180,7 @@ _pipeline_adaptation.py -> adaptation/_source_to_ir.py
 schema resolution path  -> adaptation/_legacy_schema.py
 AdaptationError and
 SemanticRelationshipAlias -> adaptation/_models.py
-adaptation import analysis -> adaptation/_imports.py
+compiler-required import analysis -> adaptation/_imports.py
 ```
 
 ### Compiler semantic adapter
@@ -229,7 +245,7 @@ public interface:
 - validation of supported public declarations;
 - module-variable discovery;
 - public imports and other surface information;
-- `ModuleVariables`;
+- `ModuleSurface`;
 - `UnsupportedPublicDeclaration`.
 
 This is separate from parsing: source parsing describes authored declarations,
@@ -241,7 +257,8 @@ preserve.
 `compiler.emission` owns deterministic rendering of stub IR as Python stub text.
 Its primary interface remains `emit_stub_module()`.
 
-Current `emitter.py` moves to `emission/_python.py`.
+Current `emitter.py` moves to `emission/_python.py`. `EmissionError` belongs to
+this package because it models a failure of the rendering seam.
 
 ### Pipeline
 
@@ -249,8 +266,11 @@ Current `emitter.py` moves to `emission/_python.py`.
 
 - `generate_module()`;
 - `GeneratedModule`;
-- `EmissionError` and `GenerationError`;
+- `GenerationError`;
 - conversion and composition of stage results.
+
+`EmissionError` is owned by `compiler.emission` and included in the pipeline's
+composed `GenerationError`.
 
 Replacing `pipeline.py` with a `pipeline` package preserves imports such as:
 
@@ -376,12 +396,12 @@ pre-approved test inventory.
    them. Remove the data section of `lowering.py` and `_type_tree.py` after all IR
    consumers use the package interface.
 
-3. **Emission — `compiler.emission`**
+3. **Emission — `compiler.emission` — Complete**
 
-   Establish deterministic `StubModule`-to-text rendering as the seam used by the
-   pipeline and record rendering. Move one rendering capability at a time behind
-   `emit_stub_module()` and related confirmed interface functions, then remove
-   `emitter.py`.
+   Deterministic module and type-expression rendering now cross
+   `emit_stub_module()` and `emit_type_expression()`. The package owns
+   `EmissionError`, pipeline and overlay consume the package interface, and
+   `emitter.py` has been removed.
 
 4. **Finite specialization — `compiler.specialization`**
 
@@ -406,12 +426,12 @@ pre-approved test inventory.
    the duplicate schema implementation in `_legacy_schema.py` only after its
    remaining callers are characterized.
 
-7. **Module surface — `compiler.module_surface`**
+7. **Module surface — `compiler.module_surface` — Complete**
 
-   Establish public-surface validation and extraction as the seam used by the
-   generation pipeline. Drive validation, public imports, and module-variable
-   preservation through consumer-visible contracts before moving their logic out
-   of `_pipeline_utils.py`.
+   Public-surface validation, authored public imports, and module-variable
+   preservation now cross the `inspect_module_surface()` seam. The generation
+   pipeline consumes its `ModuleSurface`, and `_pipeline_utils.py` has been
+   removed.
 
 8. **Record materialization — `compiler.record_materialization`**
 
@@ -426,14 +446,13 @@ pre-approved test inventory.
    `compiler.adaptation.AdaptationError` is removed. Architecture closure must
    enforce that this dependency does not return.
 
-9. **Generation pipeline — `compiler.pipeline`**
+9. **Generation pipeline — `compiler.pipeline` — Complete**
 
-   Once the inner seams are proven, establish orchestration from a source path to
-   `GeneratedModule` as the final compiler seam. Convert `pipeline.py` into a
-   package, dissolve `_pipeline_models.py` into the owning packages, and preserve
-   the currently supported downstream imports through `pipeline.__init__`.
-   Pipeline tests should verify stage composition and authored failure propagation,
-   not reproduce the contracts owned by inner packages.
+   Orchestration from a source path to `GeneratedModule` now crosses the
+   `generate_module()` seam. `pipeline.py` is a package, generated-result models
+   live under that owner, `EmissionError` moved to `compiler.emission`, and
+   `pipeline.__init__` preserves the supported downstream compatibility exports.
+   Pipeline tests verify stage composition and authored failure propagation.
 
 10. **Architecture closure**
 

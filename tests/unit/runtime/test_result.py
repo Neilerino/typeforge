@@ -4,6 +4,7 @@ from returns.result import Failure, Result, Success
 def reciprocal(value: int) -> Result[float, str]:
     if value == 0:
         return Failure("division by zero")
+
     return Success(1 / value)
 
 
