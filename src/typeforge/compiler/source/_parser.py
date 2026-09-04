@@ -178,7 +178,7 @@ def _parse_function(
         parameters=_parse_parameters(path, source, node.args, bindings),
         returns=_parse_annotation(path, source, node.returns, bindings),
         type_parameters=tuple(
-            _parse_type_parameter(path, source, parameter)
+            _parse_type_parameter(source, parameter)
             for parameter in node.type_params
             if isinstance(parameter, ast.TypeVar | ast.TypeVarTuple | ast.ParamSpec)
         ),
@@ -205,7 +205,7 @@ def _parse_type_alias(
         name=node.name.id,
         qualified_name=(*scope, node.name.id),
         type_parameters=tuple(
-            _parse_type_parameter(path, source, parameter)
+            _parse_type_parameter(source, parameter)
             for parameter in node.type_params
             if isinstance(parameter, ast.TypeVar | ast.TypeVarTuple | ast.ParamSpec)
         ),
@@ -261,7 +261,7 @@ def _parse_class(
         name=node.name,
         qualified_name=(node.name,),
         type_parameters=tuple(
-            _parse_type_parameter(path, source, parameter)
+            _parse_type_parameter(source, parameter)
             for parameter in node.type_params
             if isinstance(parameter, ast.TypeVar | ast.TypeVarTuple | ast.ParamSpec)
         ),
@@ -588,7 +588,6 @@ def _parse_parameter(
 
 
 def _parse_type_parameter(
-    path: Path,
     source: str,
     parameter: ast.TypeVar | ast.TypeVarTuple | ast.ParamSpec,
 ) -> TypeParameter:
@@ -602,7 +601,6 @@ def _parse_type_parameter(
     return TypeParameter(
         name=parameter.name,
         kind=kind,
-        span=_span(path, parameter),
         declaration=ast.get_source_segment(source, parameter) or ast.unparse(parameter),
     )
 

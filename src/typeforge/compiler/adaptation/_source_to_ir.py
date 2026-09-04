@@ -36,10 +36,12 @@ from typeforge.compiler.source import (
     RuntimeInputTypeExpression,
     SchemaTypeExpression,
     SourceModule,
+    SourceSpan,
     SourceTypeExpression,
     StarredTypeExpression,
     UnionTypeExpression,
     ValueMarker,
+    is_enriched,
     normalize_marker,
     schema_inner_expression,
 )
@@ -66,6 +68,7 @@ from typeforge.compiler.stub_ir import (
     EachType,
     EqualPredicate,
     FunctionDeclaration,
+    GeneratedElementOrigin,
     HomogeneousTuple,
     ImportFrom,
     MapCase,
@@ -99,6 +102,7 @@ def adapt_source_module(
     imports: tuple[ModuleImport, ...] = ()
     semantic_aliases = _collect_semantic_relationship_aliases(module.aliases)
     declarations: list[tuple[int, Declaration]] = []
+    origins: list[GeneratedElementOrigin[SourceSpan]] = []
     for alias in module.aliases:
         if len(alias.qualified_name) != 1:
             continue
@@ -132,14 +136,17 @@ def adapt_source_module(
         if len(function.qualified_name) != 1:
             continue
 
+        generated_function = expand_function_map_aliases(
+            _adapt_function(function), semantic_aliases
+        )
         declarations.append(
             (
                 function.span.start.line,
-                expand_function_map_aliases(
-                    _adapt_function(function), semantic_aliases
-                ),
+                generated_function,
             )
         )
+        if is_enriched(function):
+            origins.append(GeneratedElementOrigin(function.span, generated_function))
 
     all_functions = (
         *module.functions,
@@ -165,7 +172,13 @@ def adapt_source_module(
     ordered = tuple(
         declaration for _, declaration in sorted(declarations, key=lambda item: item[0])
     )
-    return StubModule(module.path.stem, ordered, imports)
+    ordered_origins = tuple(
+        sorted(
+            origins,
+            key=lambda item: (item.origin.start.line, item.origin.start.column),
+        )
+    )
+    return StubModule(module.path.stem, ordered, imports, ordered_origins)
 
 
 @safe(exceptions=(AdaptationError,))

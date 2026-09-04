@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
+from functools import cached_property
 from pathlib import Path
 
 
@@ -132,7 +133,6 @@ class TypeParameterKind(Enum):
 class TypeParameter:
     name: str
     kind: TypeParameterKind
-    span: SourceSpan
     declaration: str
 
 
@@ -209,31 +209,36 @@ class SourceModule:
 def contains_marker(
     expression: SourceTypeExpression, marker: MarkerKind | None = None
 ) -> bool:
-    if isinstance(expression, MarkerTypeExpression):
-        if marker is None or expression.marker is marker:
-            return True
 
-        return any(
-            contains_marker(argument, marker) for argument in expression.arguments
-        )
+    match expression:
+        case MarkerTypeExpression():
+            return (
+                marker is None
+                or expression.marker is marker
+                or any(
+                    contains_marker(argument, marker)
+                    for argument in expression.arguments
+                )
+            )
 
-    if isinstance(expression, SchemaTypeExpression):
-        return any(
-            contains_marker(argument, marker) for argument in expression.arguments
-        )
+        case SchemaTypeExpression():
+            return any(
+                contains_marker(argument, marker) for argument in expression.arguments
+            )
 
-    if isinstance(expression, AppliedTypeExpression):
-        return contains_marker(expression.constructor, marker) or any(
-            contains_marker(argument, marker) for argument in expression.arguments
-        )
+        case AppliedTypeExpression():
+            return contains_marker(expression.constructor, marker) or any(
+                contains_marker(argument, marker) for argument in expression.arguments
+            )
 
-    if isinstance(expression, UnionTypeExpression):
-        return any(contains_marker(member, marker) for member in expression.members)
+        case UnionTypeExpression():
+            return any(contains_marker(member, marker) for member in expression.members)
 
-    if isinstance(expression, StarredTypeExpression):
-        return contains_marker(expression.item, marker)
+        case StarredTypeExpression():
+            return contains_marker(expression.item, marker)
 
-    return False
+        case NameTypeExpression() | RuntimeInputTypeExpression() | RawTypeExpression():
+            return False
 
 
 def is_enriched(function: FunctionDeclaration) -> bool:

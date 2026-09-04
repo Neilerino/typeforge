@@ -12,8 +12,14 @@ from typeforge.compiler.adaptation import (
 )
 from typeforge.compiler.emission import EmissionError
 from typeforge.compiler.module_surface import UnsupportedPublicDeclaration
+from typeforge.compiler.pipeline._compilation import compile_source
 from typeforge.compiler.pipeline._generation import generate_module
-from typeforge.compiler.pipeline._models import GeneratedModule, GenerationError
+from typeforge.compiler.pipeline._models import (
+    CompilationError,
+    CompilationPlan,
+    GeneratedModule,
+    GenerationError,
+)
 from typeforge.compiler.record_materialization import (
     DerivedRecord,
     RecordMaterializationError,
@@ -26,6 +32,8 @@ from typeforge.compiler.stub_ir import substitute_type
 
 __all__ = [
     "AdaptationError",
+    "CompilationError",
+    "CompilationPlan",
     "DerivedRecord",
     "EmissionError",
     "GeneratedModule",
@@ -38,6 +46,7 @@ __all__ = [
     "adapt_type_expression",
     "build_record_shapes",
     "collect_semantic_relationship_aliases",
+    "compile_source",
     "derive_record_shapes",
     "expand_function_map_aliases",
     "expand_map_aliases",

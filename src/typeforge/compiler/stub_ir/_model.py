@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TypeIs
 
+from typeforge.compiler.source import SourceSpan
+
 
 @dataclass(frozen=True, slots=True)
 class TypeName:
@@ -233,6 +235,14 @@ type Declaration = (
     | ClassDeclaration
 )
 
+type GeneratedElement = Declaration | StubTypeExpression
+
+
+@dataclass(frozen=True, slots=True)
+class GeneratedElementOrigin[OriginType]:
+    origin: OriginType
+    generated: GeneratedElement
+
 
 @dataclass(frozen=True, slots=True, order=True)
 class Import:
@@ -254,3 +264,4 @@ class StubModule:
     name: str
     declarations: tuple[Declaration, ...]
     imports: tuple[ModuleImport, ...] = ()
+    origins: tuple[GeneratedElementOrigin[SourceSpan], ...] = ()

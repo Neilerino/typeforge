@@ -19,6 +19,7 @@ from typeforge.compiler.stub_ir import (
     EqualPredicate,
     FixedTuple,
     FunctionDeclaration,
+    GeneratedElementOrigin,
     HomogeneousTuple,
     Import,
     ImportFrom,
@@ -60,6 +61,7 @@ def lower_variadic_module(
         )
 
     lowered: list[Declaration] = []
+    origins = module.origins
     has_overloads = False
     for declaration in module.declarations:
         if isinstance(declaration, ClassDeclaration):
@@ -85,20 +87,39 @@ def lower_variadic_module(
             lowered_declaration, OverloadDeclaration
         )
         lowered.append(lowered_declaration)
+        origins = _replace_declaration_origins(
+            origins,
+            declaration,
+            lowered_declaration,
+        )
 
     imports = module.imports
     if has_overloads:
         imports = _add_import(imports, ImportFrom("typing", ("overload",)))
 
-    lowered_module = StubModule(module.name, tuple(lowered), imports)
+    lowered_module = StubModule(module.name, tuple(lowered), imports, origins)
     if _module_contains_literal(lowered_module):
         lowered_module = StubModule(
             lowered_module.name,
             lowered_module.declarations,
             _add_import(lowered_module.imports, ImportFrom("typing", ("Literal",))),
+            lowered_module.origins,
         )
 
     return Success(lowered_module)
+
+
+def _replace_declaration_origins[OriginType](
+    origins: tuple[GeneratedElementOrigin[OriginType], ...],
+    original: Declaration,
+    replacement: Declaration,
+) -> tuple[GeneratedElementOrigin[OriginType], ...]:
+    return tuple(
+        GeneratedElementOrigin(item.origin, replacement)
+        if item.generated is original
+        else item
+        for item in origins
+    )
 
 
 def _lower_class(

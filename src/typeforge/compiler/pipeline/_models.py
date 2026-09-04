@@ -7,8 +7,17 @@ from typeforge.compiler.adaptation import AdaptationError
 from typeforge.compiler.emission import EmissionError
 from typeforge.compiler.module_surface import UnsupportedPublicDeclaration
 from typeforge.compiler.record_materialization import RecordMaterializationError
-from typeforge.compiler.source import FrontendError
+from typeforge.compiler.source import (
+    FrontendError,
+    SourceModule,
+    SourceSyntaxError,
+)
 from typeforge.compiler.specialization import LoweringError
+from typeforge.compiler.stub_ir import StubModule
+
+type CompilationError = (
+    SourceSyntaxError | AdaptationError | LoweringError | RecordMaterializationError
+)
 
 type GenerationError = (
     FrontendError
@@ -18,6 +27,12 @@ type GenerationError = (
     | EmissionError
     | UnsupportedPublicDeclaration
 )
+
+
+@dataclass(frozen=True, slots=True)
+class CompilationPlan:
+    source: SourceModule
+    module: StubModule
 
 
 @dataclass(frozen=True, slots=True)
