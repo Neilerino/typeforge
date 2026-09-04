@@ -3,7 +3,7 @@
 from collections.abc import Callable, Iterator
 from typing import assert_never
 
-from typeforge.compiler.lowering import (
+from typeforge.compiler.stub_ir._model import (
     AllPredicate,
     AnyPredicate,
     AssignablePredicate,
@@ -22,8 +22,8 @@ from typeforge.compiler.lowering import (
     Predicate,
     RuntimeInputType,
     SchemaType,
+    StubTypeExpression,
     TypeApplication,
-    TypeExpression,
     TypeName,
     TypeVariable,
     UnionExpression,
@@ -31,13 +31,25 @@ from typeforge.compiler.lowering import (
     is_predicate,
 )
 
-type TypeTransform = Callable[[TypeExpression], TypeExpression | None]
+type TypeTransform = Callable[[StubTypeExpression], StubTypeExpression | None]
+
+
+def substitute_type(
+    expression: StubTypeExpression,
+    variable: str,
+    replacement: StubTypeExpression,
+) -> StubTypeExpression:
+    target = TypeVariable(variable)
+    return rewrite_type(
+        expression,
+        lambda current: replacement if current == target else None,
+    )
 
 
 def rewrite_type(
-    expression: TypeExpression,
+    expression: StubTypeExpression,
     transform: TypeTransform,
-) -> TypeExpression:
+) -> StubTypeExpression:
     """Rewrite a type tree top-down, without traversing replacements."""
     replacement = transform(expression)
     if replacement is not None:
@@ -49,9 +61,9 @@ def rewrite_type(
 
 
 def rewrite_type_children(
-    expression: TypeExpression,
-    rewrite: Callable[[TypeExpression], TypeExpression],
-) -> TypeExpression:
+    expression: StubTypeExpression,
+    rewrite: Callable[[StubTypeExpression], StubTypeExpression],
+) -> StubTypeExpression:
     """Rewrite only the immediate children of a type-expression node."""
     match expression:
         case TypeApplication(constructor, arguments):
@@ -113,7 +125,7 @@ def rewrite_type_children(
 
 def _rewrite_predicate(
     predicate: Predicate,
-    rewrite: Callable[[TypeExpression], TypeExpression],
+    rewrite: Callable[[StubTypeExpression], StubTypeExpression],
 ) -> Predicate:
     match predicate:
         case EqualPredicate(left, right):
@@ -134,7 +146,7 @@ def _rewrite_predicate(
             assert_never(unreachable)
 
 
-def walk_type(expression: TypeExpression) -> Iterator[TypeExpression]:
+def walk_type(expression: StubTypeExpression) -> Iterator[StubTypeExpression]:
     """Yield every type-expression node in pre-order, including predicate operands."""
     yield expression
     match expression:
@@ -183,7 +195,7 @@ def walk_type(expression: TypeExpression) -> Iterator[TypeExpression]:
             assert_never(unreachable)
 
 
-def _walk_predicate_types(predicate: Predicate) -> Iterator[TypeExpression]:
+def _walk_predicate_types(predicate: Predicate) -> Iterator[StubTypeExpression]:
     match predicate:
         case EqualPredicate(left, right):
             yield from walk_type(left)

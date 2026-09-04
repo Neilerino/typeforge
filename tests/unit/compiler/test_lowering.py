@@ -2,9 +2,13 @@ from returns.result import Failure, Success
 
 from typeforge.compiler.emitter import emit_stub_module
 from typeforge.compiler.lowering import (
+    ArityFrontier,
+    LoweringErrorCode,
+    lower_variadic_module,
+)
+from typeforge.compiler.stub_ir import (
     AllPredicate,
     AnyPredicate,
-    ArityFrontier,
     AssignablePredicate,
     CollectType,
     EachType,
@@ -12,7 +16,6 @@ from typeforge.compiler.lowering import (
     FunctionDeclaration,
     ImportFrom,
     LiteralType,
-    LoweringErrorCode,
     MapCase,
     MapType,
     NotPredicate,
@@ -24,7 +27,6 @@ from typeforge.compiler.lowering import (
     TypeVariable,
     UnionExpression,
     UnpackedType,
-    lower_variadic_module,
 )
 
 

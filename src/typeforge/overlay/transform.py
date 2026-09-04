@@ -17,24 +17,7 @@ from typeforge.analysis.model import (
 from typeforge.compiler.emitter import emit_stub_module, emit_type_expression
 from typeforge.compiler.lowering import (
     ArityFrontier,
-    EachType,
-    FixedTuple,
-    FunctionDeclaration,
-    HomogeneousTuple,
     LoweringError,
-    MapType,
-    MapValueType,
-    OverloadDeclaration,
-    Parameter,
-    ParameterKind,
-    StubModule,
-    TypeAliasDeclaration,
-    TypeApplication,
-    TypeExpression,
-    TypeName,
-    TypeVariable,
-    UnionExpression,
-    UnpackedType,
     lower_variadic_module,
 )
 from typeforge.compiler.pipeline import (
@@ -58,6 +41,7 @@ from typeforge.compiler.source import (
     SchemaTypeExpression,
     SourceModule,
     SourceSyntaxError,
+    SourceTypeExpression,
     StarredTypeExpression,
     UnionTypeExpression,
     contains_marker,
@@ -66,8 +50,24 @@ from typeforge.compiler.source import (
 from typeforge.compiler.source import (
     FunctionDeclaration as SourceFunction,
 )
-from typeforge.compiler.source import (
-    TypeExpression as SourceTypeExpression,
+from typeforge.compiler.stub_ir import (
+    EachType,
+    FixedTuple,
+    FunctionDeclaration,
+    HomogeneousTuple,
+    MapType,
+    MapValueType,
+    OverloadDeclaration,
+    Parameter,
+    ParameterKind,
+    StubModule,
+    StubTypeExpression,
+    TypeAliasDeclaration,
+    TypeApplication,
+    TypeName,
+    TypeVariable,
+    UnionExpression,
+    UnpackedType,
 )
 from typeforge.verification.contracts import union_types
 from typeforge.verification.model import ReturnObligation, VerificationPlan
@@ -326,7 +326,7 @@ def _function_contains_map_value(declaration: FunctionDeclaration) -> bool:
     ) or _type_contains_map_value(declaration.return_type)
 
 
-def _type_contains_map_value(expression: TypeExpression) -> bool:
+def _type_contains_map_value(expression: StubTypeExpression) -> bool:
     if isinstance(expression, MapValueType):
         return True
     if isinstance(expression, TypeApplication):
@@ -377,7 +377,7 @@ def _bound_signature_type_parameters(
 
 
 def _collect_structural_bounds(
-    expression: TypeExpression,
+    expression: StubTypeExpression,
     classes: tuple[_GenericClass, ...],
     bounds: dict[str, str],
 ) -> None:
@@ -670,7 +670,7 @@ def _outer_schema_boundaries(
     )
 
 
-def _relationship_fallback(expression: MapType) -> TypeExpression:
+def _relationship_fallback(expression: MapType) -> StubTypeExpression:
     return union_types(
         (
             *(_checker_type(case.output_type) for case in expression.cases),
@@ -679,7 +679,7 @@ def _relationship_fallback(expression: MapType) -> TypeExpression:
     )
 
 
-def _checker_type(expression: TypeExpression) -> TypeExpression:
+def _checker_type(expression: StubTypeExpression) -> StubTypeExpression:
     if isinstance(expression, MapValueType):
         return TypeName("object")
     if isinstance(expression, MapType):

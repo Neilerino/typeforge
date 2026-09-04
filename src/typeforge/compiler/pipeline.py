@@ -16,7 +16,6 @@ from typeforge.compiler._pipeline_adaptation import (
     collect_semantic_relationship_aliases,
     expand_function_map_aliases,
     expand_map_aliases,
-    substitute_type,
 )
 from typeforge.compiler._pipeline_models import (
     AdaptationError,
@@ -38,16 +37,12 @@ from typeforge.compiler._pipeline_records import (
 )
 from typeforge.compiler._pipeline_utils import (
     collect_module_variables,
-    merge_imports,
     validate_public_surface,
 )
 from typeforge.compiler.emitter import emit_stub_module
-from typeforge.compiler.lowering import (
-    ArityFrontier,
-    StubModule,
-    lower_variadic_module,
-)
+from typeforge.compiler.lowering import ArityFrontier, lower_variadic_module
 from typeforge.compiler.source import SourceModule, parse_module
+from typeforge.compiler.stub_ir import StubModule, merge_imports, substitute_type
 
 
 def generate_module(

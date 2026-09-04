@@ -10,13 +10,6 @@ from typeforge.compiler._pipeline_models import (
     ModuleVariables,
     UnsupportedPublicDeclaration,
 )
-from typeforge.compiler.lowering import (
-    Import,
-    ImportFrom,
-    ModuleImport,
-    TypeName,
-    VariableDeclaration,
-)
 from typeforge.compiler.source import (
     AppliedTypeExpression,
     DefaultMarker,
@@ -28,28 +21,12 @@ from typeforge.compiler.source import (
     RuntimeInputTypeExpression,
     SchemaTypeExpression,
     SourceModule,
+    SourceTypeExpression,
     StarredTypeExpression,
     UnionTypeExpression,
     normalize_marker,
 )
-from typeforge.compiler.source import (
-    TypeExpression as SourceTypeExpression,
-)
-
-
-def merge_imports(imports: tuple[ModuleImport, ...]) -> tuple[ModuleImport, ...]:
-    module_imports = tuple(
-        dict.fromkeys(item for item in imports if isinstance(item, Import))
-    )
-    merged: dict[str, set[str]] = {}
-    for item in imports:
-        if isinstance(item, Import):
-            continue
-        merged.setdefault(item.module, set()).update(item.names)
-    return (
-        *module_imports,
-        *(ImportFrom(module, tuple(sorted(names))) for module, names in merged.items()),
-    )
+from typeforge.compiler.stub_ir import ImportFrom, TypeName, VariableDeclaration
 
 
 def annotation_contains_default_never(

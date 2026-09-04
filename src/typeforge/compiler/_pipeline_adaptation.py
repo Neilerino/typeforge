@@ -12,45 +12,6 @@ from typeforge.compiler._pipeline_models import (
 from typeforge.compiler._pipeline_utils import (
     annotation_contains_default_never,
     collect_imports,
-    merge_imports,
-)
-from typeforge.compiler._type_tree import rewrite_type, rewrite_type_children, walk_type
-from typeforge.compiler.lowering import (
-    AllPredicate,
-    AnyPredicate,
-    AssignablePredicate,
-    ClassDeclaration,
-    ClassField,
-    CollectType,
-    Declaration,
-    EachType,
-    EqualPredicate,
-    FieldType,
-    FixedTuple,
-    FunctionDeclaration,
-    HomogeneousTuple,
-    ImportFrom,
-    LiteralType,
-    MapCase,
-    MapFieldsType,
-    MapType,
-    MapValueType,
-    ModuleImport,
-    NotPredicate,
-    Parameter,
-    ParameterKind,
-    Predicate,
-    RuntimeInputType,
-    SchemaType,
-    StubModule,
-    TypeAliasDeclaration,
-    TypeApplication,
-    TypeExpression,
-    TypeName,
-    TypeVariable,
-    UnionExpression,
-    UnpackedType,
-    is_predicate,
 )
 from typeforge.compiler.source import (
     AllMarker,
@@ -78,6 +39,7 @@ from typeforge.compiler.source import (
     RuntimeInputTypeExpression,
     SchemaTypeExpression,
     SourceModule,
+    SourceTypeExpression,
     StarredTypeExpression,
     UnionTypeExpression,
     ValueMarker,
@@ -96,19 +58,48 @@ from typeforge.compiler.source import (
 from typeforge.compiler.source import (
     TypeAliasDeclaration as SourceTypeAlias,
 )
-from typeforge.compiler.source import (
-    TypeExpression as SourceTypeExpression,
+from typeforge.compiler.stub_ir import (
+    AllPredicate,
+    AnyPredicate,
+    AssignablePredicate,
+    ClassDeclaration,
+    ClassField,
+    CollectType,
+    Declaration,
+    EachType,
+    EqualPredicate,
+    FieldType,
+    FixedTuple,
+    FunctionDeclaration,
+    HomogeneousTuple,
+    ImportFrom,
+    LiteralType,
+    MapCase,
+    MapFieldsType,
+    MapType,
+    MapValueType,
+    ModuleImport,
+    NotPredicate,
+    Parameter,
+    ParameterKind,
+    Predicate,
+    RuntimeInputType,
+    SchemaType,
+    StubModule,
+    StubTypeExpression,
+    TypeAliasDeclaration,
+    TypeApplication,
+    TypeName,
+    TypeVariable,
+    UnionExpression,
+    UnpackedType,
+    is_predicate,
+    merge_imports,
+    rewrite_type,
+    rewrite_type_children,
+    substitute_type,
+    walk_type,
 )
-
-
-def substitute_type(
-    expression: TypeExpression, variable: str, replacement: TypeExpression
-) -> TypeExpression:
-    target = TypeVariable(variable)
-    return rewrite_type(
-        expression,
-        lambda current: replacement if current == target else None,
-    )
 
 
 @safe(exceptions=(AdaptationError,))
@@ -271,9 +262,9 @@ def expand_function_map_aliases(
 
 
 def expand_map_aliases(
-    expression: TypeExpression,
+    expression: StubTypeExpression,
     aliases: tuple[SemanticRelationshipAlias, ...],
-) -> TypeExpression:
+) -> StubTypeExpression:
     match expression:
         case SchemaType(item):
             return resolve_schema_type(expand_map_aliases(item, aliases))
@@ -293,7 +284,7 @@ def expand_map_aliases(
     )
 
 
-def resolve_schema_type(expression: TypeExpression) -> TypeExpression:
+def resolve_schema_type(expression: StubTypeExpression) -> StubTypeExpression:
     match expression:
         case TypeApplication(constructor, arguments):
             return TypeApplication(
@@ -359,10 +350,10 @@ def resolve_schema_type(expression: TypeExpression) -> TypeExpression:
 
 
 def _resolve_schema_map_member(
-    subject: TypeExpression,
+    subject: StubTypeExpression,
     cases: tuple[MapCase, ...],
-    default: TypeExpression,
-) -> TypeExpression:
+    default: StubTypeExpression,
+) -> StubTypeExpression:
     for index, case in enumerate(cases):
         if is_predicate(case.test):
             result = resolve_schema_predicate(case.test)
@@ -387,10 +378,10 @@ def _resolve_schema_map_member(
 
 
 def _match_schema_pattern(
-    pattern: TypeExpression,
-    subject: TypeExpression,
-    capture: TypeExpression | None,
-) -> tuple[bool, TypeExpression | None]:
+    pattern: StubTypeExpression,
+    subject: StubTypeExpression,
+    capture: StubTypeExpression | None,
+) -> tuple[bool, StubTypeExpression | None]:
     if isinstance(pattern, MapValueType):
         if capture is not None and capture != subject:
             return False, capture
@@ -414,9 +405,9 @@ def _match_schema_pattern(
 
 
 def _substitute_schema_capture(
-    expression: TypeExpression,
-    capture: TypeExpression | None,
-) -> TypeExpression:
+    expression: StubTypeExpression,
+    capture: StubTypeExpression | None,
+) -> StubTypeExpression:
     return rewrite_type(
         expression,
         lambda current: (
@@ -456,7 +447,7 @@ def resolve_schema_predicate(predicate: Predicate) -> bool | None:
             assert_never(unreachable)
 
 
-def _schema_assignable(source: TypeExpression, target: TypeExpression) -> bool:
+def _schema_assignable(source: StubTypeExpression, target: StubTypeExpression) -> bool:
     if source == target or target == TypeName("object"):
         return True
     if isinstance(source, UnionExpression):
@@ -466,15 +457,17 @@ def _schema_assignable(source: TypeExpression, target: TypeExpression) -> bool:
     return False
 
 
-def _type_has_variable(expression: TypeExpression) -> bool:
+def _type_has_variable(expression: StubTypeExpression) -> bool:
     return any(
         isinstance(node, TypeVariable | RuntimeInputType)
         for node in walk_type(expression)
     )
 
 
-def union_types_for_schema(expressions: tuple[TypeExpression, ...]) -> TypeExpression:
-    members: list[TypeExpression] = []
+def union_types_for_schema(
+    expressions: tuple[StubTypeExpression, ...],
+) -> StubTypeExpression:
+    members: list[StubTypeExpression] = []
     for expression in expressions:
         candidates = (
             expression.members
@@ -550,7 +543,7 @@ def _adapt_alias_fallback(
     declaration: str,
     expression: SourceTypeExpression,
     type_parameters: tuple[str, ...],
-) -> TypeExpression:
+) -> StubTypeExpression:
     if not isinstance(expression, MarkerTypeExpression):
         return _adapt_type_expression(expression, declaration, type_parameters)
     marker = _normalize_marker(declaration, expression)
@@ -602,7 +595,7 @@ def _adapt_function(
     )
     parameters: list[Parameter] = []
     for parameter in function.parameters:
-        annotation: TypeExpression = TypeName("Any")
+        annotation: StubTypeExpression = TypeName("Any")
         if parameter.annotation is not None:
             annotation = _adapt_type_expression(
                 parameter.annotation,
@@ -617,7 +610,7 @@ def _adapt_function(
                 default="..." if parameter.has_default else None,
             )
         )
-    return_type: TypeExpression = TypeName("Any")
+    return_type: StubTypeExpression = TypeName("Any")
     if function.returns is not None:
         return_type = _adapt_type_expression(
             function.returns,
@@ -639,7 +632,7 @@ def adapt_type_expression(
     declaration: str,
     expression: SourceTypeExpression,
     type_parameters: tuple[str, ...],
-) -> TypeExpression:
+) -> StubTypeExpression:
     return _adapt_type_expression(expression, declaration, type_parameters)
 
 
@@ -648,7 +641,7 @@ def _adapt_type_expression(
     expression: SourceTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
-) -> TypeExpression:
+) -> StubTypeExpression:
     raise AdaptationError(
         declaration,
         expression.source,
@@ -661,7 +654,7 @@ def _(
     expression: SchemaTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
-) -> TypeExpression:
+) -> StubTypeExpression:
     if len(expression.arguments) != 1:
         raise AdaptationError(
             declaration,
@@ -678,7 +671,7 @@ def _(
     expression: RuntimeInputTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
-) -> TypeExpression:
+) -> StubTypeExpression:
     return RuntimeInputType()
 
 
@@ -687,7 +680,7 @@ def _(
     expression: NameTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
-) -> TypeExpression:
+) -> StubTypeExpression:
     if expression.source in type_parameters:
         return TypeVariable(expression.source)
     return TypeName(expression.source)
@@ -698,7 +691,7 @@ def _(
     expression: RawTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
-) -> TypeExpression:
+) -> StubTypeExpression:
     return TypeName(expression.source)
 
 
@@ -707,7 +700,7 @@ def _(
     expression: UnionTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
-) -> TypeExpression:
+) -> StubTypeExpression:
     return UnionExpression(
         _adapt_type_expressions(expression.members, declaration, type_parameters)
     )
@@ -718,7 +711,7 @@ def _(
     expression: StarredTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
-) -> TypeExpression:
+) -> StubTypeExpression:
     return UnpackedType(
         _adapt_type_expression(expression.item, declaration, type_parameters)
     )
@@ -729,7 +722,7 @@ def _(
     expression: AppliedTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
-) -> TypeExpression:
+) -> StubTypeExpression:
     return TypeApplication(
         _adapt_type_expression(expression.constructor, declaration, type_parameters),
         _adapt_type_expressions(expression.arguments, declaration, type_parameters),
@@ -741,7 +734,7 @@ def _(
     expression: MarkerTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
-) -> TypeExpression:
+) -> StubTypeExpression:
     marker = _normalize_marker(declaration, expression)
     match marker:
         case ValueMarker():
@@ -798,7 +791,7 @@ def _adapt_map_test(
     expression: SourceTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
-) -> TypeExpression | Predicate:
+) -> StubTypeExpression | Predicate:
     if isinstance(expression, MarkerTypeExpression):
         marker = _normalize_marker(declaration, expression)
         if isinstance(
@@ -874,7 +867,7 @@ def _adapt_type_expressions(
     expressions: tuple[SourceTypeExpression, ...],
     declaration: str,
     type_parameters: tuple[str, ...],
-) -> tuple[TypeExpression, ...]:
+) -> tuple[StubTypeExpression, ...]:
     return tuple(
         _adapt_type_expression(expression, declaration, type_parameters)
         for expression in expressions

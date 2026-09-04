@@ -20,11 +20,11 @@ from typeforge.compiler.source._model import (
     SourceModule,
     SourcePosition,
     SourceSpan,
+    SourceTypeExpression,
     StarredTypeExpression,
     TypeAliasDeclaration,
     TypedDictDeclaration,
     TypedDictField,
-    TypeExpression,
     TypeParameter,
     TypeParameterKind,
     UnionTypeExpression,
@@ -582,7 +582,7 @@ def _parse_annotation(
     source: str,
     node: ast.expr | None,
     bindings: _ImportBindings,
-) -> TypeExpression | None:
+) -> SourceTypeExpression | None:
     if node is None:
         return None
     rendered = ast.get_source_segment(source, node) or ast.unparse(node)
@@ -629,7 +629,7 @@ def _parse_annotation(
         slice_nodes = (
             node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
         )
-        argument_values: list[TypeExpression] = []
+        argument_values: list[SourceTypeExpression] = []
         for slice_node in slice_nodes:
             argument = _parse_annotation(path, source, slice_node, bindings)
             if argument is not None:
@@ -705,7 +705,7 @@ def _resolve_ast_name(
     return _resolve_name(_expression_name(node), bindings)
 
 
-def _marker_kind(expression: TypeExpression) -> MarkerKind | None:
+def _marker_kind(expression: SourceTypeExpression) -> MarkerKind | None:
     if isinstance(expression, MarkerTypeExpression):
         return expression.marker
     if not isinstance(expression, NameTypeExpression):
@@ -722,7 +722,7 @@ def _marker_kind(expression: TypeExpression) -> MarkerKind | None:
     return marker_names.get(qualified_name[-1])
 
 
-def _is_schema_boundary(expression: TypeExpression) -> bool:
+def _is_schema_boundary(expression: SourceTypeExpression) -> bool:
     return isinstance(expression, NameTypeExpression) and expression.qualified_name == (
         "typeforge",
         "pydantic",
@@ -730,7 +730,7 @@ def _is_schema_boundary(expression: TypeExpression) -> bool:
     )
 
 
-def _is_runtime_input(expression: TypeExpression) -> bool:
+def _is_runtime_input(expression: SourceTypeExpression) -> bool:
     return isinstance(expression, NameTypeExpression) and expression.qualified_name == (
         "typeforge",
         "pydantic",

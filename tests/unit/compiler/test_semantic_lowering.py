@@ -23,7 +23,7 @@ from typeforge.compiler.source import (
     RuntimeInputTypeExpression,
     SourcePosition,
     SourceSpan,
-    TypeExpression,
+    SourceTypeExpression,
 )
 from typeforge.semantics import (
     CaptureValuePattern,
@@ -290,6 +290,6 @@ def name(value: str) -> NameTypeExpression:
 
 def marker(
     kind: MarkerKind,
-    *arguments: TypeExpression,
+    *arguments: SourceTypeExpression,
 ) -> MarkerTypeExpression:
     return MarkerTypeExpression(kind.value, SPAN, kind, arguments)

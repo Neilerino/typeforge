@@ -3,7 +3,7 @@ from typing import assert_never
 
 from returns.result import Failure, Result, Success
 
-from typeforge.compiler.lowering import (
+from typeforge.compiler.stub_ir import (
     ClassDeclaration,
     ClassField,
     Declaration,
@@ -17,9 +17,9 @@ from typeforge.compiler.lowering import (
     Parameter,
     ParameterKind,
     StubModule,
+    StubTypeExpression,
     TypeAliasDeclaration,
     TypeApplication,
-    TypeExpression,
     TypeName,
     TypeVariable,
     UnionExpression,
@@ -59,7 +59,7 @@ def _emit_import(declaration: Import | ImportFrom) -> str:
             return f"from {module} import {', '.join(names)}"
 
 
-def emit_type_expression(expression: TypeExpression) -> Result[str, str]:
+def emit_type_expression(expression: StubTypeExpression) -> Result[str, str]:
     return _emit_type(expression)
 
 
@@ -191,7 +191,7 @@ def _emit_parameters(parameters: tuple[Parameter, ...]) -> Result[str, str]:
     return Success(", ".join(rendered))
 
 
-def _emit_type(expression: TypeExpression) -> Result[str, str]:
+def _emit_type(expression: StubTypeExpression) -> Result[str, str]:
     if isinstance(expression, (TypeName, TypeVariable)):
         return Success(expression.name)
     if isinstance(expression, TypeApplication):
@@ -218,7 +218,7 @@ def _emit_type(expression: TypeExpression) -> Result[str, str]:
 
 
 def _emit_types(
-    expressions: tuple[TypeExpression, ...],
+    expressions: tuple[StubTypeExpression, ...],
 ) -> Result[tuple[str, ...], str]:
     return _collect(_emit_type(expression) for expression in expressions)
 

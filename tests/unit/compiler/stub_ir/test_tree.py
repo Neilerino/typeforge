@@ -1,5 +1,4 @@
-from typeforge.compiler._type_tree import rewrite_type, walk_type
-from typeforge.compiler.lowering import (
+from typeforge.compiler.stub_ir import (
     AllPredicate,
     EqualPredicate,
     MapCase,
@@ -8,6 +7,8 @@ from typeforge.compiler.lowering import (
     TypeApplication,
     TypeName,
     TypeVariable,
+    rewrite_type,
+    walk_type,
 )
 
 

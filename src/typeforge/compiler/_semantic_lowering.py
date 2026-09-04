@@ -27,13 +27,11 @@ from typeforge.compiler.source import (
     RawTypeExpression,
     ReadonlyFieldMarker,
     RuntimeInputTypeExpression,
+    SourceTypeExpression,
     StarredTypeExpression,
     UnionTypeExpression,
     ValueMarker,
     normalize_marker,
-)
-from typeforge.compiler.source import (
-    TypeExpression as SourceTypeExpression,
 )
 from typeforge.semantics import (
     AllExpression,

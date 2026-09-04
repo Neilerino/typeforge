@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from typeforge.analysis.model import SourceSpan
-from typeforge.compiler.lowering import MapType, TypeExpression
+from typeforge.compiler.stub_ir import MapType, StubTypeExpression
 
 
 class GuardMode(StrEnum):
@@ -20,8 +20,8 @@ class Guard:
 @dataclass(frozen=True, slots=True)
 class Alternative:
     index: int
-    input_type: TypeExpression | None
-    output_type: TypeExpression
+    input_type: StubTypeExpression | None
+    output_type: StubTypeExpression
     is_default: bool = False
 
 
@@ -47,7 +47,7 @@ class ReturnObligation:
     qualified_name: tuple[str, ...]
     return_annotation: str
     controller_parameter: str
-    expected_types: tuple[TypeExpression, ...]
+    expected_types: tuple[StubTypeExpression, ...]
     narrowed_inputs: tuple[str, ...]
     expression_text: str
     expression_span: SourceSpan

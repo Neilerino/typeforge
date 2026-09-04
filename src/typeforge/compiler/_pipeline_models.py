@@ -3,16 +3,16 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from typeforge.compiler.lowering import (
+from typeforge.compiler.lowering import LoweringError
+from typeforge.compiler.records import StaticType
+from typeforge.compiler.source import FrontendError
+from typeforge.compiler.stub_ir import (
     ClassDeclaration,
-    LoweringError,
     MapType,
     ModuleImport,
     OverloadDeclaration,
     VariableDeclaration,
 )
-from typeforge.compiler.records import StaticType
-from typeforge.compiler.source import FrontendError
 from typeforge.semantics import RecordShape
 
 

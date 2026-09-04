@@ -1,260 +1,46 @@
 from dataclasses import dataclass
 from enum import StrEnum
 from itertools import product
-from typing import TypeIs
 
 from returns.result import Failure, Result, Success
 
-
-@dataclass(frozen=True, slots=True)
-class TypeName:
-    name: str
-
-
-@dataclass(frozen=True, slots=True)
-class TypeVariable:
-    name: str
-
-
-@dataclass(frozen=True, slots=True)
-class TypeApplication:
-    constructor: TypeExpression
-    arguments: tuple[TypeExpression, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class FixedTuple:
-    items: tuple[TypeExpression, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class HomogeneousTuple:
-    item: TypeExpression
-
-
-@dataclass(frozen=True, slots=True)
-class EachType:
-    item: TypeExpression
-
-
-@dataclass(frozen=True, slots=True)
-class CollectType:
-    item: TypeExpression
-
-
-@dataclass(frozen=True, slots=True)
-class UnpackedType:
-    item: TypeExpression
-
-
-@dataclass(frozen=True, slots=True)
-class LiteralType:
-    value: str | bytes | int | bool | None
-
-
-@dataclass(frozen=True, slots=True)
-class UnionExpression:
-    members: tuple[TypeExpression, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class EqualPredicate:
-    left: TypeExpression
-    right: TypeExpression
-
-
-@dataclass(frozen=True, slots=True)
-class AssignablePredicate:
-    source: TypeExpression
-    target: TypeExpression
-
-
-@dataclass(frozen=True, slots=True)
-class AllPredicate:
-    predicates: tuple[Predicate, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class AnyPredicate:
-    predicates: tuple[Predicate, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class NotPredicate:
-    predicate: Predicate
-
-
-type Predicate = (
-    EqualPredicate | AssignablePredicate | AllPredicate | AnyPredicate | NotPredicate
+from typeforge.compiler.stub_ir import (
+    AllPredicate,
+    AnyPredicate,
+    AssignablePredicate,
+    ClassDeclaration,
+    CollectType,
+    Declaration,
+    EachType,
+    EqualPredicate,
+    FixedTuple,
+    FunctionDeclaration,
+    HomogeneousTuple,
+    Import,
+    ImportFrom,
+    LiteralType,
+    MapCase,
+    MapType,
+    MapValueType,
+    ModuleImport,
+    NotPredicate,
+    OverloadDeclaration,
+    Parameter,
+    ParameterKind,
+    Predicate,
+    RuntimeInputType,
+    SchemaType,
+    StubModule,
+    StubTypeExpression,
+    TypeAliasDeclaration,
+    TypeApplication,
+    TypeName,
+    TypeVariable,
+    UnionExpression,
+    UnpackedType,
+    VariableDeclaration,
+    is_predicate,
 )
-
-
-def is_predicate(value: object) -> TypeIs[Predicate]:
-    return isinstance(
-        value,
-        EqualPredicate
-        | AssignablePredicate
-        | AllPredicate
-        | AnyPredicate
-        | NotPredicate,
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class MapCase:
-    test: TypeExpression | Predicate
-    output_type: TypeExpression
-
-
-@dataclass(frozen=True, slots=True)
-class MapType:
-    subject: TypeExpression
-    cases: tuple[MapCase, ...]
-    default: TypeExpression
-
-
-@dataclass(frozen=True, slots=True)
-class MapValueType:
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class FieldType:
-    name: TypeExpression
-    value: TypeExpression
-    required: bool = True
-    readonly: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class MapFieldsType:
-    record: TypeExpression
-    transform: TypeExpression
-
-
-@dataclass(frozen=True, slots=True)
-class SchemaType:
-    item: TypeExpression
-
-
-@dataclass(frozen=True, slots=True)
-class RuntimeInputType:
-    pass
-
-
-type TypeExpression = (
-    TypeName
-    | TypeVariable
-    | TypeApplication
-    | FixedTuple
-    | HomogeneousTuple
-    | EachType
-    | CollectType
-    | UnpackedType
-    | LiteralType
-    | UnionExpression
-    | MapType
-    | MapValueType
-    | FieldType
-    | MapFieldsType
-    | SchemaType
-    | RuntimeInputType
-)
-
-
-class ParameterKind(StrEnum):
-    POSITIONAL_ONLY = "positional_only"
-    POSITIONAL_OR_KEYWORD = "positional_or_keyword"
-    VAR_POSITIONAL = "var_positional"
-    KEYWORD_ONLY = "keyword_only"
-    VAR_KEYWORD = "var_keyword"
-
-
-@dataclass(frozen=True, slots=True)
-class Parameter:
-    name: str
-    annotation: TypeExpression
-    kind: ParameterKind = ParameterKind.POSITIONAL_OR_KEYWORD
-    default: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class FunctionDeclaration:
-    name: str
-    parameters: tuple[Parameter, ...]
-    return_type: TypeExpression
-    type_parameters: tuple[str, ...] = ()
-    is_async: bool = False
-    decorators: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class OverloadDeclaration:
-    signatures: tuple[FunctionDeclaration, ...]
-    fallback: FunctionDeclaration
-    decorator: str = "overload"
-
-
-@dataclass(frozen=True, slots=True)
-class TypeAliasDeclaration:
-    name: str
-    value: TypeExpression
-    type_parameters: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class VariableDeclaration:
-    name: str
-    annotation: TypeExpression
-
-
-@dataclass(frozen=True, slots=True)
-class ClassField:
-    name: str
-    annotation: TypeExpression
-    default: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class ClassDeclaration:
-    name: str
-    bases: tuple[TypeExpression, ...]
-    fields: tuple[ClassField, ...]
-    methods: tuple[FunctionDeclaration | OverloadDeclaration, ...]
-    type_parameters: tuple[str, ...] = ()
-    keywords: tuple[str, ...] = ()
-    decorators: tuple[str, ...] = ()
-
-
-type Declaration = (
-    FunctionDeclaration
-    | OverloadDeclaration
-    | TypeAliasDeclaration
-    | VariableDeclaration
-    | ClassDeclaration
-)
-
-
-@dataclass(frozen=True, slots=True, order=True)
-class Import:
-    module: str
-    alias: str | None = None
-
-
-@dataclass(frozen=True, slots=True, order=True)
-class ImportFrom:
-    module: str
-    names: tuple[str, ...]
-
-
-type ModuleImport = Import | ImportFrom
-
-
-@dataclass(frozen=True, slots=True)
-class StubModule:
-    name: str
-    declarations: tuple[Declaration, ...]
-    imports: tuple[ModuleImport, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -434,7 +220,7 @@ def _lower_each_function(
 
 @dataclass(frozen=True, slots=True)
 class PredicateMatch:
-    input_type: TypeExpression
+    input_type: StubTypeExpression
     result: bool
 
 
@@ -458,7 +244,7 @@ def _lower_map_function(
                 f"no parameter is controlled by {controller}",
             )
         )
-    seen: set[TypeExpression | Predicate] = set()
+    seen: set[StubTypeExpression | Predicate] = set()
     for case in mapping.cases:
         if case.test in seen:
             return Failure(
@@ -505,7 +291,7 @@ def _lower_map_function(
 
 
 def map_specializations(mapping: MapType, controller: str) -> tuple[MapCase, ...]:
-    candidates: list[TypeExpression] = []
+    candidates: list[StubTypeExpression] = []
     for case in mapping.cases:
         tests = (
             tuple(
@@ -523,7 +309,7 @@ def map_specializations(mapping: MapType, controller: str) -> tuple[MapCase, ...
     )
 
 
-def map_default_output(mapping: MapType, controller: str) -> TypeExpression:
+def map_default_output(mapping: MapType, controller: str) -> StubTypeExpression:
     return next(
         (
             case.output_type
@@ -542,8 +328,8 @@ def map_default_output(mapping: MapType, controller: str) -> TypeExpression:
 def _map_output_for_input(
     mapping: MapType,
     controller: str,
-    input_type: TypeExpression,
-) -> TypeExpression:
+    input_type: StubTypeExpression,
+) -> StubTypeExpression:
     for case in mapping.cases:
         matched = (
             _predicate_result_for_input(case.test, controller, input_type)
@@ -558,7 +344,7 @@ def _map_output_for_input(
 def _predicate_result_for_input(
     predicate: Predicate,
     controller: str,
-    input_type: TypeExpression,
+    input_type: StubTypeExpression,
 ) -> bool:
     resolved = _resolve_predicate_for_input(predicate, controller, input_type)
     if resolved is not None:
@@ -577,7 +363,7 @@ def _predicate_result_for_input(
 def _resolve_predicate_for_input(
     predicate: Predicate,
     controller: str,
-    input_type: TypeExpression,
+    input_type: StubTypeExpression,
 ) -> bool | None:
     match predicate:
         case EqualPredicate(left, right):
@@ -611,8 +397,8 @@ def _resolve_predicate_for_input(
 
 
 def _known_assignability(
-    source: TypeExpression,
-    target: TypeExpression,
+    source: StubTypeExpression,
+    target: StubTypeExpression,
 ) -> bool | None:
     if source == target or target == TypeName("object"):
         return True
@@ -650,8 +436,8 @@ def predicate_default(predicate: Predicate) -> bool:
 def _specialized_signature(
     declaration: FunctionDeclaration,
     controller: str,
-    input_type: TypeExpression,
-    return_type: TypeExpression,
+    input_type: StubTypeExpression,
+    return_type: StubTypeExpression,
 ) -> FunctionDeclaration:
     return FunctionDeclaration(
         declaration.name,
@@ -676,7 +462,7 @@ def _specialized_signature(
 
 
 def _replace_return(
-    declaration: FunctionDeclaration, return_type: TypeExpression
+    declaration: FunctionDeclaration, return_type: StubTypeExpression
 ) -> FunctionDeclaration:
     return FunctionDeclaration(
         declaration.name,
@@ -700,7 +486,7 @@ def predicate_controller(
 def _predicate_variable_names(predicate: Predicate) -> tuple[str, ...]:
     names: list[str] = []
 
-    def add(expression: TypeExpression) -> None:
+    def add(expression: StubTypeExpression) -> None:
         for name in _collect_variable_names(expression):
             if name not in names:
                 names.append(name)
@@ -822,12 +608,12 @@ def _function_has_controller(declaration: FunctionDeclaration, controller: str) 
     )
 
 
-def _has_variable(expression: TypeExpression, variable: str) -> bool:
+def _has_variable(expression: StubTypeExpression, variable: str) -> bool:
     return variable in _collect_variable_names(expression)
 
 
-def _union(expressions: tuple[TypeExpression, ...]) -> TypeExpression:
-    members: list[TypeExpression] = []
+def _union(expressions: tuple[StubTypeExpression, ...]) -> StubTypeExpression:
+    members: list[StubTypeExpression] = []
     for expression in expressions:
         candidates = (
             expression.members
@@ -844,15 +630,15 @@ def _union(expressions: tuple[TypeExpression, ...]) -> TypeExpression:
 
 @dataclass(frozen=True, slots=True)
 class _StructuralMapChoice:
-    input_type: TypeExpression
-    output_type: TypeExpression
+    input_type: StubTypeExpression
+    output_type: StubTypeExpression
     is_default: bool
 
 
 def _expand_signatures(
     declaration: FunctionDeclaration,
     each_parameter: Parameter,
-    argument_pattern: TypeExpression,
+    argument_pattern: StubTypeExpression,
     captured_name: str,
     arity: int,
 ) -> tuple[FunctionDeclaration, ...]:
@@ -899,11 +685,11 @@ def _expand_signatures(
 def _expand_signature_with_types(
     declaration: FunctionDeclaration,
     each_parameter: Parameter,
-    argument_pattern: TypeExpression,
+    argument_pattern: StubTypeExpression,
     captured_name: str,
     generated_names: tuple[str, ...],
-    captured_inputs: tuple[TypeExpression, ...],
-    collected_outputs: tuple[TypeExpression, ...],
+    captured_inputs: tuple[StubTypeExpression, ...],
+    collected_outputs: tuple[StubTypeExpression, ...],
 ) -> FunctionDeclaration:
     expanded_parameters: list[Parameter] = []
     for parameter in declaration.parameters:
@@ -936,7 +722,7 @@ def _expand_signature_with_types(
 
 
 def _find_collected_map(
-    expression: TypeExpression, captured_name: str
+    expression: StubTypeExpression, captured_name: str
 ) -> MapType | None:
     if (
         isinstance(expression, CollectType)
@@ -994,8 +780,8 @@ def _map_subject_name(mapping: MapType) -> str:
 
 
 def _replace_map_value(
-    expression: TypeExpression, replacement: TypeExpression
-) -> TypeExpression:
+    expression: StubTypeExpression, replacement: StubTypeExpression
+) -> StubTypeExpression:
     if isinstance(expression, MapValueType):
         return replacement
     if isinstance(expression, TypeApplication):
@@ -1091,10 +877,10 @@ def _type_parameter_name(declaration: str) -> str:
     return declaration.lstrip("*").split(":", 1)[0].split("=", 1)[0].strip()
 
 
-def _collect_variable_names(expression: TypeExpression) -> tuple[str, ...]:
+def _collect_variable_names(expression: StubTypeExpression) -> tuple[str, ...]:
     names: list[str] = []
 
-    def visit(current: TypeExpression) -> None:
+    def visit(current: StubTypeExpression) -> None:
         if isinstance(current, TypeVariable):
             if current.name not in names:
                 names.append(current.name)
@@ -1118,8 +904,8 @@ def _collect_variable_names(expression: TypeExpression) -> tuple[str, ...]:
 
 
 def _substitute(
-    expression: TypeExpression, variable: str, replacement: TypeExpression
-) -> TypeExpression:
+    expression: StubTypeExpression, variable: str, replacement: StubTypeExpression
+) -> StubTypeExpression:
     if isinstance(expression, TypeVariable):
         return replacement if expression.name == variable else expression
     if isinstance(expression, TypeApplication):
@@ -1149,16 +935,16 @@ def _substitute(
 
 
 def _substitute_collect(
-    expression: TypeExpression,
+    expression: StubTypeExpression,
     variable: str,
-    replacements: tuple[TypeExpression, ...],
-) -> TypeExpression:
+    replacements: tuple[StubTypeExpression, ...],
+) -> StubTypeExpression:
     if isinstance(expression, CollectType):
         if _collects_variable(expression.item, variable):
             return FixedTuple(replacements)
         return expression
     if isinstance(expression, TypeApplication):
-        arguments: list[TypeExpression] = []
+        arguments: list[StubTypeExpression] = []
         for argument in expression.arguments:
             if (
                 isinstance(argument, UnpackedType)
@@ -1193,17 +979,17 @@ def _substitute_collect(
     return expression
 
 
-def _collects_variable(expression: TypeExpression, variable: str) -> bool:
+def _collects_variable(expression: StubTypeExpression, variable: str) -> bool:
     return expression == TypeVariable(variable) or (
         isinstance(expression, MapType) and expression.subject == TypeVariable(variable)
     )
 
 
 def _erase_markers(
-    expression: TypeExpression,
+    expression: StubTypeExpression,
     type_var_tuples: frozenset[str] = frozenset(),
     broad_type_var_tuples: frozenset[str] = frozenset(),
-) -> TypeExpression:
+) -> StubTypeExpression:
     if isinstance(expression, EachType):
         item = _erase_markers(expression.item, type_var_tuples, broad_type_var_tuples)
         for name in broad_type_var_tuples:
@@ -1307,7 +1093,7 @@ def _function_contains_literal(declaration: FunctionDeclaration) -> bool:
     )
 
 
-def _contains_literal(expression: TypeExpression) -> bool:
+def _contains_literal(expression: StubTypeExpression) -> bool:
     if isinstance(expression, LiteralType):
         return True
     if isinstance(expression, TypeApplication):

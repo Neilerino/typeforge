@@ -6,9 +6,7 @@ from typeforge.compiler.source._model import (
     MarkerKind,
     MarkerTypeExpression,
     SchemaTypeExpression,
-)
-from typeforge.compiler.source._model import (
-    TypeExpression as SourceTypeExpression,
+    SourceTypeExpression,
 )
 
 

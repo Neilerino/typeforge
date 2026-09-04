@@ -1,12 +1,6 @@
 from returns.result import Failure, Result, Success
 
 from typeforge.compiler.lowering import (
-    MapType,
-    TypeExpression,
-    TypeName,
-    TypeVariable,
-    UnionExpression,
-    is_predicate,
     map_default_output,
     map_specializations,
     predicate_controller,
@@ -20,6 +14,14 @@ from typeforge.compiler.pipeline import (
     substitute_type,
 )
 from typeforge.compiler.source import FunctionDeclaration as SourceFunction
+from typeforge.compiler.stub_ir import (
+    MapType,
+    StubTypeExpression,
+    TypeName,
+    TypeVariable,
+    UnionExpression,
+    is_predicate,
+)
 from typeforge.verification.model import Alternative, ReturnContract
 
 
@@ -95,12 +97,12 @@ def build_return_contract(
     )
 
 
-def aggregate_output(contract: ReturnContract) -> TypeExpression:
+def aggregate_output(contract: ReturnContract) -> StubTypeExpression:
     return union_types(tuple(item.output_type for item in contract.alternatives))
 
 
-def union_types(expressions: tuple[TypeExpression, ...]) -> TypeExpression:
-    flattened: list[TypeExpression] = []
+def union_types(expressions: tuple[StubTypeExpression, ...]) -> StubTypeExpression:
+    flattened: list[StubTypeExpression] = []
     for expression in expressions:
         members = (
             expression.members

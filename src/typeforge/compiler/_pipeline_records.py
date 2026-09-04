@@ -4,36 +4,17 @@ from typing import assert_never
 
 from returns.result import Failure, safe
 
-from typeforge.compiler._pipeline_adaptation import substitute_type
 from typeforge.compiler._pipeline_models import (
     AdaptationError,
     DerivedRecord,
     RecordMaterialization,
 )
-from typeforge.compiler._pipeline_utils import merge_imports
 from typeforge.compiler._semantic_lowering import (
     SemanticLoweringError,
     lower_semantic_expression,
 )
 from typeforge.compiler._type_system import COMPILER_TYPE_SYSTEM
-from typeforge.compiler._type_tree import rewrite_type
 from typeforge.compiler.emitter import emit_stub_module
-from typeforge.compiler.lowering import (
-    ClassDeclaration,
-    ClassField,
-    Declaration,
-    FunctionDeclaration,
-    Import,
-    OverloadDeclaration,
-    Parameter,
-    StubModule,
-    TypeAliasDeclaration,
-    TypeApplication,
-    TypeExpression,
-    TypeName,
-    UnionExpression,
-    VariableDeclaration,
-)
 from typeforge.compiler.records import (
     NamedType,
     NeverType,
@@ -48,6 +29,7 @@ from typeforge.compiler.source import (
     MarkerTypeExpression,
     NameTypeExpression,
     SourceModule,
+    SourceTypeExpression,
     normalize_marker,
     schema_inner_expression,
 )
@@ -57,8 +39,24 @@ from typeforge.compiler.source import (
 from typeforge.compiler.source import (
     TypedDictDeclaration as SourceTypedDict,
 )
-from typeforge.compiler.source import (
-    TypeExpression as SourceTypeExpression,
+from typeforge.compiler.stub_ir import (
+    ClassDeclaration,
+    ClassField,
+    Declaration,
+    FunctionDeclaration,
+    Import,
+    OverloadDeclaration,
+    Parameter,
+    StubModule,
+    StubTypeExpression,
+    TypeAliasDeclaration,
+    TypeApplication,
+    TypeName,
+    UnionExpression,
+    VariableDeclaration,
+    merge_imports,
+    rewrite_type,
+    substitute_type,
 )
 from typeforge.semantics import (
     MapFieldsExpression,
@@ -214,7 +212,7 @@ def typed_dict_declaration(shape: RecordShape[StaticType]) -> ClassDeclaration:
     )
 
 
-def _typed_dict_field_type(field: RecordField[StaticType]) -> TypeExpression:
+def _typed_dict_field_type(field: RecordField[StaticType]) -> StubTypeExpression:
     annotation = _static_type_expression(field.value)
     if field.readonly:
         annotation = TypeApplication(
@@ -229,7 +227,7 @@ def _typed_dict_field_type(field: RecordField[StaticType]) -> TypeExpression:
     return annotation
 
 
-def _static_type_expression(value: StaticType) -> TypeExpression:
+def _static_type_expression(value: StaticType) -> StubTypeExpression:
     match value:
         case NamedType(name):
             return TypeName(name)
@@ -295,15 +293,15 @@ def replace_record_aliases_in_overload(
 
 
 def replace_record_aliases(
-    expression: TypeExpression,
+    expression: StubTypeExpression,
     derived: tuple[DerivedRecord, ...],
-) -> TypeExpression:
+) -> StubTypeExpression:
     replacements = {
         (item.alias, item.input_name): TypeName(item.shape.name or "object")
         for item in derived
     }
 
-    def replace(current: TypeExpression) -> TypeExpression | None:
+    def replace(current: StubTypeExpression) -> StubTypeExpression | None:
         match current:
             case TypeApplication(TypeName(alias), (TypeName(input_name),)):
                 return replacements.get((alias, input_name))

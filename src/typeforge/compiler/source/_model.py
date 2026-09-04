@@ -48,22 +48,22 @@ class NameTypeExpression:
 class AppliedTypeExpression:
     source: str
     span: SourceSpan
-    constructor: TypeExpression
-    arguments: tuple[TypeExpression, ...]
+    constructor: SourceTypeExpression
+    arguments: tuple[SourceTypeExpression, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class UnionTypeExpression:
     source: str
     span: SourceSpan
-    members: tuple[TypeExpression, ...]
+    members: tuple[SourceTypeExpression, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class StarredTypeExpression:
     source: str
     span: SourceSpan
-    item: TypeExpression
+    item: SourceTypeExpression
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,14 +71,14 @@ class MarkerTypeExpression:
     source: str
     span: SourceSpan
     marker: MarkerKind
-    arguments: tuple[TypeExpression, ...]
+    arguments: tuple[SourceTypeExpression, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class SchemaTypeExpression:
     source: str
     span: SourceSpan
-    arguments: tuple[TypeExpression, ...]
+    arguments: tuple[SourceTypeExpression, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,7 +93,7 @@ class RawTypeExpression:
     span: SourceSpan
 
 
-type TypeExpression = (
+type SourceTypeExpression = (
     NameTypeExpression
     | AppliedTypeExpression
     | UnionTypeExpression
@@ -117,7 +117,7 @@ class ParameterKind(Enum):
 class Parameter:
     name: str
     kind: ParameterKind
-    annotation: TypeExpression | None
+    annotation: SourceTypeExpression | None
     span: SourceSpan
     has_default: bool
 
@@ -141,7 +141,7 @@ class FunctionDeclaration:
     name: str
     qualified_name: tuple[str, ...]
     parameters: tuple[Parameter, ...]
-    returns: TypeExpression | None
+    returns: SourceTypeExpression | None
     type_parameters: tuple[TypeParameter, ...]
     span: SourceSpan
     is_async: bool
@@ -153,14 +153,14 @@ class TypeAliasDeclaration:
     name: str
     qualified_name: tuple[str, ...]
     type_parameters: tuple[TypeParameter, ...]
-    value: TypeExpression
+    value: SourceTypeExpression
     span: SourceSpan
 
 
 @dataclass(frozen=True, slots=True)
 class TypedDictField:
     name: str
-    annotation: TypeExpression
+    annotation: SourceTypeExpression
     required: bool
     readonly: bool
     span: SourceSpan
@@ -179,7 +179,7 @@ class TypedDictDeclaration:
 @dataclass(frozen=True, slots=True)
 class ClassField:
     name: str
-    annotation: TypeExpression
+    annotation: SourceTypeExpression
     span: SourceSpan
     has_default: bool
 
@@ -189,7 +189,7 @@ class ClassDeclaration:
     name: str
     qualified_name: tuple[str, ...]
     type_parameters: tuple[TypeParameter, ...]
-    bases: tuple[TypeExpression, ...]
+    bases: tuple[SourceTypeExpression, ...]
     keywords: tuple[str, ...]
     decorators: tuple[str, ...]
     fields: tuple[ClassField, ...]
@@ -207,7 +207,7 @@ class SourceModule:
 
 
 def contains_marker(
-    expression: TypeExpression, marker: MarkerKind | None = None
+    expression: SourceTypeExpression, marker: MarkerKind | None = None
 ) -> bool:
     if isinstance(expression, MarkerTypeExpression):
         if marker is None or expression.marker is marker:
