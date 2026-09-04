@@ -1,9 +1,10 @@
 from returns.result import Failure, Success
 
-from typeforge.compiler._type_system import COMPILER_TYPE_SYSTEM
-from typeforge.compiler.records import (
+from typeforge.compiler.semantic_adapter import (
+    COMPILER_TYPE_SYSTEM,
     NEVER,
     NamedType,
+    ParameterizedType,
     StaticType,
     UnionType,
 )
@@ -37,8 +38,6 @@ def type_reference(value: StaticType) -> TypeReference[StaticType]:
 
 
 def test_compiler_type_system_inspects_parameterized_types() -> None:
-    from typeforge.compiler.records import ParameterizedType
-
     value = ParameterizedType(NamedType("list"), (INT,))
 
     assert COMPILER_TYPE_SYSTEM.inspect(value) == Success(
@@ -47,8 +46,6 @@ def test_compiler_type_system_inspects_parameterized_types() -> None:
 
 
 def test_compiler_type_system_builds_parameterized_types() -> None:
-    from typeforge.compiler.records import ParameterizedType
-
     shape = ParameterizedTypeShape[StaticType](NamedType("set"), (INT,))
 
     assert COMPILER_TYPE_SYSTEM.build(shape) == Success(

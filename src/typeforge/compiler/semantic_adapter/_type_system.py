@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from returns.result import Failure, Result, Success
 
-from typeforge.compiler.records import (
+from typeforge.compiler.semantic_adapter._types import (
     NamedType,
     NeverType,
     ParameterizedType,
@@ -33,28 +33,36 @@ class CompilerTypeSystem:
         match source, target:
             case NeverType(), _:
                 return Success(True)
+
             case UnionType(), _:
                 for member in source.members:
                     result = self.assignable(member, target)
                     if isinstance(result, Failure):
                         return result
+
                     if not result.unwrap():
                         return Success(False)
+
                 return Success(True)
+
             case _, UnionType():
                 for member in target.members:
                     result = self.assignable(source, member)
                     if isinstance(result, Failure):
                         return result
+
                     if result.unwrap():
                         return Success(True)
+
                 return Success(False)
+
             case NamedType(), NamedType():
                 return Success(
                     source.name == target.name
                     or target.name == "object"
                     or target.name in source.bases
                 )
+
             case _:
                 return Success(source == target)
 
@@ -64,8 +72,10 @@ class CompilerTypeSystem:
         match value:
             case NeverType():
                 return Success(())
+
             case UnionType(members):
                 return Success(members)
+
             case _:
                 return Success((value,))
 

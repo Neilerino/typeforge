@@ -3,16 +3,14 @@ from pathlib import Path
 import pytest
 from returns.result import Success
 
-from typeforge.compiler._semantic_lowering import (
-    SemanticLoweringError,
-    lower_semantic_expression,
-)
-from typeforge.compiler._type_system import COMPILER_TYPE_SYSTEM
-from typeforge.compiler.records import (
+from typeforge.compiler.semantic_adapter import (
+    COMPILER_TYPE_SYSTEM,
     NamedType,
     ParameterizedType,
+    SemanticLoweringError,
     StaticType,
     UnionType,
+    lower_semantic_expression,
 )
 from typeforge.compiler.source import (
     AppliedTypeExpression,

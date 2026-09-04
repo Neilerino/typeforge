@@ -4,7 +4,11 @@ import ast
 from dataclasses import dataclass
 from functools import singledispatch
 
-from typeforge.compiler.records import NamedType, ParameterizedType, StaticType
+from typeforge.compiler.semantic_adapter._types import (
+    NamedType,
+    ParameterizedType,
+    StaticType,
+)
 from typeforge.compiler.source import (
     AllMarker,
     AnyMarker,

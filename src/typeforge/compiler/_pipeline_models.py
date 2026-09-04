@@ -5,7 +5,7 @@ from pathlib import Path
 
 from typeforge.compiler.adaptation import AdaptationError
 from typeforge.compiler.lowering import LoweringError
-from typeforge.compiler.records import StaticType
+from typeforge.compiler.semantic_adapter import StaticType
 from typeforge.compiler.source import FrontendError
 from typeforge.compiler.stub_ir import (
     ClassDeclaration,
