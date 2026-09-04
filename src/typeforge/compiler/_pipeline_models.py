@@ -4,16 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from typeforge.compiler.adaptation import AdaptationError
-from typeforge.compiler.lowering import LoweringError
-from typeforge.compiler.semantic_adapter import StaticType
+from typeforge.compiler.record_materialization import RecordMaterializationError
 from typeforge.compiler.source import FrontendError
-from typeforge.compiler.stub_ir import (
-    ClassDeclaration,
-    ModuleImport,
-    OverloadDeclaration,
-    VariableDeclaration,
-)
-from typeforge.semantics import RecordShape
+from typeforge.compiler.specialization import LoweringError
+from typeforge.compiler.stub_ir import ModuleImport, VariableDeclaration
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +26,7 @@ type GenerationError = (
     FrontendError
     | AdaptationError
     | LoweringError
+    | RecordMaterializationError
     | EmissionError
     | UnsupportedPublicDeclaration
 )
@@ -41,21 +36,6 @@ type GenerationError = (
 class GeneratedModule:
     source_path: Path
     content: str
-
-
-@dataclass(frozen=True, slots=True)
-class DerivedRecord:
-    alias: str
-    input_name: str
-    shape: RecordShape[StaticType]
-
-
-@dataclass(frozen=True, slots=True)
-class RecordMaterialization:
-    declarations: tuple[ClassDeclaration, ...]
-    replacements: tuple[tuple[str, OverloadDeclaration], ...]
-    imports: tuple[ModuleImport, ...]
-    derived: tuple[DerivedRecord, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

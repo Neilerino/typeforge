@@ -1,9 +1,13 @@
 from dataclasses import dataclass
-from enum import StrEnum
 from itertools import product
 
 from returns.result import Failure, Result, Success
 
+from typeforge.compiler.specialization._models import (
+    ArityFrontier,
+    LoweringError,
+    LoweringErrorCode,
+)
 from typeforge.compiler.stub_ir import (
     AllPredicate,
     AnyPredicate,
@@ -41,29 +45,6 @@ from typeforge.compiler.stub_ir import (
     VariableDeclaration,
     is_predicate,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class ArityFrontier:
-    minimum: int = 0
-    maximum: int = 8
-
-
-class LoweringErrorCode(StrEnum):
-    INVALID_FRONTIER = "invalid_frontier"
-    INVALID_EACH_POSITION = "invalid_each_position"
-    MISSING_CAPTURE = "missing_capture"
-    MULTIPLE_CAPTURES = "multiple_captures"
-    MISSING_CONTROLLER = "missing_controller"
-    UNSUPPORTED_PREDICATE = "unsupported_predicate"
-    DUPLICATE_MAP_CASE = "duplicate_map_case"
-
-
-@dataclass(frozen=True, slots=True)
-class LoweringError:
-    code: LoweringErrorCode
-    declaration: str
-    message: str
 
 
 def lower_variadic_module(

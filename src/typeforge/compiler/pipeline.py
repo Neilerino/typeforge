@@ -9,20 +9,10 @@ from pathlib import Path
 from returns.result import Result
 
 from typeforge.compiler._pipeline_models import (
-    DerivedRecord,
     EmissionError,
     GeneratedModule,
     GenerationError,
-    RecordMaterialization,
     UnsupportedPublicDeclaration,
-)
-from typeforge.compiler._pipeline_records import (
-    apply_record_materialization,
-    build_record_shapes,
-    derive_record_shapes,
-    materialize_record_transforms,
-    render_typed_dict,
-    replace_record_aliases,
 )
 from typeforge.compiler._pipeline_utils import (
     collect_module_variables,
@@ -40,8 +30,19 @@ from typeforge.compiler.adaptation import (
     expand_map_aliases,
 )
 from typeforge.compiler.emitter import emit_stub_module
-from typeforge.compiler.lowering import ArityFrontier, lower_variadic_module
+from typeforge.compiler.record_materialization import (
+    DerivedRecord,
+    RecordMaterialization,
+    RecordMaterializationError,
+    apply_record_materialization,
+    build_record_shapes,
+    derive_record_shapes,
+    materialize_record_transforms,
+    render_typed_dict,
+    replace_record_aliases,
+)
 from typeforge.compiler.source import SourceModule, parse_module
+from typeforge.compiler.specialization import ArityFrontier, lower_variadic_module
 from typeforge.compiler.stub_ir import StubModule, merge_imports, substitute_type
 
 
@@ -88,6 +89,7 @@ __all__ = (
     "EmissionError",
     "GeneratedModule",
     "GenerationError",
+    "RecordMaterializationError",
     "SemanticRelationshipAlias",
     "UnsupportedPublicDeclaration",
     "adapt_alias",

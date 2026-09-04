@@ -4,9 +4,12 @@ from typing import assert_never
 
 from returns.result import Failure, safe
 
-from typeforge.compiler._pipeline_models import DerivedRecord, RecordMaterialization
-from typeforge.compiler.adaptation import AdaptationError
 from typeforge.compiler.emitter import emit_stub_module
+from typeforge.compiler.record_materialization._models import (
+    DerivedRecord,
+    RecordMaterialization,
+    RecordMaterializationError,
+)
 from typeforge.compiler.semantic_adapter import (
     COMPILER_TYPE_SYSTEM,
     NamedType,
@@ -62,7 +65,7 @@ from typeforge.semantics import (
 )
 
 
-@safe(exceptions=(AdaptationError,))
+@safe(exceptions=(RecordMaterializationError,))
 def materialize_record_transforms(
     module: SourceModule, stub: StubModule
 ) -> RecordMaterialization:
@@ -341,7 +344,7 @@ def build_record_shapes(
     return tuple(shapes)
 
 
-@safe(exceptions=(AdaptationError,))
+@safe(exceptions=(RecordMaterializationError,))
 def derive_record_shapes(
     aliases: tuple[SourceTypeAlias, ...],
     source_shapes: tuple[RecordShape[StaticType], ...],
@@ -365,7 +368,7 @@ def _derive_record_shapes(
         if not isinstance(marker, MapFieldsMarker):
             continue
         if len(alias.type_parameters) != 1:
-            raise AdaptationError(
+            raise RecordMaterializationError(
                 alias.name,
                 alias.value.source,
                 "MapFields aliases require exactly one type parameter",
@@ -378,11 +381,11 @@ def _derive_record_shapes(
                     value, ((parameter, source_shape),), output_name
                 )
             except SemanticLoweringError as error:
-                raise AdaptationError(
+                raise RecordMaterializationError(
                     alias.name, alias.value.source, error.message
                 ) from error
             if not isinstance(semantic_expression, MapFieldsExpression):
-                raise AdaptationError(
+                raise RecordMaterializationError(
                     alias.name,
                     alias.value.source,
                     "alias must evaluate to MapFields",
@@ -390,14 +393,14 @@ def _derive_record_shapes(
 
             evaluated_result = evaluate(semantic_expression, COMPILER_TYPE_SYSTEM)
             if isinstance(evaluated_result, Failure):
-                raise AdaptationError(
+                raise RecordMaterializationError(
                     alias.name,
                     alias.value.source,
                     evaluated_result.failure().message,
                 )
             evaluated = evaluated_result.unwrap()
             if not isinstance(evaluated, RecordShape):
-                raise AdaptationError(
+                raise RecordMaterializationError(
                     alias.name,
                     alias.value.source,
                     "MapFields must evaluate to a record shape",

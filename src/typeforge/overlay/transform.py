@@ -15,14 +15,10 @@ from typeforge.analysis.model import (
     VirtualDocument,
 )
 from typeforge.compiler.emitter import emit_stub_module, emit_type_expression
-from typeforge.compiler.lowering import (
-    ArityFrontier,
-    LoweringError,
-    lower_variadic_module,
-)
 from typeforge.compiler.pipeline import (
     AdaptationError,
     DerivedRecord,
+    RecordMaterializationError,
     SemanticRelationshipAlias,
     adapt_alias,
     adapt_function,
@@ -49,6 +45,11 @@ from typeforge.compiler.source import (
 )
 from typeforge.compiler.source import (
     FunctionDeclaration as SourceFunction,
+)
+from typeforge.compiler.specialization import (
+    ArityFrontier,
+    LoweringError,
+    lower_variadic_module,
 )
 from typeforge.compiler.stub_ir import (
     EachType,
@@ -932,7 +933,10 @@ def _frontend_error(error: SourceSyntaxError) -> OverlayError:
     return OverlayError(OverlayErrorCode.SYNTAX, error.path, error.message)
 
 
-def _adaptation_error(path: Path, error: AdaptationError) -> OverlayError:
+def _adaptation_error(
+    path: Path,
+    error: AdaptationError | RecordMaterializationError,
+) -> OverlayError:
     return OverlayError(OverlayErrorCode.ADAPTATION, path, error.message)
 
 

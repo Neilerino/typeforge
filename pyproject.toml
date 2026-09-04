@@ -34,6 +34,8 @@ compiler = [
 [dependency-groups]
 dev = [
     "archunitpython>=1.5,<2",
+    "flake8>=7.3.0",
+    "flake8-clean-block>=0.1.2",
     "mypy>=2.2,<3",
     "pydantic>=2.13.4,<3",
     "pyrefly>=1.1.1",

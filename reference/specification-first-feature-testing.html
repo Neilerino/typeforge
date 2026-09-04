@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Printable reference for specification-first TDD with strict pytest xfail in Typeforge.">
+    <title>Specification-first feature testing · Reference</title>
+    <link rel="stylesheet" href="../assets/course.css">
+    <style>
+      .reference-header {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(15rem, 0.8fr);
+        gap: clamp(2rem, 6vw, 5rem);
+        align-items: end;
+        padding-block: clamp(3rem, 8vw, 6rem);
+      }
+
+      .reference-header aside {
+        border-left: 0.3rem solid var(--blue);
+        padding-left: 1rem;
+        color: var(--muted);
+      }
+
+      .reference-main {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1.2rem;
+      }
+
+      .reference-main section {
+        align-content: start;
+        gap: 0.9rem;
+        border-top: 0.3rem solid var(--rule);
+        padding-top: 1rem;
+      }
+
+      .reference-main section.wide {
+        grid-column: 1 / -1;
+      }
+
+      .reference-list {
+        display: grid;
+        gap: 0.75rem;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        counter-reset: reference-step;
+      }
+
+      .reference-list li {
+        display: grid;
+        grid-template-columns: 2rem 1fr;
+        gap: 0.65rem;
+        align-items: start;
+        counter-increment: reference-step;
+      }
+
+      .reference-list li::before {
+        content: counter(reference-step, decimal-leading-zero);
+        color: var(--blue);
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        font-weight: 800;
+      }
+
+      .checklist {
+        display: grid;
+        gap: 0.55rem;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .checklist li {
+        display: grid;
+        grid-template-columns: 1.2rem 1fr;
+        gap: 0.5rem;
+      }
+
+      .checklist li::before {
+        content: "□";
+        color: var(--blue);
+        font-family: var(--mono);
+      }
+
+      .anti-patterns {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1px;
+        background: var(--rule);
+        border: 1px solid var(--rule);
+      }
+
+      .anti-patterns article {
+        display: grid;
+        gap: 0.35rem;
+        padding: 1rem;
+        background: var(--surface);
+      }
+
+      .anti-patterns strong {
+        color: var(--red);
+      }
+
+      .commands {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1px;
+        background: var(--rule);
+      }
+
+      .commands div {
+        padding: 1rem;
+        background: var(--surface);
+      }
+
+      .commands code {
+        display: block;
+        margin-top: 0.35rem;
+        overflow-wrap: anywhere;
+      }
+
+      @media (max-width: 48rem) {
+        .reference-header,
+        .reference-main,
+        .anti-patterns,
+        .commands {
+          grid-template-columns: 1fr;
+        }
+
+        .reference-main section.wide {
+          grid-column: auto;
+        }
+      }
+
+      @media print {
+        @page {
+          margin: 0.55in;
+          size: letter;
+        }
+
+        .reference-header {
+          grid-template-columns: 1.2fr 0.8fr;
+          padding-block: 0 1.4rem;
+        }
+
+        .reference-main {
+          grid-template-columns: 1fr 1fr;
+          gap: 0.7rem;
+        }
+
+        .anti-patterns {
+          grid-template-columns: repeat(3, 1fr);
+        }
+
+        h1 {
+          font-size: 34pt;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page-shell">
+      <div class="utility-bar">
+        <nav aria-label="Reference links"><a href="../lessons/0001-from-feature-idea-to-executable-contract.html">Lesson 0001</a><a href="../MISSION.md">Learning mission</a><a href="../RESOURCES.md">Sources</a></nav>
+        <button class="theme-toggle" type="button" data-theme-toggle>Theme</button>
+      </div>
+
+      <header class="reference-header">
+        <div class="lesson-header" style="padding-block: 0">
+          <span class="eyebrow">Typeforge field reference</span>
+          <h1>Specification-first feature testing</h1>
+        </div>
+        <aside><strong>The short version</strong><p>Specify the promise at a stable boundary. Prove the test fails for that missing promise. Park it with strict <code>xfail</code>. Expose red with <code>--runxfail</code>. Remove the marker when it passes.</p></aside>
+      </header>
+
+      <main class="reference-main">
+        <section aria-labelledby="roles-title">
+          <span class="eyebrow">Keep the roles separate</span>
+          <h2 id="roles-title">What / how / state</h2>
+          <div class="table-wrap">
+            <table>
+              <tbody>
+                <tr><th>Specification</th><td>What observable behavior means.</td></tr>
+                <tr><th>TDD</th><td>How the next behavior drives design.</td></tr>
+                <tr><th>Strict xfail</th><td>Whether an agreed contract is still pending.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section aria-labelledby="recipe-title">
+          <span class="eyebrow">Recipe</span>
+          <h2 id="recipe-title">From idea to regression</h2>
+          <ol class="reference-list">
+            <li><span><strong>Name the system.</strong> Which boundary owns this promise?</span></li>
+            <li><span><strong>State one rule.</strong> Include examples, edges, and open questions.</span></li>
+            <li><span><strong>Choose an observation.</strong> Output, typed failure, diagnostic, or import graph.</span></li>
+            <li><span><strong>Write one test.</strong> See it fail at the final assertion for the right reason.</span></li>
+            <li><span><strong>Park deliberately.</strong> Add <code>strict=True</code> and a capability reason.</span></li>
+            <li><span><strong>Drive with red visible.</strong> Use <code>--runxfail</code>; implement the smallest slice.</span></li>
+            <li><span><strong>Ratchet.</strong> Let strict XPASS fail, remove the marker, refactor while green.</span></li>
+          </ol>
+        </section>
+
+        <section class="wide" aria-labelledby="seams-title">
+          <span class="eyebrow">Typeforge boundary map</span>
+          <h2 id="seams-title">Put each promise where it can survive refactoring</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Boundary</th><th>Input</th><th>Observable result</th><th>Test area</th></tr></thead>
+              <tbody>
+                <tr><td>Public compiler</td><td>Authored Python source</td><td>Complete deterministic stub or typed failure</td><td><code>tests/unit/compiler/test_pipeline.py</code></td></tr>
+                <tr><td>Semantic adapter</td><td>Compiler source model</td><td>Shared semantic expression</td><td><code>tests/unit/compiler/semantic_adapter/</code></td></tr>
+                <tr><td>Shared semantics</td><td>Expression + backend protocol</td><td>Typed <code>Result</code>; preserved failure identity</td><td><code>tests/unit/semantics/</code></td></tr>
+                <tr><td>Architecture</td><td>Package topology and imports</td><td>Allowed dependency direction</td><td><code>tests/architecture/</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section aria-labelledby="states-title">
+          <span class="eyebrow">pytest state table</span>
+          <h2 id="states-title">Know what green means</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Marker</th><th>Behavior</th><th>Report</th><th>Suite</th></tr></thead>
+              <tbody>
+                <tr><td>none</td><td>fails</td><td><span class="status" style="color: var(--red)">FAIL</span></td><td>fails</td></tr>
+                <tr><td>strict xfail</td><td>fails</td><td><span class="status pending">XFAIL</span></td><td>passes</td></tr>
+                <tr><td>strict xfail</td><td>passes</td><td><span class="status" style="color: var(--red)">XPASS</span></td><td>fails</td></tr>
+                <tr><td>none</td><td>passes</td><td><span class="status passed">PASS</span></td><td>passes</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section aria-labelledby="ready-title">
+          <span class="eyebrow">Readiness check</span>
+          <h2 id="ready-title">Before marking xfail</h2>
+          <ul class="checklist">
+            <li>The rule is agreed, not speculative.</li>
+            <li>The system boundary is named.</li>
+            <li>The outcome is observable at that boundary.</li>
+            <li>The failure reaches the final behavior assertion.</li>
+            <li>The reason describes a missing capability.</li>
+            <li>The slice fits one short TDD loop.</li>
+            <li><code>raises=...</code> narrows the expected failure when useful.</li>
+          </ul>
+        </section>
+
+        <section class="wide" aria-labelledby="avoid-title">
+          <span class="eyebrow">Failure modes</span>
+          <h2 id="avoid-title">Three ways the practice goes stale</h2>
+          <div class="anti-patterns">
+            <article><strong>TODO cemetery</strong><p>Broad, non-strict xfails hide accidental completion and say nothing about priority or capability.</p></article>
+            <article><strong>Design handcuffs</strong><p>Call counts, private helpers, and internal object choreography turn today’s design into tomorrow’s false contract.</p></article>
+            <article><strong>Example tunnel vision</strong><p>A few examples cannot prove a general rule. Add explicit invariants or property tests where the promise is universal.</p></article>
+          </div>
+        </section>
+
+        <section class="wide" aria-labelledby="commands-title">
+          <span class="eyebrow">Command card</span>
+          <h2 id="commands-title">The loop</h2>
+          <div class="commands">
+            <div><strong>Expose the real red</strong><code>uv run pytest path::test --runxfail -q</code></div>
+            <div><strong>See expected failures</strong><code>uv run pytest path -rx</code></div>
+            <div><strong>Trigger strict XPASS</strong><code>uv run pytest path::test -q</code></div>
+            <div><strong>Validate the finished seam</strong><code>make check test-path source-path</code></div>
+          </div>
+        </section>
+
+        <section class="wide" aria-labelledby="sources-title">
+          <span class="eyebrow">Primary sources</span>
+          <h2 id="sources-title">Read next</h2>
+          <p class="prose"><a href="https://cucumber.io/docs/bdd/">Cucumber: BDD's discovery–formulation–automation loop</a> · <a href="https://docs.pytest.org/en/stable/how-to/skipping.html">pytest: exact xfail behavior</a> · <a href="https://martinfowler.com/bliki/SpecificationByExample.html">Fowler: examples are powerful but incomplete</a> · <a href="https://www.manning.com/books/specification-by-example">Adzic: the full practice</a></p>
+        </section>
+      </main>
+
+      <footer class="lesson-footer"><p>Return to <a href="../lessons/0001-from-feature-idea-to-executable-contract.html">Lesson 0001</a>, or ask your agent to review a contract draft before you encode it.</p></footer>
+    </div>
+    <script src="../assets/lesson.js"></script>
+  </body>
+</html>

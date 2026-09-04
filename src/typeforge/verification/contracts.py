@@ -1,11 +1,5 @@
 from returns.result import Failure, Result, Success
 
-from typeforge.compiler.lowering import (
-    map_default_output,
-    map_specializations,
-    predicate_controller,
-    predicate_is_supported,
-)
 from typeforge.compiler.pipeline import (
     AdaptationError,
     SemanticRelationshipAlias,
@@ -14,6 +8,12 @@ from typeforge.compiler.pipeline import (
     substitute_type,
 )
 from typeforge.compiler.source import FunctionDeclaration as SourceFunction
+from typeforge.compiler.specialization import (
+    map_default_output,
+    map_specializations,
+    predicate_controller,
+    predicate_is_supported,
+)
 from typeforge.compiler.stub_ir import (
     MapType,
     StubTypeExpression,
