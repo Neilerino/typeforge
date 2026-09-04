@@ -3,24 +3,17 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from typeforge.compiler.adaptation import AdaptationError
 from typeforge.compiler.lowering import LoweringError
 from typeforge.compiler.records import StaticType
 from typeforge.compiler.source import FrontendError
 from typeforge.compiler.stub_ir import (
     ClassDeclaration,
-    MapType,
     ModuleImport,
     OverloadDeclaration,
     VariableDeclaration,
 )
 from typeforge.semantics import RecordShape
-
-
-@dataclass(frozen=True)
-class AdaptationError(Exception):
-    declaration: str
-    expression: str
-    message: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,10 +62,3 @@ class RecordMaterialization:
 class ModuleVariables:
     declarations: tuple[VariableDeclaration, ...]
     imports: tuple[ModuleImport, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class SemanticRelationshipAlias:
-    name: str
-    parameter: str
-    relationship: MapType

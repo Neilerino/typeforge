@@ -2,7 +2,6 @@
 
 import ast
 from pathlib import Path
-from typing import assert_never
 
 from returns.result import Failure, Result, Success
 
@@ -10,59 +9,8 @@ from typeforge.compiler._pipeline_models import (
     ModuleVariables,
     UnsupportedPublicDeclaration,
 )
-from typeforge.compiler.source import (
-    AppliedTypeExpression,
-    DefaultMarker,
-    MapMarker,
-    MarkerNormalizationError,
-    MarkerTypeExpression,
-    NameTypeExpression,
-    RawTypeExpression,
-    RuntimeInputTypeExpression,
-    SchemaTypeExpression,
-    SourceModule,
-    SourceTypeExpression,
-    StarredTypeExpression,
-    UnionTypeExpression,
-    normalize_marker,
-)
+from typeforge.compiler.source import SourceModule, static_export_names
 from typeforge.compiler.stub_ir import ImportFrom, TypeName, VariableDeclaration
-
-
-def annotation_contains_default_never(
-    expression: SourceTypeExpression | None,
-) -> bool:
-    match expression:
-        case None:
-            return False
-        case AppliedTypeExpression(constructor=constructor, arguments=arguments):
-            return annotation_contains_default_never(constructor) or any(
-                annotation_contains_default_never(argument) for argument in arguments
-            )
-        case (
-            SchemaTypeExpression(arguments=arguments)
-            | MarkerTypeExpression(arguments=arguments)
-        ):
-            if isinstance(expression, MarkerTypeExpression):
-                try:
-                    marker = normalize_marker(expression)
-                except MarkerNormalizationError:
-                    marker = None
-                if isinstance(marker, MapMarker) and not any(
-                    isinstance(entry, DefaultMarker) for entry in marker.entries
-                ):
-                    return True
-            return any(
-                annotation_contains_default_never(argument) for argument in arguments
-            )
-        case UnionTypeExpression(members=members):
-            return any(annotation_contains_default_never(member) for member in members)
-        case StarredTypeExpression(item=item):
-            return annotation_contains_default_never(item)
-        case NameTypeExpression() | RawTypeExpression() | RuntimeInputTypeExpression():
-            return False
-        case _ as unreachable:
-            assert_never(unreachable)
 
 
 def validate_public_surface(
@@ -118,7 +66,7 @@ def _unsupported_public_statement(
                 target.id for target in targets if isinstance(target, ast.Name)
             )
             if names == ("__all__",):
-                if _static_export_names(value) is not None:
+                if static_export_names(value) is not None:
                     return None
                 return "__all__ must be a literal list or tuple of names"
             return None
@@ -378,62 +326,3 @@ def _annotation_contains_any(annotation: str) -> bool:
     return any(
         isinstance(node, ast.Name) and node.id == "Any" for node in ast.walk(parsed)
     )
-
-
-def collect_imports(path: Path) -> tuple[ImportFrom, ...]:
-    source = path.read_text(encoding="utf-8")
-    module = ast.parse(source, filename=str(path), type_comments=True)
-    exported_names = _collect_export_names(module)
-    imports: list[ImportFrom] = []
-    for statement in module.body:
-        if not isinstance(statement, ast.ImportFrom):
-            continue
-        if (
-            statement.level == 0
-            and statement.module is not None
-            and (
-                statement.module == "typeforge"
-                or statement.module.startswith("typeforge.")
-            )
-        ):
-            continue
-        names = tuple(
-            _render_import_name(alias, exported_names) for alias in statement.names
-        )
-        module_name = f"{'.' * statement.level}{statement.module or ''}"
-        imports.append(ImportFrom(module_name, names))
-    return tuple(imports)
-
-
-def _collect_export_names(module: ast.Module) -> frozenset[str]:
-    for statement in module.body:
-        if not isinstance(statement, ast.Assign):
-            continue
-        if not any(
-            isinstance(target, ast.Name) and target.id == "__all__"
-            for target in statement.targets
-        ):
-            continue
-        names = _static_export_names(statement.value)
-        return frozenset(names or ())
-    return frozenset()
-
-
-def _static_export_names(expression: ast.expr) -> tuple[str, ...] | None:
-    if not isinstance(expression, ast.List | ast.Tuple):
-        return None
-    names = tuple(
-        item.value
-        for item in expression.elts
-        if isinstance(item, ast.Constant) and isinstance(item.value, str)
-    )
-    if len(names) != len(expression.elts):
-        return None
-    return names
-
-
-def _render_import_name(alias: ast.alias, exported_names: frozenset[str]) -> str:
-    local_name = alias.asname or alias.name
-    if alias.asname is not None or local_name in exported_names:
-        return f"{alias.name} as {local_name}"
-    return alias.name

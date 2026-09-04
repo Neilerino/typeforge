@@ -420,6 +420,13 @@ pre-approved test inventory.
    failures as the seam. Remove the dependency on adaptation through contracts at
    the record interface rather than by sharing internal helpers or error models.
 
+   The adaptation extraction intentionally makes the existing hidden dependency
+   explicit: record materialization temporarily imports
+   `compiler.adaptation.AdaptationError`. In this slice, introduce a package-owned
+   `RecordMaterializationError`, update pipeline and overlay failure conversion,
+   remove the adaptation dependency, and then enable the architecture rule that
+   prevents it from returning.
+
 9. **Generation pipeline — `compiler.pipeline`**
 
    Once the inner seams are proven, establish orchestration from a source path to

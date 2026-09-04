@@ -8,23 +8,12 @@ from pathlib import Path
 
 from returns.result import Result
 
-from typeforge.compiler._pipeline_adaptation import (
-    adapt_alias,
-    adapt_function,
-    adapt_source_module,
-    adapt_type_expression,
-    collect_semantic_relationship_aliases,
-    expand_function_map_aliases,
-    expand_map_aliases,
-)
 from typeforge.compiler._pipeline_models import (
-    AdaptationError,
     DerivedRecord,
     EmissionError,
     GeneratedModule,
     GenerationError,
     RecordMaterialization,
-    SemanticRelationshipAlias,
     UnsupportedPublicDeclaration,
 )
 from typeforge.compiler._pipeline_records import (
@@ -38,6 +27,17 @@ from typeforge.compiler._pipeline_records import (
 from typeforge.compiler._pipeline_utils import (
     collect_module_variables,
     validate_public_surface,
+)
+from typeforge.compiler.adaptation import (
+    AdaptationError,
+    SemanticRelationshipAlias,
+    adapt_alias,
+    adapt_function,
+    adapt_source_module,
+    adapt_type_expression,
+    collect_semantic_relationship_aliases,
+    expand_function_map_aliases,
+    expand_map_aliases,
 )
 from typeforge.compiler.emitter import emit_stub_module
 from typeforge.compiler.lowering import ArityFrontier, lower_variadic_module

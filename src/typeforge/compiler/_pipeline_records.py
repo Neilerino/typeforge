@@ -4,16 +4,13 @@ from typing import assert_never
 
 from returns.result import Failure, safe
 
-from typeforge.compiler._pipeline_models import (
-    AdaptationError,
-    DerivedRecord,
-    RecordMaterialization,
-)
+from typeforge.compiler._pipeline_models import DerivedRecord, RecordMaterialization
 from typeforge.compiler._semantic_lowering import (
     SemanticLoweringError,
     lower_semantic_expression,
 )
 from typeforge.compiler._type_system import COMPILER_TYPE_SYSTEM
+from typeforge.compiler.adaptation import AdaptationError
 from typeforge.compiler.emitter import emit_stub_module
 from typeforge.compiler.records import (
     NamedType,

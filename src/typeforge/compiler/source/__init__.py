@@ -1,5 +1,6 @@
 """Authored Python source parsing and data."""
 
+from typeforge.compiler.source._exports import static_export_names
 from typeforge.compiler.source._markers import (
     MARKER_SIGNATURES,
     AllMarker,
@@ -118,4 +119,5 @@ __all__ = [
     "parse_module",
     "parse_source",
     "schema_inner_expression",
+    "static_export_names",
 ]

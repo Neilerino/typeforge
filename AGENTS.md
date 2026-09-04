@@ -10,8 +10,8 @@
 ## Commands
 
 * Install the complete development environment with `uv sync --locked --all-extras --dev`.
+* * Use `make check` to run relevant checks: linting (ruff check/format), type checking (mypy/pyright), tests (pytest)
 * Run focused checks while developing with `make check <relevant source and test paths>`.
-* Before finishing, run `make check`.
 
 ## Design
 
