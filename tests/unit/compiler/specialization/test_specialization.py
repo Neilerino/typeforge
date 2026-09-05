@@ -14,6 +14,7 @@ from typeforge.compiler.stub_ir import (
     EachType,
     EqualPredicate,
     FunctionDeclaration,
+    Import,
     ImportFrom,
     LiteralType,
     MapCase,
@@ -116,6 +117,31 @@ def test_flattens_unpacked_collect_inside_tuple_union() -> None:
         "@overload\n"
         "def query[E](*components: type[object]) -> "
         "tuple[E, *tuple[object, ...]] | None: ...\n"
+    )
+
+
+def test_specialization_preserves_imports_and_sorts_merged_from_imports() -> None:
+    imported = Import("typing", "tf_typing")
+    module = StubModule(
+        "example",
+        variadic_module().declarations,
+        (
+            imported,
+            ImportFrom("z", ("Z",)),
+            ImportFrom("a", ("B",)),
+            imported,
+            ImportFrom("a", ("A", "B")),
+        ),
+    )
+
+    lowered = lower_variadic_module(module, ArityFrontier(1, 1)).unwrap()
+
+    assert lowered.imports == (
+        imported,
+        imported,
+        ImportFrom("a", ("A", "B")),
+        ImportFrom("typing", ("overload",)),
+        ImportFrom("z", ("Z",)),
     )
 
 

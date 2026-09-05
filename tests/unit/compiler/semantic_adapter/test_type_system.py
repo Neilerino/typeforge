@@ -1,3 +1,4 @@
+import pytest
 from returns.result import Failure, Success
 
 from typeforge.compiler.semantic_adapter import (
@@ -98,6 +99,23 @@ def test_map_matches_exact_types_and_uses_default() -> None:
     assert evaluate(expression, COMPILER_TYPE_SYSTEM) == Success(
         ResolvedType(value=UnionType(STR, DATETIME))
     )
+
+
+@pytest.mark.parametrize(
+    ("source", "target", "expected"),
+    (
+        (NEVER, UnionType(), True),
+        (INT, UnionType(), False),
+        (UnionType(), INT, True),
+        (UnionType(INT, UnionType(STR, NEVER)), UnionType(STR, OBJECT), True),
+        (UnionType(INT, UnionType(STR, BYTES)), UnionType(INT, STR), False),
+        (ParameterizedType(NamedType("list"), (INT,)), OBJECT, False),
+    ),
+)
+def test_assignability_preserves_empty_and_nested_union_semantics(
+    source: StaticType, target: StaticType, expected: bool
+) -> None:
+    assert COMPILER_TYPE_SYSTEM.assignable(source, target) == Success(expected)
 
 
 def test_map_defaults_to_never() -> None:

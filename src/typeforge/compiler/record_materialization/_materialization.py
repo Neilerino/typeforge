@@ -1,5 +1,6 @@
 """TypedDict discovery and structural record-transform materialization."""
 
+from dataclasses import replace
 from typing import assert_never
 
 from returns.result import Failure, safe
@@ -44,7 +45,6 @@ from typeforge.compiler.stub_ir import (
     FunctionDeclaration,
     Import,
     OverloadDeclaration,
-    Parameter,
     StubModule,
     StubTypeExpression,
     TypeAliasDeclaration,
@@ -103,12 +103,10 @@ def materialize_record_transforms(
             if item.alias == alias_name and item.shape.name is not None
         )
         if specialized:
-            fallback = FunctionDeclaration(
-                name=name,
-                parameters=stub_functions[name].parameters,
+            fallback = replace(
+                stub_functions[name],
                 return_type=TypeName("object"),
-                type_parameters=stub_functions[name].type_parameters,
-                is_async=stub_functions[name].is_async,
+                decorators=(),
             )
             replacements.append(
                 (
@@ -142,40 +140,35 @@ def replace_record_aliases_in_declaration(
             return replace_record_aliases_in_function(declaration, derived)
         case OverloadDeclaration():
             return replace_record_aliases_in_overload(declaration, derived)
-        case TypeAliasDeclaration(name, value, type_parameters):
-            return TypeAliasDeclaration(
-                name,
-                replace_record_aliases(value, derived),
-                type_parameters,
+        case TypeAliasDeclaration():
+            return replace(
+                declaration,
+                value=replace_record_aliases(declaration.value, derived),
             )
-        case VariableDeclaration(name, annotation):
-            return VariableDeclaration(
-                name,
-                replace_record_aliases(annotation, derived),
+        case VariableDeclaration():
+            return replace(
+                declaration,
+                annotation=replace_record_aliases(declaration.annotation, derived),
             )
-        case ClassDeclaration(
-            name, bases, fields, methods, type_parameters, keywords, decorators
-        ):
-            return ClassDeclaration(
-                name,
-                tuple(replace_record_aliases(base, derived) for base in bases),
-                tuple(
-                    ClassField(
-                        field.name,
-                        replace_record_aliases(field.annotation, derived),
-                        field.default,
-                    )
-                    for field in fields
+        case ClassDeclaration():
+            return replace(
+                declaration,
+                bases=tuple(
+                    replace_record_aliases(base, derived) for base in declaration.bases
                 ),
-                tuple(
+                fields=tuple(
+                    replace(
+                        field,
+                        annotation=replace_record_aliases(field.annotation, derived),
+                    )
+                    for field in declaration.fields
+                ),
+                methods=tuple(
                     replace_record_aliases_in_function(method, derived)
                     if isinstance(method, FunctionDeclaration)
                     else replace_record_aliases_in_overload(method, derived)
-                    for method in methods
+                    for method in declaration.methods
                 ),
-                type_parameters,
-                keywords,
-                decorators,
             )
         case _ as unreachable:
             assert_never(unreachable)
@@ -247,21 +240,16 @@ def replace_record_aliases_in_function(
     declaration: FunctionDeclaration,
     derived: tuple[DerivedRecord, ...],
 ) -> FunctionDeclaration:
-    return FunctionDeclaration(
-        declaration.name,
-        tuple(
-            Parameter(
-                parameter.name,
-                replace_record_aliases(parameter.annotation, derived),
-                parameter.kind,
-                parameter.default,
+    return replace(
+        declaration,
+        parameters=tuple(
+            replace(
+                parameter,
+                annotation=replace_record_aliases(parameter.annotation, derived),
             )
             for parameter in declaration.parameters
         ),
-        replace_record_aliases(declaration.return_type, derived),
-        declaration.type_parameters,
-        declaration.is_async,
-        declaration.decorators,
+        return_type=replace_record_aliases(declaration.return_type, derived),
     )
 
 
@@ -269,13 +257,13 @@ def replace_record_aliases_in_overload(
     declaration: OverloadDeclaration,
     derived: tuple[DerivedRecord, ...],
 ) -> OverloadDeclaration:
-    return OverloadDeclaration(
-        tuple(
+    return replace(
+        declaration,
+        signatures=tuple(
             replace_record_aliases_in_function(signature, derived)
             for signature in declaration.signatures
         ),
-        replace_record_aliases_in_function(declaration.fallback, derived),
-        declaration.decorator,
+        fallback=replace_record_aliases_in_function(declaration.fallback, derived),
     )
 
 
@@ -288,14 +276,14 @@ def replace_record_aliases(
         for item in derived
     }
 
-    def replace(current: StubTypeExpression) -> StubTypeExpression | None:
+    def replace_alias(current: StubTypeExpression) -> StubTypeExpression | None:
         match current:
             case TypeApplication(TypeName(alias), (TypeName(input_name),)):
                 return replacements.get((alias, input_name))
             case _:
                 return None
 
-    return rewrite_type(expression, replace)
+    return rewrite_type(expression, replace_alias)
 
 
 def build_record_shapes(
@@ -457,14 +445,14 @@ def specialize_record_function(
     output_name: str | None,
 ) -> FunctionDeclaration:
     concrete_input = TypeName(input_name)
-    return FunctionDeclaration(
-        name=function.name,
+    return replace(
+        function,
         parameters=tuple(
-            Parameter(
-                parameter.name,
-                substitute_type(parameter.annotation, controller, concrete_input),
-                parameter.kind,
-                parameter.default,
+            replace(
+                parameter,
+                annotation=substitute_type(
+                    parameter.annotation, controller, concrete_input
+                ),
             )
             for parameter in function.parameters
         ),
@@ -474,5 +462,5 @@ def specialize_record_function(
             for parameter in function.type_parameters
             if parameter != controller
         ),
-        is_async=function.is_async,
+        decorators=(),
     )

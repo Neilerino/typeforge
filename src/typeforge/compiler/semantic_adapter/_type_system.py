@@ -30,41 +30,7 @@ class CompilerTypeSystem:
     def assignable(
         self, source: StaticType, target: StaticType
     ) -> Result[bool, SemanticIssue]:
-        match source, target:
-            case NeverType(), _:
-                return Success(True)
-
-            case UnionType(), _:
-                for member in source.members:
-                    result = self.assignable(member, target)
-                    if isinstance(result, Failure):
-                        return result
-
-                    if not result.unwrap():
-                        return Success(False)
-
-                return Success(True)
-
-            case _, UnionType():
-                for member in target.members:
-                    result = self.assignable(source, member)
-                    if isinstance(result, Failure):
-                        return result
-
-                    if result.unwrap():
-                        return Success(True)
-
-                return Success(False)
-
-            case NamedType(), NamedType():
-                return Success(
-                    source.name == target.name
-                    or target.name == "object"
-                    or target.name in source.bases
-                )
-
-            case _:
-                return Success(source == target)
+        return Success(_assignable(source, target))
 
     def union_members(
         self, value: StaticType
@@ -108,6 +74,24 @@ class CompilerTypeSystem:
         self, shape: ParameterizedTypeShape[StaticType]
     ) -> Result[StaticType, SemanticIssue]:
         return Success(ParameterizedType(shape.origin, shape.arguments))
+
+
+def _assignable(source: StaticType, target: StaticType) -> bool:
+    match source, target:
+        case NeverType(), _:
+            return True
+        case UnionType(members), _:
+            return all(_assignable(member, target) for member in members)
+        case _, UnionType(members):
+            return any(_assignable(source, member) for member in members)
+        case NamedType(), NamedType():
+            return (
+                source.name == target.name
+                or target.name == "object"
+                or target.name in source.bases
+            )
+        case _:
+            return source == target
 
 
 COMPILER_TYPE_SYSTEM = CompilerTypeSystem()

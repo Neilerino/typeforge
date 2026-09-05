@@ -1,5 +1,7 @@
 """Integrate discovered records and their authored origins into adaptation."""
 
+from dataclasses import replace
+
 from typeforge.compiler.record_materialization import (
     materialize_record_transforms,
     replace_record_aliases_in_declaration,
@@ -69,8 +71,8 @@ def materialize_records(source: SourceModule, module: StubModule) -> StubModule:
         )
     )
     declaration_order = {id(item): index for index, item in enumerate(declarations)}
-    return StubModule(
-        name=module.name,
+    return replace(
+        module,
         declarations=tuple(declarations),
         imports=merge_imports((*module.imports, *records.imports)),
         origins=tuple(

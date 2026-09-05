@@ -18,13 +18,13 @@ repeating paths or file-matching regexes.
 ## Test composition
 
 - Import root objects from `definitions.py` into an architecture test.
-- Define small pytest fixtures that navigate from those roots, such as
-  `semantics.mod("domain")`, `semantics.file("protocols")`, or
-  `semantics.interface`.
-- Compose dependent fixtures instead of recreating derived values. For example,
-  derive the project root from `typeforge.path.parent`, an external boundary with
-  `typeforge.files_outside(semantics)`, and a `LayeredArchitecture` with
-  `project_layers(typeforge.path.parent.as_posix())`.
+- Use pytest fixtures for shared setup, isolation, or cleanup. Read immutable
+  topology values directly from the shared roots, such as
+  `SEMANTICS.mod("domain")`, `SEMANTICS.file("protocols")`, or
+  `SEMANTICS.interface`.
+- Derive paths and matchers from the source model: the project root from
+  `TYPE_FORGE.path.parent` and an external boundary with
+  `TYPE_FORGE.files_outside(SEMANTICS)`.
 - Use an `architecture` fixture to translate the root module into a fresh
   `LayeredArchitecture` by iterating its `.layers` collection and registering each
   `.layer(...).defined_by(...)` mapping.

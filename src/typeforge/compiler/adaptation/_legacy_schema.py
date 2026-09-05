@@ -6,50 +6,27 @@ from typeforge.compiler.stub_ir import (
     AllPredicate,
     AnyPredicate,
     AssignablePredicate,
-    CollectType,
-    EachType,
     EqualPredicate,
-    FieldType,
-    FixedTuple,
-    HomogeneousTuple,
-    LiteralType,
     MapCase,
-    MapFieldsType,
     MapType,
     MapValueType,
     NotPredicate,
     Predicate,
     RuntimeInputType,
-    SchemaType,
     StubTypeExpression,
     TypeApplication,
     TypeName,
     TypeVariable,
     UnionExpression,
-    UnpackedType,
     is_predicate,
     rewrite_type,
+    rewrite_type_children,
     walk_type,
 )
 
 
 def resolve_schema_type(expression: StubTypeExpression) -> StubTypeExpression:
     match expression:
-        case TypeApplication(constructor, arguments):
-            return TypeApplication(
-                resolve_schema_type(constructor),
-                tuple(resolve_schema_type(argument) for argument in arguments),
-            )
-        case FixedTuple(items):
-            return FixedTuple(tuple(resolve_schema_type(item) for item in items))
-        case HomogeneousTuple(item):
-            return HomogeneousTuple(resolve_schema_type(item))
-        case EachType(item):
-            return EachType(resolve_schema_type(item))
-        case CollectType(item):
-            return CollectType(resolve_schema_type(item))
-        case UnpackedType(item):
-            return UnpackedType(resolve_schema_type(item))
         case UnionExpression(members):
             return union_types_for_schema(
                 tuple(resolve_schema_type(member) for member in members)
@@ -73,30 +50,8 @@ def resolve_schema_type(expression: StubTypeExpression) -> StubTypeExpression:
                     for member in members
                 )
             )
-        case FieldType(name, value, required, readonly):
-            return FieldType(
-                resolve_schema_type(name),
-                resolve_schema_type(value),
-                required,
-                readonly,
-            )
-        case MapFieldsType(record, transform):
-            return MapFieldsType(
-                resolve_schema_type(record),
-                resolve_schema_type(transform),
-            )
-        case SchemaType(item):
-            return SchemaType(resolve_schema_type(item))
-        case (
-            TypeName()
-            | TypeVariable()
-            | LiteralType()
-            | MapValueType()
-            | RuntimeInputType()
-        ):
-            return expression
-        case _ as unreachable:
-            assert_never(unreachable)
+        case _:
+            return rewrite_type_children(expression, resolve_schema_type)
 
 
 def _resolve_schema_map_member(

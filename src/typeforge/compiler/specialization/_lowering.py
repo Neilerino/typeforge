@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import product
 
 from returns.result import Failure, Result, Success
@@ -45,6 +45,8 @@ from typeforge.compiler.stub_ir import (
     UnpackedType,
     VariableDeclaration,
     is_predicate,
+    merge_imports,
+    rewrite_type_children,
 )
 
 
@@ -104,11 +106,11 @@ def lower_variadic_module(
 
     lowered_module = StubModule(module.name, tuple(lowered), imports, origins)
     if _module_contains_literal(lowered_module):
-        lowered_module = StubModule(
-            lowered_module.name,
-            lowered_module.declarations,
-            _add_import(lowered_module.imports, ImportFrom("typing", ("Literal",))),
-            lowered_module.origins,
+        lowered_module = replace(
+            lowered_module,
+            imports=_add_import(
+                lowered_module.imports, ImportFrom("typing", ("Literal",))
+            ),
         )
 
     return Success(lowered_module)
@@ -143,36 +145,15 @@ def _lower_class(
             return lowered
 
         lowered_method = lowered.unwrap()
-        if not isinstance(
-            lowered_method,
-            FunctionDeclaration | OverloadDeclaration,
-        ):
-            raise AssertionError(
-                "function lowering produced a non-callable declaration"
-            )
-
         methods.append(lowered_method)
         has_overloads = has_overloads or isinstance(lowered_method, OverloadDeclaration)
 
-    return Success(
-        (
-            ClassDeclaration(
-                name=declaration.name,
-                bases=declaration.bases,
-                fields=declaration.fields,
-                methods=tuple(methods),
-                type_parameters=declaration.type_parameters,
-                keywords=declaration.keywords,
-                decorators=declaration.decorators,
-            ),
-            has_overloads,
-        )
-    )
+    return Success((replace(declaration, methods=tuple(methods)), has_overloads))
 
 
 def _lower_function(
     declaration: FunctionDeclaration, frontier: ArityFrontier
-) -> Result[Declaration, LoweringError]:
+) -> Result[FunctionDeclaration | OverloadDeclaration, LoweringError]:
     if isinstance(declaration.return_type, MapType):
         return _lower_map_function(declaration, declaration.return_type)
 
@@ -181,9 +162,9 @@ def _lower_function(
 
 def _lower_each_function(
     declaration: FunctionDeclaration, frontier: ArityFrontier
-) -> Result[Declaration, LoweringError]:
+) -> Result[FunctionDeclaration | OverloadDeclaration, LoweringError]:
     each_parameters = tuple(
-        parameter
+        (parameter, parameter.annotation)
         for parameter in declaration.parameters
         if isinstance(parameter.annotation, EachType)
     )
@@ -199,10 +180,7 @@ def _lower_each_function(
             )
         )
 
-    each_parameter = each_parameters[0]
-    each_annotation = each_parameter.annotation
-    if not isinstance(each_annotation, EachType):
-        return Success(declaration)
+    each_parameter, each_annotation = each_parameters[0]
 
     if each_parameter.kind is not ParameterKind.VAR_POSITIONAL:
         return Failure(
@@ -247,7 +225,7 @@ class PredicateMatch:
 
 def _lower_map_function(
     declaration: FunctionDeclaration, mapping: MapType
-) -> Result[Declaration, LoweringError]:
+) -> Result[FunctionDeclaration | OverloadDeclaration, LoweringError]:
     if not isinstance(mapping.subject, TypeVariable):
         return Failure(
             LoweringError(
@@ -306,9 +284,11 @@ def _lower_map_function(
         for case in specializations
         if not is_predicate(case.test)
     )
-    fallback = _replace_return(
+    fallback = replace(
         declaration,
-        _union((*tuple(case.output_type for case in mapping.cases), mapping.default)),
+        return_type=_union(
+            (*(case.output_type for case in mapping.cases), mapping.default)
+        ),
     )
     if not signatures:
         return Success(fallback)
@@ -478,38 +458,21 @@ def _specialized_signature(
     input_type: StubTypeExpression,
     return_type: StubTypeExpression,
 ) -> FunctionDeclaration:
-    return FunctionDeclaration(
-        declaration.name,
-        tuple(
-            Parameter(
-                parameter.name,
-                _substitute(parameter.annotation, controller, input_type),
-                parameter.kind,
-                parameter.default,
+    return replace(
+        declaration,
+        parameters=tuple(
+            replace(
+                parameter,
+                annotation=_substitute(parameter.annotation, controller, input_type),
             )
             for parameter in declaration.parameters
         ),
-        _substitute(return_type, controller, input_type),
-        tuple(
+        return_type=_substitute(return_type, controller, input_type),
+        type_parameters=tuple(
             item
             for item in declaration.type_parameters
             if _type_parameter_name(item) != controller
         ),
-        declaration.is_async,
-        declaration.decorators,
-    )
-
-
-def _replace_return(
-    declaration: FunctionDeclaration, return_type: StubTypeExpression
-) -> FunctionDeclaration:
-    return FunctionDeclaration(
-        declaration.name,
-        declaration.parameters,
-        return_type,
-        declaration.type_parameters,
-        declaration.is_async,
-        declaration.decorators,
     )
 
 
@@ -766,13 +729,13 @@ def _expand_signature_with_types(
         for parameter in declaration.type_parameters
         if _type_parameter_name(parameter) != captured_name
     )
-    return FunctionDeclaration(
-        declaration.name,
-        tuple(expanded_parameters),
-        _substitute_collect(declaration.return_type, captured_name, collected_outputs),
-        retained + generated_names,
-        declaration.is_async,
-        declaration.decorators,
+    return replace(
+        declaration,
+        parameters=tuple(expanded_parameters),
+        return_type=_substitute_collect(
+            declaration.return_type, captured_name, collected_outputs
+        ),
+        type_parameters=retained + generated_names,
     )
 
 
@@ -845,25 +808,10 @@ def _replace_map_value(
     if isinstance(expression, MapValueType):
         return replacement
 
-    if isinstance(expression, TypeApplication):
-        return TypeApplication(
-            _replace_map_value(expression.constructor, replacement),
-            tuple(
-                _replace_map_value(argument, replacement)
-                for argument in expression.arguments
-            ),
-        )
-
-    if isinstance(expression, FixedTuple):
-        return FixedTuple(
-            tuple(_replace_map_value(item, replacement) for item in expression.items)
-        )
-
-    if isinstance(expression, UnionExpression):
-        return UnionExpression(
-            tuple(
-                _replace_map_value(member, replacement) for member in expression.members
-            )
+    if isinstance(expression, TypeApplication | FixedTuple | UnionExpression):
+        return rewrite_type_children(
+            expression,
+            lambda child: _replace_map_value(child, replacement),
         )
 
     return expression
@@ -883,33 +831,29 @@ def _fallback_signature(declaration: FunctionDeclaration) -> FunctionDeclaration
         for name in _collect_variable_names(parameter.annotation.item)
         if name in type_var_tuples
     )
-    return FunctionDeclaration(
-        declaration.name,
-        tuple(
-            Parameter(
-                parameter.name,
-                _erase_markers(
+    return replace(
+        declaration,
+        parameters=tuple(
+            replace(
+                parameter,
+                annotation=_erase_markers(
                     parameter.annotation,
                     type_var_tuples,
                     transformed_type_var_tuples,
                 ),
-                parameter.kind,
-                parameter.default,
             )
             for parameter in declaration.parameters
         ),
-        _erase_markers(
+        return_type=_erase_markers(
             declaration.return_type,
             type_var_tuples,
             transformed_type_var_tuples,
         ),
-        tuple(
+        type_parameters=tuple(
             parameter
             for parameter in declaration.type_parameters
             if _type_parameter_name(parameter) not in transformed_type_var_tuples
         ),
-        declaration.is_async,
-        declaration.decorators,
     )
 
 
@@ -976,32 +920,13 @@ def _substitute(
     if isinstance(expression, TypeVariable):
         return replacement if expression.name == variable else expression
 
-    if isinstance(expression, TypeApplication):
-        return TypeApplication(
-            _substitute(expression.constructor, variable, replacement),
-            tuple(
-                _substitute(argument, variable, replacement)
-                for argument in expression.arguments
-            ),
-        )
-
-    if isinstance(expression, FixedTuple):
-        return FixedTuple(
-            tuple(_substitute(item, variable, replacement) for item in expression.items)
-        )
-
-    if isinstance(expression, HomogeneousTuple):
-        return HomogeneousTuple(_substitute(expression.item, variable, replacement))
-
-    if isinstance(expression, SchemaType):
-        return SchemaType(_substitute(expression.item, variable, replacement))
-
-    if isinstance(expression, UnionExpression):
-        return UnionExpression(
-            tuple(
-                _substitute(member, variable, replacement)
-                for member in expression.members
-            )
+    if isinstance(
+        expression,
+        TypeApplication | FixedTuple | HomogeneousTuple | SchemaType | UnionExpression,
+    ):
+        return rewrite_type_children(
+            expression,
+            lambda child: _substitute(child, variable, replacement),
         )
 
     return expression
@@ -1035,25 +960,10 @@ def _substitute_collect(
             tuple(arguments),
         )
 
-    if isinstance(expression, FixedTuple):
-        return FixedTuple(
-            tuple(
-                _substitute_collect(item, variable, replacements)
-                for item in expression.items
-            )
-        )
-
-    if isinstance(expression, UnpackedType):
-        return UnpackedType(
-            _substitute_collect(expression.item, variable, replacements)
-        )
-
-    if isinstance(expression, UnionExpression):
-        return UnionExpression(
-            tuple(
-                _substitute_collect(member, variable, replacements)
-                for member in expression.members
-            )
+    if isinstance(expression, FixedTuple | UnpackedType | UnionExpression):
+        return rewrite_type_children(
+            expression,
+            lambda child: _substitute_collect(child, variable, replacements),
         )
 
     return expression
@@ -1093,34 +1003,13 @@ def _erase_markers(
     if isinstance(expression, SchemaType):
         return _erase_markers(expression.item, type_var_tuples, broad_type_var_tuples)
 
-    if isinstance(expression, RuntimeInputType):
+    if isinstance(expression, RuntimeInputType | MapType):
         return TypeName("object")
 
-    if isinstance(expression, MapType):
-        return TypeName("object")
-
-    if isinstance(expression, TypeApplication):
-        return TypeApplication(
-            _erase_markers(
-                expression.constructor, type_var_tuples, broad_type_var_tuples
-            ),
-            tuple(
-                _erase_markers(argument, type_var_tuples, broad_type_var_tuples)
-                for argument in expression.arguments
-            ),
-        )
-
-    if isinstance(expression, FixedTuple):
-        return FixedTuple(
-            tuple(
-                _erase_markers(item, type_var_tuples, broad_type_var_tuples)
-                for item in expression.items
-            )
-        )
-
-    if isinstance(expression, HomogeneousTuple):
-        return HomogeneousTuple(
-            _erase_markers(expression.item, type_var_tuples, broad_type_var_tuples)
+    if isinstance(expression, TypeApplication | FixedTuple | HomogeneousTuple):
+        return rewrite_type_children(
+            expression,
+            lambda child: _erase_markers(child, type_var_tuples, broad_type_var_tuples),
         )
 
     if isinstance(expression, UnpackedType):
@@ -1220,18 +1109,11 @@ def _contains_literal(expression: StubTypeExpression) -> bool:
 def _add_import(
     imports: tuple[ModuleImport, ...], required: ImportFrom
 ) -> tuple[ModuleImport, ...]:
-    module_imports = tuple(item for item in imports if isinstance(item, Import))
-    names_by_module: dict[str, set[str]] = {}
-    for item in (*imports, required):
-        if isinstance(item, Import):
-            continue
-
-        names_by_module.setdefault(item.module, set()).update(item.names)
-
     return (
-        *module_imports,
-        *(
-            ImportFrom(module, tuple(sorted(names)))
-            for module, names in sorted(names_by_module.items())
+        *(item for item in imports if isinstance(item, Import)),
+        *sorted(
+            item
+            for item in merge_imports((*imports, required))
+            if isinstance(item, ImportFrom)
         ),
     )

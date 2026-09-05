@@ -1,8 +1,9 @@
 """Adapt source syntax into lowering IR and expand semantic type relationships."""
 
+from dataclasses import replace
 from functools import singledispatch
 
-from returns.result import Result, safe
+from returns.result import safe
 
 from typeforge.compiler.adaptation._imports import annotation_contains_default_never
 from typeforge.compiler.adaptation._legacy_schema import resolve_schema_type
@@ -128,10 +129,9 @@ def adapt_source_module(
                 parameter.declaration for parameter in alias.type_parameters
             ),
         )
-        generated_alias = TypeAliasDeclaration(
-            name=lowered_alias.name,
+        generated_alias = replace(
+            lowered_alias,
             value=expand_map_aliases(lowered_alias.value, semantic_aliases),
-            type_parameters=lowered_alias.type_parameters,
         )
         declarations.append((alias.span.start.line, generated_alias))
         if alias.name in semantic_alias_names and isinstance(
@@ -240,24 +240,17 @@ def _collect_semantic_relationship_aliases(
     return tuple(semantic)
 
 
-def collect_semantic_map_aliases(
-    aliases: tuple[SourceTypeAlias, ...],
-) -> Result[tuple[SemanticRelationshipAlias, ...], AdaptationError]:
-    return collect_semantic_relationship_aliases(aliases)
-
-
 def expand_class_map_aliases(
     declaration: ClassDeclaration,
     aliases: tuple[SemanticRelationshipAlias, ...],
 ) -> ClassDeclaration:
-    return ClassDeclaration(
-        name=declaration.name,
+    return replace(
+        declaration,
         bases=tuple(expand_map_aliases(base, aliases) for base in declaration.bases),
         fields=tuple(
-            ClassField(
-                field.name,
-                expand_map_aliases(field.annotation, aliases),
-                field.default,
+            replace(
+                field,
+                annotation=expand_map_aliases(field.annotation, aliases),
             )
             for field in declaration.fields
         ),
@@ -267,9 +260,6 @@ def expand_class_map_aliases(
             else method
             for method in declaration.methods
         ),
-        type_parameters=declaration.type_parameters,
-        keywords=declaration.keywords,
-        decorators=declaration.decorators,
     )
 
 
@@ -277,21 +267,16 @@ def expand_function_map_aliases(
     declaration: FunctionDeclaration,
     aliases: tuple[SemanticRelationshipAlias, ...],
 ) -> FunctionDeclaration:
-    return FunctionDeclaration(
-        name=declaration.name,
+    return replace(
+        declaration,
         parameters=tuple(
-            Parameter(
-                name=parameter.name,
+            replace(
+                parameter,
                 annotation=expand_map_aliases(parameter.annotation, aliases),
-                kind=parameter.kind,
-                default=parameter.default,
             )
             for parameter in declaration.parameters
         ),
         return_type=expand_map_aliases(declaration.return_type, aliases),
-        type_parameters=declaration.type_parameters,
-        is_async=declaration.is_async,
-        decorators=declaration.decorators,
     )
 
 

@@ -1,5 +1,6 @@
 """Compose compiler stages into generated modules."""
 
+from dataclasses import replace
 from pathlib import Path
 
 from returns.result import Result
@@ -73,10 +74,6 @@ def _project_published_declaration(declaration: Declaration) -> Declaration:
     if isinstance(declaration, TypeAliasDeclaration) and isinstance(
         declaration.value, MapType
     ):
-        return TypeAliasDeclaration(
-            declaration.name,
-            TypeName("object"),
-            declaration.type_parameters,
-        )
+        return replace(declaration, value=TypeName("object"))
 
     return declaration

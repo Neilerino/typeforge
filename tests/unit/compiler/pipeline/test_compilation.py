@@ -9,7 +9,16 @@ from typeforge.compiler.pipeline import (
     generate_module,
 )
 from typeforge.compiler.source import parse_source
-from typeforge.compiler.stub_ir import GeneratedElementOrigin, OverloadDeclaration
+from typeforge.compiler.stub_ir import (
+    ClassDeclaration,
+    ClassField,
+    FunctionDeclaration,
+    GeneratedElementOrigin,
+    OverloadDeclaration,
+    Parameter,
+    ParameterKind,
+    TypeName,
+)
 
 
 def test_compile_source_associates_enriched_function_with_generated_overload() -> None:
@@ -45,6 +54,53 @@ def test_compile_source_keeps_record_origins_in_specialized_snapshot() -> None:
     assert len(plan.module.origins) == 1
     assert plan.module.origins[0].origin == plan.source.typed_dicts[0].span
     assert plan.module.origins[0].generated is plan.module.declarations[0]
+
+
+def test_compilation_preserves_metadata_when_rewriting_classes_and_methods() -> None:
+    source = (
+        "from typing import TypedDict\n"
+        "from typeforge import Collect, Each, Field, Key, MapFields, Value\n"
+        "class Payload(TypedDict):\n    value: int\n"
+        "type Copy[T] = MapFields[T, Field[Key, Value]]\n"
+        "@decorate\n"
+        "class Consumer[U](Base, metaclass=Meta):\n"
+        "    cached: Copy[Payload] = ...\n"
+        "    @custom\n"
+        "    async def collect[*Ts](self: object, *values: Each[Ts], "
+        "label: str = 'label') -> Collect[Ts]: ...\n"
+        "    @custom\n"
+        "    async def read(self: object, *, value: Copy[Payload] = ...) "
+        "-> Copy[Payload]: ...\n"
+    )
+
+    plan = compile_source(source, Path("metadata.py"), maximum_arity=1).unwrap()
+
+    consumer = next(
+        item
+        for item in plan.module.declarations
+        if isinstance(item, ClassDeclaration) and item.name == "Consumer"
+    )
+    assert consumer.bases == (TypeName("Base"),)
+    assert consumer.type_parameters == ("U",)
+    assert consumer.keywords == ("metaclass=Meta",)
+    assert consumer.decorators == ("decorate",)
+    assert consumer.fields == (ClassField("cached", TypeName("Copy_Payload"), "..."),)
+    collect, read = consumer.methods
+    assert isinstance(collect, OverloadDeclaration)
+    assert isinstance(read, FunctionDeclaration)
+    for signature in (*collect.signatures, collect.fallback, read):
+        assert signature.is_async
+        assert signature.decorators == ("custom",)
+
+    for signature in (*collect.signatures, collect.fallback):
+        assert signature.parameters[-1] == Parameter(
+            "label", TypeName("str"), ParameterKind.KEYWORD_ONLY, "..."
+        )
+
+    assert read.return_type == TypeName("Copy_Payload")
+    assert read.parameters[-1] == Parameter(
+        "value", TypeName("Copy_Payload"), ParameterKind.KEYWORD_ONLY, "..."
+    )
 
 
 def test_record_failure_propagates_before_specialization(tmp_path: Path) -> None:
