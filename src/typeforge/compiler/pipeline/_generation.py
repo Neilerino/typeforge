@@ -15,7 +15,14 @@ from typeforge.compiler.record_materialization import (
 )
 from typeforge.compiler.source import parse_module
 from typeforge.compiler.specialization import ArityFrontier, lower_variadic_module
-from typeforge.compiler.stub_ir import StubModule, merge_imports
+from typeforge.compiler.stub_ir import (
+    Declaration,
+    MapType,
+    StubModule,
+    TypeAliasDeclaration,
+    TypeName,
+    merge_imports,
+)
 
 
 def generate_module(
@@ -43,10 +50,27 @@ def _emit_generated_module(
     surface: ModuleSurface,
 ) -> Result[GeneratedModule, EmissionError]:
     generated = StubModule(
-        lowered.name,
-        (*records.declarations, *surface.declarations, *lowered.declarations),
-        merge_imports((*lowered.imports, *surface.imports)),
+        name=lowered.name,
+        declarations=(
+            *records.declarations,
+            *surface.declarations,
+            *(_project_published_declaration(item) for item in lowered.declarations),
+        ),
+        imports=merge_imports((*lowered.imports, *surface.imports)),
     )
     return emit_stub_module(generated).map(
         lambda emitted: GeneratedModule(path, emitted)
     )
+
+
+def _project_published_declaration(declaration: Declaration) -> Declaration:
+    if isinstance(declaration, TypeAliasDeclaration) and isinstance(
+        declaration.value, MapType
+    ):
+        return TypeAliasDeclaration(
+            declaration.name,
+            TypeName("object"),
+            declaration.type_parameters,
+        )
+
+    return declaration

@@ -325,6 +325,7 @@ def test_schema_boundaries_resolve_in_model_fields_and_generated_stubs(
     content = generated.unwrap().content
     assert "from typeforge.pydantic import Schema" not in content
     assert "import typing as tf_typing" in content
+    assert "type Wire[T] = object" in content
     assert "class Public_User(tf_typing.TypedDict):\n    name: str" in content
     assert "    wire: str" in content
     assert "    direct: str" in content

@@ -101,28 +101,36 @@ def adapt_source_module(
 ) -> StubModule:
     imports: tuple[ModuleImport, ...] = ()
     semantic_aliases = _collect_semantic_relationship_aliases(module.aliases)
+    semantic_alias_names = {alias.name for alias in semantic_aliases}
     declarations: list[tuple[int, Declaration]] = []
     origins: list[GeneratedElementOrigin[SourceSpan]] = []
     for alias in module.aliases:
         if len(alias.qualified_name) != 1:
             continue
 
-        parameter_names = tuple(parameter.name for parameter in alias.type_parameters)
         lowered_alias = TypeAliasDeclaration(
-            alias.name,
-            _adapt_alias_fallback(alias.name, alias.value, parameter_names),
-            tuple(parameter.declaration for parameter in alias.type_parameters),
-        )
-        declarations.append(
-            (
-                alias.span.start.line,
-                TypeAliasDeclaration(
-                    lowered_alias.name,
-                    expand_map_aliases(lowered_alias.value, semantic_aliases),
-                    lowered_alias.type_parameters,
+            name=alias.name,
+            value=_adapt_alias_fallback(
+                declaration=alias.name,
+                expression=alias.value,
+                type_parameters=tuple(
+                    parameter.name for parameter in alias.type_parameters
                 ),
-            )
+            ),
+            type_parameters=tuple(
+                parameter.declaration for parameter in alias.type_parameters
+            ),
         )
+        generated_alias = TypeAliasDeclaration(
+            name=lowered_alias.name,
+            value=expand_map_aliases(lowered_alias.value, semantic_aliases),
+            type_parameters=lowered_alias.type_parameters,
+        )
+        declarations.append((alias.span.start.line, generated_alias))
+        if alias.name in semantic_alias_names and isinstance(
+            generated_alias.value, MapType
+        ):
+            origins.append(GeneratedElementOrigin(alias.span, generated_alias))
 
     for source_class in module.classes:
         declarations.append(
@@ -263,10 +271,10 @@ def expand_function_map_aliases(
         name=declaration.name,
         parameters=tuple(
             Parameter(
-                parameter.name,
-                expand_map_aliases(parameter.annotation, aliases),
-                parameter.kind,
-                parameter.default,
+                name=parameter.name,
+                annotation=expand_map_aliases(parameter.annotation, aliases),
+                kind=parameter.kind,
+                default=parameter.default,
             )
             for parameter in declaration.parameters
         ),
@@ -369,16 +377,23 @@ def _adapt_alias_fallback(
     match marker:
         case EachMarker(item=item):
             return _adapt_alias_fallback(declaration, item, type_parameters)
+
         case CollectMarker(item=item):
             return HomogeneousTuple(
                 _adapt_alias_fallback(declaration, item, type_parameters)
             )
-        case MapMarker() | MapFieldsMarker():
+
+        case MapMarker():
+            return _adapt_type_expression(expression, declaration, type_parameters)
+
+        case MapFieldsMarker():
             return TypeName("object")
+
         case (
             AssignableMarker() | EqualMarker() | AllMarker() | AnyMarker() | NotMarker()
         ):
             return TypeName("bool")
+
         case (
             CaseMarker(output=value)
             | DefaultMarker(output=value)
@@ -387,10 +402,13 @@ def _adapt_alias_fallback(
             | ReadonlyFieldMarker(value=value)
         ):
             return _adapt_alias_fallback(declaration, value, type_parameters)
+
         case DropMarker():
             return TypeName("Never")
+
         case KeyMarker():
             return TypeName("str")
+
         case ValueMarker():
             return TypeName("object")
 

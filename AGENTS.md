@@ -23,6 +23,7 @@
 * Keep third-party frontend models behind Typeforge-owned protocols and data models.
 * Generated interfaces must be deterministic and use standard Python typing constructs.
 * Diagnostics must refer to authored source rather than generated implementation details.
+* Prefer calling with kwargs to better self document the code, unless a function has 2 or fewer parameters or if the names are obvious
 
 ## Typing and failures
 

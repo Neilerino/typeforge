@@ -55,11 +55,6 @@ def test_adapt_source_module_attaches_origin_to_enriched_function() -> None:
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="adaptation does not yet retain target-neutral generated origins",
-)
 def test_adapt_source_module_retains_target_neutral_alias_with_origin() -> None:
     path = Path("aliases.py")
     span = SourceSpan(path, SourcePosition(1, 0), SourcePosition(1, 62))
@@ -111,6 +106,15 @@ def test_adapt_source_module_retains_target_neutral_alias_with_origin() -> None:
     assert adapted.origins == (
         GeneratedElementOrigin(source_alias.span, generated_alias),
     )
+    assert adapted.origins[0].generated is adapted.declarations[0]
+
+
+def test_adapt_source_module_does_not_attach_origin_to_ordinary_alias() -> None:
+    source = parse_source("type Label = str\n", Path("aliases.py")).unwrap()
+
+    adapted = adapt_source_module(source).unwrap()
+
+    assert adapted.origins == ()
 
 
 @pytest.mark.xfail(

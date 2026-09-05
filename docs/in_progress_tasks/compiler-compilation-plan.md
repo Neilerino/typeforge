@@ -254,7 +254,7 @@ parser.~~ — completed 2026-09-04
    `compile_source` orchestration shell. Complete this slice when the specialization
    and pipeline strict-`xfail` contracts pass normally.
 
-2. **Target-neutral aliases** (approximately 150–250 changed lines)
+2. ~~Target-neutral aliases~~ — completed 2026-09-04 (approximately 150–250 changed lines)
 
    Preserve `MapType` in the compiler IR, attach the authored alias origin, and move
    the conservative `object` fallback into published-stub projection. Complete this
