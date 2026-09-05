@@ -52,7 +52,6 @@ from typeforge.compiler.stub_ir import (
     TypeName,
     UnionExpression,
     VariableDeclaration,
-    merge_imports,
     rewrite_type,
     substitute_type,
 )
@@ -132,23 +131,6 @@ def materialize_record_transforms(
         imports=(Import("typing", "tf_typing"),),
         derived=derived,
     )
-
-
-def apply_record_materialization(
-    module: StubModule, materialization: RecordMaterialization
-) -> StubModule:
-    replacements = dict(materialization.replacements)
-    declarations = tuple(
-        replace_record_aliases_in_declaration(
-            replacements.get(declaration.name, declaration)
-            if isinstance(declaration, FunctionDeclaration)
-            else declaration,
-            materialization.derived,
-        )
-        for declaration in module.declarations
-    )
-    imports = merge_imports((*module.imports, *materialization.imports))
-    return StubModule(module.name, declarations, imports)
 
 
 def replace_record_aliases_in_declaration(

@@ -10,6 +10,8 @@ from typeforge.compiler.adaptation._models import (
     AdaptationError,
     SemanticRelationshipAlias,
 )
+from typeforge.compiler.adaptation._records import materialize_records
+from typeforge.compiler.record_materialization import RecordMaterializationError
 from typeforge.compiler.source import (
     AllMarker,
     AnyMarker,
@@ -94,8 +96,13 @@ from typeforge.compiler.stub_ir import (
     substitute_type,
 )
 
+_ADAPTATION_ERRORS: tuple[type[AdaptationError | RecordMaterializationError], ...] = (
+    AdaptationError,
+    RecordMaterializationError,
+)
 
-@safe(exceptions=(AdaptationError,))
+
+@safe(exceptions=_ADAPTATION_ERRORS)
 def adapt_source_module(
     module: SourceModule,
 ) -> StubModule:
@@ -186,7 +193,10 @@ def adapt_source_module(
             key=lambda item: (item.origin.start.line, item.origin.start.column),
         )
     )
-    return StubModule(module.path.stem, ordered, imports, ordered_origins)
+    return materialize_records(
+        module,
+        StubModule(module.path.stem, ordered, imports, ordered_origins),
+    )
 
 
 @safe(exceptions=(AdaptationError,))

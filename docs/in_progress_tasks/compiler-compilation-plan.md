@@ -1,7 +1,7 @@
 # Compiler Compilation Plan
 
 Status: In progress — external seam and simplified `StubModule` stage composition
-agreed; prerequisite and first implementation slice complete
+agreed; prerequisite and first three implementation slices complete
 
 ## Outcome
 
@@ -261,7 +261,7 @@ parser.~~ — completed 2026-09-04
    slice when the target-neutral alias adaptation contract passes normally and the
    existing published output remains unchanged.
 
-3. **Records become part of adaptation** (approximately 200–350 changed lines)
+3. ~~Records become part of adaptation~~ — completed 2026-09-05 (269 changed lines)
 
    Move existing record discovery behind `adapt_source_module`, include materialized
    records and their origins in its returned `StubModule`, remove separate record

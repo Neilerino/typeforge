@@ -29,6 +29,30 @@ def test_source_is_compiled_to_portable_overloads() -> None:
     )
 
 
+def test_records_precede_surface_variables_and_authored_declarations(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "records.py"
+    path.write_text(
+        "from typing import TypedDict\n"
+        "count: int = 0\n"
+        "type Label = str\n"
+        "class Payload(TypedDict):\n    value: int\n"
+        "def identity(value: Label) -> Label: ...\n",
+        encoding="utf-8",
+    )
+
+    content = generate_module(path, maximum_arity=1).unwrap().content
+
+    assert content == (
+        "import typing as tf_typing\nfrom typing import TypedDict\n\n"
+        "class Payload(tf_typing.TypedDict):\n    value: int\n\n"
+        "count: int\n\n"
+        "type Label = str\n\n"
+        "def identity(value: Label) -> Label: ...\n"
+    )
+
+
 def test_unpacked_collect_is_flattened_through_an_outer_union(tmp_path: Path) -> None:
     source = tmp_path / "query.py"
     source.write_text(

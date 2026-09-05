@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import pytest
 from returns.result import Success
 
 from typeforge.compiler.adaptation import adapt_source_module
@@ -25,6 +24,7 @@ from typeforge.compiler.stub_ir import (
     GeneratedElementOrigin,
     MapCase,
     MapType,
+    OverloadDeclaration,
     TypeAliasDeclaration,
     TypeName,
     TypeVariable,
@@ -117,11 +117,6 @@ def test_adapt_source_module_does_not_attach_origin_to_ordinary_alias() -> None:
     assert adapted.origins == ()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="adaptation does not yet materialize records with authored origins",
-)
 def test_adapt_source_module_materializes_record_with_origin() -> None:
     path = Path("records.py")
     source = parse_source(
@@ -143,3 +138,40 @@ def test_adapt_source_module_materializes_record_with_origin() -> None:
     assert adapted.origins == (
         GeneratedElementOrigin(source.typed_dicts[0].span, generated_record),
     )
+
+
+def test_record_replacements_retain_current_authored_origins() -> None:
+    source = parse_source(
+        "from typing import TypedDict\n"
+        "from typeforge import Case, Collect, Each, Field, Key, Map, MapFields, Value\n"
+        "class Payload(TypedDict):\n    value: int\n"
+        "type Copy[T] = MapFields[T, Field[Key, Value]]\n"
+        "type Encoded[T] = Map[T, Case[int, Copy[Payload]]]\n"
+        "def copy[T](value: T) -> Copy[T]: ...\n"
+        "def collect[*Ts](*values: Each[Ts]) -> Collect[Copy[Payload]]: ...\n",
+        Path("records.py"),
+    ).unwrap()
+
+    adapted = adapt_source_module(source).unwrap()
+
+    payload, copied, _, encoded, copy, collect = adapted.declarations
+    assert isinstance(copied, ClassDeclaration)
+    assert copied.name == "Copy_Payload"
+    assert isinstance(encoded, TypeAliasDeclaration)
+    assert isinstance(encoded.value, MapType)
+    assert encoded.value.cases[0].output_type == TypeName("Copy_Payload")
+    assert isinstance(copy, OverloadDeclaration)
+    assert copy.signatures[0].return_type == TypeName("Copy_Payload")
+    assert isinstance(collect, FunctionDeclaration)
+    assert adapted.origins == (
+        GeneratedElementOrigin(source.typed_dicts[0].span, payload),
+        GeneratedElementOrigin(source.aliases[0].span, copied),
+        GeneratedElementOrigin(source.aliases[1].span, encoded),
+        GeneratedElementOrigin(source.functions[0].span, copy),
+        GeneratedElementOrigin(source.functions[1].span, collect),
+    )
+    assert all(
+        any(item.generated is declaration for declaration in adapted.declarations)
+        for item in adapted.origins
+    )
+    assert adapt_source_module(source).unwrap() == adapted

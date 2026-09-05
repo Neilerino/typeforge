@@ -72,6 +72,11 @@ def lower_variadic_module(
             lowered_class, class_has_overloads = class_result.unwrap()
             has_overloads = has_overloads or class_has_overloads
             lowered.append(lowered_class)
+            origins = _replace_declaration_origins(
+                origins=origins,
+                original=declaration,
+                replacement=lowered_class,
+            )
             continue
 
         if not isinstance(declaration, FunctionDeclaration):
