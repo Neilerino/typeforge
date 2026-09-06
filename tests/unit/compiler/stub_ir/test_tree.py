@@ -60,3 +60,30 @@ def test_rewrite_and_walk_include_predicate_and_map_operands() -> None:
 
     assert TypeVariable("T") not in tuple(walk_type(rewritten))
     assert sum(item == TypeName("bytes") for item in walk_type(rewritten)) == 7
+
+
+def test_noop_rewrite_preserves_composite_identity() -> None:
+    nested = TypeApplication(TypeName("list"), (TypeName("int"),))
+    expression = MapType(
+        TypeVariable("T"),
+        (MapCase(EqualPredicate(nested, nested), nested),),
+        nested,
+    )
+
+    assert rewrite_type(expression, lambda item: None) is expression
+
+
+def test_equal_distinct_child_replacement_preserves_its_identity() -> None:
+    original = TypeName("int")
+    replacement = TypeName("int")
+    expression = TypeApplication(TypeName("list"), (original,))
+
+    rewritten = rewrite_type(
+        expression, lambda item: replacement if item is original else None
+    )
+
+    assert rewritten == expression
+    assert rewritten is not expression
+    assert isinstance(rewritten, TypeApplication)
+    assert rewritten.arguments[0] is replacement
+    assert expression.arguments[0] is original

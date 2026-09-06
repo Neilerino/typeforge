@@ -40,6 +40,7 @@ from typeforge.compiler.stub_ir import (
     TypeAliasDeclaration,
     TypeApplication,
     TypeName,
+    TypeRewriteObserver,
     TypeVariable,
     UnionExpression,
     UnpackedType,
@@ -47,6 +48,8 @@ from typeforge.compiler.stub_ir import (
     is_predicate,
     merge_imports,
     rewrite_type_children,
+    walk_declaration,
+    walk_type,
 )
 
 
@@ -64,10 +67,24 @@ def lower_variadic_module(
 
     lowered: list[Declaration] = []
     origins = module.origins
+    expression_origins = list(module.origins)
+
+    def record_rewrite(
+        original: StubTypeExpression, replacement: StubTypeExpression
+    ) -> None:
+        if original is not replacement:
+            expression_origins.extend(
+                replace(item, generated=replacement)
+                for item in tuple(expression_origins)
+                if item.generated is original
+            )
+
     has_overloads = False
     for declaration in module.declarations:
         if isinstance(declaration, ClassDeclaration):
-            class_result = _lower_class(declaration, frontier)
+            class_result = _lower_class(
+                declaration, frontier, on_rewrite=record_rewrite
+            )
             if isinstance(class_result, Failure):
                 return class_result
 
@@ -85,7 +102,7 @@ def lower_variadic_module(
             lowered.append(declaration)
             continue
 
-        result = _lower_function(declaration, frontier)
+        result = _lower_function(declaration, frontier, on_rewrite=record_rewrite)
         if isinstance(result, Failure):
             return result
 
@@ -104,6 +121,22 @@ def lower_variadic_module(
     if has_overloads:
         imports = _add_import(imports, ImportFrom("typing", ("overload",)))
 
+    order: dict[int, int] = {}
+    for declaration in lowered:
+        for element in walk_declaration(declaration):
+            order.setdefault(id(element), len(order))
+
+    current_origins = {
+        (item.origin, id(item.generated)): item
+        for item in (*origins, *expression_origins)
+        if id(item.generated) in order
+    }
+    origins = tuple(
+        sorted(
+            current_origins.values(),
+            key=lambda item: (item.origin.start, order[id(item.generated)]),
+        )
+    )
     lowered_module = StubModule(module.name, tuple(lowered), imports, origins)
     if _module_contains_literal(lowered_module):
         lowered_module = replace(
@@ -121,6 +154,16 @@ def _replace_declaration_origins[OriginType](
     original: Declaration,
     replacement: Declaration,
 ) -> tuple[GeneratedElementOrigin[OriginType], ...]:
+    if isinstance(original, ClassDeclaration) and isinstance(
+        replacement, ClassDeclaration
+    ):
+        for original_method, replacement_method in zip(
+            original.methods, replacement.methods, strict=True
+        ):
+            origins = _replace_declaration_origins(
+                origins, original_method, replacement_method
+            )
+
     return tuple(
         GeneratedElementOrigin(item.origin, replacement)
         if item.generated is original
@@ -130,7 +173,9 @@ def _replace_declaration_origins[OriginType](
 
 
 def _lower_class(
-    declaration: ClassDeclaration, frontier: ArityFrontier
+    declaration: ClassDeclaration,
+    frontier: ArityFrontier,
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> Result[tuple[ClassDeclaration, bool], LoweringError]:
     methods: list[FunctionDeclaration | OverloadDeclaration] = []
     has_overloads = False
@@ -140,7 +185,7 @@ def _lower_class(
             has_overloads = True
             continue
 
-        lowered = _lower_function(method, frontier)
+        lowered = _lower_function(method, frontier, on_rewrite=on_rewrite)
         if isinstance(lowered, Failure):
             return lowered
 
@@ -152,16 +197,22 @@ def _lower_class(
 
 
 def _lower_function(
-    declaration: FunctionDeclaration, frontier: ArityFrontier
+    declaration: FunctionDeclaration,
+    frontier: ArityFrontier,
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> Result[FunctionDeclaration | OverloadDeclaration, LoweringError]:
     if isinstance(declaration.return_type, MapType):
-        return _lower_map_function(declaration, declaration.return_type)
+        return _lower_map_function(
+            declaration, declaration.return_type, on_rewrite=on_rewrite
+        )
 
-    return _lower_each_function(declaration, frontier)
+    return _lower_each_function(declaration, frontier, on_rewrite=on_rewrite)
 
 
 def _lower_each_function(
-    declaration: FunctionDeclaration, frontier: ArityFrontier
+    declaration: FunctionDeclaration,
+    frontier: ArityFrontier,
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> Result[FunctionDeclaration | OverloadDeclaration, LoweringError]:
     each_parameters = tuple(
         (parameter, parameter.annotation)
@@ -211,9 +262,10 @@ def _lower_each_function(
             each_annotation.item,
             captured_name,
             arity,
+            on_rewrite=on_rewrite,
         )
     )
-    fallback = _fallback_signature(declaration)
+    fallback = _fallback_signature(declaration, on_rewrite=on_rewrite)
     return Success(OverloadDeclaration(signatures, fallback))
 
 
@@ -224,7 +276,9 @@ class PredicateMatch:
 
 
 def _lower_map_function(
-    declaration: FunctionDeclaration, mapping: MapType
+    declaration: FunctionDeclaration,
+    mapping: MapType,
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> Result[FunctionDeclaration | OverloadDeclaration, LoweringError]:
     if not isinstance(mapping.subject, TypeVariable):
         return Failure(
@@ -279,7 +333,8 @@ def _lower_map_function(
             declaration,
             controller,
             case.test,
-            _substitute(case.output_type, controller, case.test),
+            _substitute(case.output_type, controller, case.test, on_rewrite=on_rewrite),
+            on_rewrite=on_rewrite,
         )
         for case in specializations
         if not is_predicate(case.test)
@@ -287,9 +342,14 @@ def _lower_map_function(
     fallback = replace(
         declaration,
         return_type=_union(
-            (*(case.output_type for case in mapping.cases), mapping.default)
+            (*(case.output_type for case in mapping.cases), mapping.default),
+            on_rewrite=on_rewrite,
         ),
     )
+    if on_rewrite is not None:
+        for signature in (*signatures, fallback):
+            on_rewrite(mapping, signature.return_type)
+
     if not signatures:
         return Success(fallback)
 
@@ -457,17 +517,22 @@ def _specialized_signature(
     controller: str,
     input_type: StubTypeExpression,
     return_type: StubTypeExpression,
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> FunctionDeclaration:
     return replace(
         declaration,
         parameters=tuple(
             replace(
                 parameter,
-                annotation=_substitute(parameter.annotation, controller, input_type),
+                annotation=_substitute(
+                    parameter.annotation, controller, input_type, on_rewrite=on_rewrite
+                ),
             )
             for parameter in declaration.parameters
         ),
-        return_type=_substitute(return_type, controller, input_type),
+        return_type=_substitute(
+            return_type, controller, input_type, on_rewrite=on_rewrite
+        ),
         type_parameters=tuple(
             item
             for item in declaration.type_parameters
@@ -626,7 +691,10 @@ def _has_variable(expression: StubTypeExpression, variable: str) -> bool:
     return variable in _collect_variable_names(expression)
 
 
-def _union(expressions: tuple[StubTypeExpression, ...]) -> StubTypeExpression:
+def _union(
+    expressions: tuple[StubTypeExpression, ...],
+    on_rewrite: TypeRewriteObserver | None = None,
+) -> StubTypeExpression:
     members: list[StubTypeExpression] = []
     for expression in expressions:
         candidates = (
@@ -635,8 +703,17 @@ def _union(expressions: tuple[StubTypeExpression, ...]) -> StubTypeExpression:
             else (expression,)
         )
         for candidate in candidates:
-            if candidate not in members:
+            if on_rewrite is not None and candidate is not expression:
+                on_rewrite(expression, candidate)
+
+            retained = next((member for member in members if member == candidate), None)
+            if retained is None:
                 members.append(candidate)
+            elif on_rewrite is not None:
+                for original, replacement in zip(
+                    walk_type(candidate), walk_type(retained), strict=True
+                ):
+                    on_rewrite(original, replacement)
 
     if len(members) == 1:
         return members[0]
@@ -657,6 +734,7 @@ def _expand_signatures(
     argument_pattern: StubTypeExpression,
     captured_name: str,
     arity: int,
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> tuple[FunctionDeclaration, ...]:
     generated_names = _fresh_type_parameter_names(
         captured_name, arity, declaration.type_parameters
@@ -673,11 +751,16 @@ def _expand_signatures(
                 generated_names,
                 generated_types,
                 generated_types,
+                on_rewrite=on_rewrite,
             ),
         )
 
     choices = tuple(
-        tuple(_structural_map_choices(structural_map, generated_type))
+        tuple(
+            _structural_map_choices(
+                structural_map, generated_type, on_rewrite=on_rewrite
+            )
+        )
         for generated_type in generated_types
     )
     combinations = tuple(product(*choices)) if choices else ((),)
@@ -694,6 +777,7 @@ def _expand_signatures(
             generated_names,
             tuple(choice.input_type for choice in combination),
             tuple(choice.output_type for choice in combination),
+            on_rewrite=on_rewrite,
         )
         for combination in ordered
     )
@@ -707,6 +791,7 @@ def _expand_signature_with_types(
     generated_names: tuple[str, ...],
     captured_inputs: tuple[StubTypeExpression, ...],
     collected_outputs: tuple[StubTypeExpression, ...],
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> FunctionDeclaration:
     expanded_parameters: list[Parameter] = []
     for parameter in declaration.parameters:
@@ -715,14 +800,16 @@ def _expand_signature_with_types(
             continue
 
         positional_kind = _expanded_parameter_kind(tuple(expanded_parameters))
-        expanded_parameters.extend(
-            Parameter(
-                f"{each_parameter.name}_{index}",
-                _substitute(argument_pattern, captured_name, item),
-                positional_kind,
+        for index, item in enumerate(captured_inputs, start=1):
+            annotation = _substitute(
+                argument_pattern, captured_name, item, on_rewrite=on_rewrite
             )
-            for index, item in enumerate(captured_inputs, start=1)
-        )
+            if on_rewrite is not None:
+                on_rewrite(each_parameter.annotation, annotation)
+
+            expanded_parameters.append(
+                Parameter(f"{each_parameter.name}_{index}", annotation, positional_kind)
+            )
 
     retained = tuple(
         parameter
@@ -733,7 +820,10 @@ def _expand_signature_with_types(
         declaration,
         parameters=tuple(expanded_parameters),
         return_type=_substitute_collect(
-            declaration.return_type, captured_name, collected_outputs
+            declaration.return_type,
+            captured_name,
+            collected_outputs,
+            on_rewrite=on_rewrite,
         ),
         type_parameters=retained + generated_names,
     )
@@ -773,13 +863,15 @@ def _find_collected_map(
 
 
 def _structural_map_choices(
-    mapping: MapType, generated_type: TypeVariable
+    mapping: MapType,
+    generated_type: TypeVariable,
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> tuple[_StructuralMapChoice, ...]:
     controller = _map_subject_name(mapping)
     cases = tuple(
         _StructuralMapChoice(
-            _replace_map_value(case.test, generated_type),
-            _replace_map_value(case.output_type, generated_type),
+            _replace_map_value(case.test, generated_type, on_rewrite=on_rewrite),
+            _replace_map_value(case.output_type, generated_type, on_rewrite=on_rewrite),
             False,
         )
         for case in map_specializations(mapping, controller)
@@ -789,7 +881,12 @@ def _structural_map_choices(
         *cases,
         _StructuralMapChoice(
             generated_type,
-            _substitute(mapping.default, _map_subject_name(mapping), generated_type),
+            _substitute(
+                mapping.default,
+                _map_subject_name(mapping),
+                generated_type,
+                on_rewrite=on_rewrite,
+            ),
             True,
         ),
     )
@@ -803,7 +900,21 @@ def _map_subject_name(mapping: MapType) -> str:
 
 
 def _replace_map_value(
-    expression: StubTypeExpression, replacement: StubTypeExpression
+    expression: StubTypeExpression,
+    replacement: StubTypeExpression,
+    on_rewrite: TypeRewriteObserver | None = None,
+) -> StubTypeExpression:
+    result = _replace_map_value_expression(expression, replacement, on_rewrite)
+    if on_rewrite is not None:
+        on_rewrite(expression, result)
+
+    return result
+
+
+def _replace_map_value_expression(
+    expression: StubTypeExpression,
+    replacement: StubTypeExpression,
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> StubTypeExpression:
     if isinstance(expression, MapValueType):
         return replacement
@@ -811,13 +922,15 @@ def _replace_map_value(
     if isinstance(expression, TypeApplication | FixedTuple | UnionExpression):
         return rewrite_type_children(
             expression,
-            lambda child: _replace_map_value(child, replacement),
+            lambda child: _replace_map_value(child, replacement, on_rewrite=on_rewrite),
         )
 
     return expression
 
 
-def _fallback_signature(declaration: FunctionDeclaration) -> FunctionDeclaration:
+def _fallback_signature(
+    declaration: FunctionDeclaration, on_rewrite: TypeRewriteObserver | None = None
+) -> FunctionDeclaration:
     type_var_tuples = frozenset(
         _type_parameter_name(parameter)
         for parameter in declaration.type_parameters
@@ -840,6 +953,7 @@ def _fallback_signature(declaration: FunctionDeclaration) -> FunctionDeclaration
                     parameter.annotation,
                     type_var_tuples,
                     transformed_type_var_tuples,
+                    on_rewrite=on_rewrite,
                 ),
             )
             for parameter in declaration.parameters
@@ -848,6 +962,7 @@ def _fallback_signature(declaration: FunctionDeclaration) -> FunctionDeclaration
             declaration.return_type,
             type_var_tuples,
             transformed_type_var_tuples,
+            on_rewrite=on_rewrite,
         ),
         type_parameters=tuple(
             parameter
@@ -915,7 +1030,23 @@ def _collect_variable_names(expression: StubTypeExpression) -> tuple[str, ...]:
 
 
 def _substitute(
-    expression: StubTypeExpression, variable: str, replacement: StubTypeExpression
+    expression: StubTypeExpression,
+    variable: str,
+    replacement: StubTypeExpression,
+    on_rewrite: TypeRewriteObserver | None = None,
+) -> StubTypeExpression:
+    result = _substitute_expression(expression, variable, replacement, on_rewrite)
+    if on_rewrite is not None:
+        on_rewrite(expression, result)
+
+    return result
+
+
+def _substitute_expression(
+    expression: StubTypeExpression,
+    variable: str,
+    replacement: StubTypeExpression,
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> StubTypeExpression:
     if isinstance(expression, TypeVariable):
         return replacement if expression.name == variable else expression
@@ -926,7 +1057,9 @@ def _substitute(
     ):
         return rewrite_type_children(
             expression,
-            lambda child: _substitute(child, variable, replacement),
+            lambda child: _substitute(
+                child, variable, replacement, on_rewrite=on_rewrite
+            ),
         )
 
     return expression
@@ -936,9 +1069,29 @@ def _substitute_collect(
     expression: StubTypeExpression,
     variable: str,
     replacements: tuple[StubTypeExpression, ...],
+    on_rewrite: TypeRewriteObserver | None = None,
+) -> StubTypeExpression:
+    result = _substitute_collect_expression(
+        expression, variable, replacements, on_rewrite
+    )
+    if on_rewrite is not None:
+        on_rewrite(expression, result)
+
+    return result
+
+
+def _substitute_collect_expression(
+    expression: StubTypeExpression,
+    variable: str,
+    replacements: tuple[StubTypeExpression, ...],
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> StubTypeExpression:
     if isinstance(expression, CollectType):
         if _collects_variable(expression.item, variable):
+            if on_rewrite is not None:
+                for replacement in replacements:
+                    on_rewrite(expression.item, replacement)
+
             return FixedTuple(replacements)
 
         return expression
@@ -951,19 +1104,33 @@ def _substitute_collect(
                 and isinstance(argument.item, CollectType)
                 and _collects_variable(argument.item.item, variable)
             ):
+                if on_rewrite is not None:
+                    for replacement in replacements:
+                        on_rewrite(argument, replacement)
+                        on_rewrite(argument.item, replacement)
+                        on_rewrite(argument.item.item, replacement)
+
                 arguments.extend(replacements)
             else:
-                arguments.append(_substitute_collect(argument, variable, replacements))
+                arguments.append(
+                    _substitute_collect(
+                        argument, variable, replacements, on_rewrite=on_rewrite
+                    )
+                )
 
         return TypeApplication(
-            _substitute_collect(expression.constructor, variable, replacements),
+            _substitute_collect(
+                expression.constructor, variable, replacements, on_rewrite=on_rewrite
+            ),
             tuple(arguments),
         )
 
     if isinstance(expression, FixedTuple | UnpackedType | UnionExpression):
         return rewrite_type_children(
             expression,
-            lambda child: _substitute_collect(child, variable, replacements),
+            lambda child: _substitute_collect(
+                child, variable, replacements, on_rewrite=on_rewrite
+            ),
         )
 
     return expression
@@ -979,11 +1146,32 @@ def _erase_markers(
     expression: StubTypeExpression,
     type_var_tuples: frozenset[str] = frozenset(),
     broad_type_var_tuples: frozenset[str] = frozenset(),
+    on_rewrite: TypeRewriteObserver | None = None,
+) -> StubTypeExpression:
+    result = _erase_markers_expression(
+        expression, type_var_tuples, broad_type_var_tuples, on_rewrite
+    )
+    if on_rewrite is not None:
+        on_rewrite(expression, result)
+
+    return result
+
+
+def _erase_markers_expression(
+    expression: StubTypeExpression,
+    type_var_tuples: frozenset[str] = frozenset(),
+    broad_type_var_tuples: frozenset[str] = frozenset(),
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> StubTypeExpression:
     if isinstance(expression, EachType):
-        item = _erase_markers(expression.item, type_var_tuples, broad_type_var_tuples)
+        item = _erase_markers(
+            expression.item,
+            type_var_tuples,
+            broad_type_var_tuples,
+            on_rewrite=on_rewrite,
+        )
         for name in broad_type_var_tuples:
-            item = _substitute(item, name, TypeName("object"))
+            item = _substitute(item, name, TypeName("object"), on_rewrite=on_rewrite)
 
         if isinstance(item, TypeVariable) and item.name in type_var_tuples:
             return UnpackedType(item)
@@ -991,9 +1179,18 @@ def _erase_markers(
         return item
 
     if isinstance(expression, CollectType):
-        item = _erase_markers(expression.item, type_var_tuples, broad_type_var_tuples)
+        item = _erase_markers(
+            expression.item,
+            type_var_tuples,
+            broad_type_var_tuples,
+            on_rewrite=on_rewrite,
+        )
         if isinstance(item, TypeVariable) and item.name in broad_type_var_tuples:
-            return HomogeneousTuple(TypeName("object"))
+            erased = TypeName("object")
+            if on_rewrite is not None:
+                on_rewrite(item, erased)
+
+            return HomogeneousTuple(erased)
 
         if isinstance(item, TypeVariable) and item.name in type_var_tuples:
             return FixedTuple((UnpackedType(item),))
@@ -1001,7 +1198,12 @@ def _erase_markers(
         return HomogeneousTuple(item)
 
     if isinstance(expression, SchemaType):
-        return _erase_markers(expression.item, type_var_tuples, broad_type_var_tuples)
+        return _erase_markers(
+            expression.item,
+            type_var_tuples,
+            broad_type_var_tuples,
+            on_rewrite=on_rewrite,
+        )
 
     if isinstance(expression, RuntimeInputType | MapType):
         return TypeName("object")
@@ -1009,36 +1211,61 @@ def _erase_markers(
     if isinstance(expression, TypeApplication | FixedTuple | HomogeneousTuple):
         return rewrite_type_children(
             expression,
-            lambda child: _erase_markers(child, type_var_tuples, broad_type_var_tuples),
+            lambda child: _erase_markers(
+                child, type_var_tuples, broad_type_var_tuples, on_rewrite=on_rewrite
+            ),
         )
 
     if isinstance(expression, UnpackedType):
         if isinstance(expression.item, CollectType):
             collected_item = _erase_markers(
-                expression.item.item, type_var_tuples, broad_type_var_tuples
+                expression.item.item,
+                type_var_tuples,
+                broad_type_var_tuples,
+                on_rewrite=on_rewrite,
             )
             if (
                 isinstance(collected_item, TypeVariable)
                 and collected_item.name in broad_type_var_tuples
             ):
-                return UnpackedType(HomogeneousTuple(TypeName("object")))
+                erased = TypeName("object")
+                broad = HomogeneousTuple(erased)
+                if on_rewrite is not None:
+                    on_rewrite(collected_item, erased)
+                    on_rewrite(expression.item, broad)
+
+                return UnpackedType(broad)
 
             if (
                 isinstance(collected_item, TypeVariable)
                 and collected_item.name in type_var_tuples
             ):
+                if on_rewrite is not None:
+                    on_rewrite(expression.item, collected_item)
+
                 return UnpackedType(collected_item)
 
         return UnpackedType(
-            _erase_markers(expression.item, type_var_tuples, broad_type_var_tuples)
+            _erase_markers(
+                expression.item,
+                type_var_tuples,
+                broad_type_var_tuples,
+                on_rewrite=on_rewrite,
+            )
         )
 
     if isinstance(expression, UnionExpression):
         return _union(
             tuple(
-                _erase_markers(member, type_var_tuples, broad_type_var_tuples)
+                _erase_markers(
+                    member,
+                    type_var_tuples,
+                    broad_type_var_tuples,
+                    on_rewrite=on_rewrite,
+                )
                 for member in expression.members
-            )
+            ),
+            on_rewrite=on_rewrite,
         )
 
     return expression

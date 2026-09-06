@@ -44,10 +44,12 @@ from typeforge.compiler.stub_ir._model import (
     is_predicate,
 )
 from typeforge.compiler.stub_ir._tree import (
+    TypeRewriteObserver,
     TypeTransform,
     rewrite_type,
     rewrite_type_children,
     substitute_type,
+    walk_declaration,
     walk_type,
 )
 
@@ -87,6 +89,7 @@ __all__ = [
     "TypeAliasDeclaration",
     "TypeApplication",
     "TypeName",
+    "TypeRewriteObserver",
     "TypeTransform",
     "TypeVariable",
     "UnionExpression",
@@ -97,5 +100,6 @@ __all__ = [
     "rewrite_type",
     "rewrite_type_children",
     "substitute_type",
+    "walk_declaration",
     "walk_type",
 ]

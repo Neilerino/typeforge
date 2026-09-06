@@ -16,6 +16,7 @@ from typeforge.compiler.stub_ir import (
     StubTypeExpression,
     TypeApplication,
     TypeName,
+    TypeRewriteObserver,
     TypeVariable,
     UnionExpression,
     is_predicate,
@@ -25,20 +26,40 @@ from typeforge.compiler.stub_ir import (
 )
 
 
-def resolve_schema_type(expression: StubTypeExpression) -> StubTypeExpression:
+def resolve_schema_type(
+    expression: StubTypeExpression, on_rewrite: TypeRewriteObserver | None = None
+) -> StubTypeExpression:
+    replacement = _resolve_schema_type(expression, on_rewrite)
+    if on_rewrite is not None:
+        on_rewrite(expression, replacement)
+
+    return replacement
+
+
+def _resolve_schema_type(
+    expression: StubTypeExpression, on_rewrite: TypeRewriteObserver | None = None
+) -> StubTypeExpression:
     match expression:
         case UnionExpression(members):
             return union_types_for_schema(
-                tuple(resolve_schema_type(member) for member in members)
+                tuple(
+                    resolve_schema_type(member, on_rewrite=on_rewrite)
+                    for member in members
+                ),
+                on_rewrite=on_rewrite,
             )
         case MapType(subject_expression, cases, default):
-            subject = resolve_schema_type(subject_expression)
+            subject = resolve_schema_type(subject_expression, on_rewrite=on_rewrite)
             if isinstance(subject_expression, RuntimeInputType):
                 return union_types_for_schema(
                     (
-                        *(resolve_schema_type(case.output_type) for case in cases),
-                        resolve_schema_type(default),
-                    )
+                        *(
+                            resolve_schema_type(case.output_type, on_rewrite=on_rewrite)
+                            for case in cases
+                        ),
+                        resolve_schema_type(default, on_rewrite=on_rewrite),
+                    ),
+                    on_rewrite=on_rewrite,
                 )
 
             members = (
@@ -46,33 +67,41 @@ def resolve_schema_type(expression: StubTypeExpression) -> StubTypeExpression:
             )
             return union_types_for_schema(
                 tuple(
-                    _resolve_schema_map_member(member, cases, default)
+                    _resolve_schema_map_member(
+                        member, cases, default, on_rewrite=on_rewrite
+                    )
                     for member in members
-                )
+                ),
+                on_rewrite=on_rewrite,
             )
         case _:
-            return rewrite_type_children(expression, resolve_schema_type)
+            return rewrite_type_children(
+                expression,
+                lambda child: resolve_schema_type(child, on_rewrite=on_rewrite),
+            )
 
 
 def _resolve_schema_map_member(
     subject: StubTypeExpression,
     cases: tuple[MapCase, ...],
     default: StubTypeExpression,
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> StubTypeExpression:
     for index, case in enumerate(cases):
         if is_predicate(case.test):
             result = resolve_schema_predicate(case.test)
             if result is True:
-                return resolve_schema_type(case.output_type)
+                return resolve_schema_type(case.output_type, on_rewrite=on_rewrite)
 
             if result is None:
                 return union_types_for_schema(
                     (
-                        resolve_schema_type(case.output_type),
+                        resolve_schema_type(case.output_type, on_rewrite=on_rewrite),
                         _resolve_schema_map_member(
-                            subject, cases[index + 1 :], default
+                            subject, cases[index + 1 :], default, on_rewrite=on_rewrite
                         ),
-                    )
+                    ),
+                    on_rewrite=on_rewrite,
                 )
 
             continue
@@ -80,10 +109,13 @@ def _resolve_schema_map_member(
         matched, capture = _match_schema_pattern(case.test, subject, None)
         if matched:
             return resolve_schema_type(
-                _substitute_schema_capture(case.output_type, capture)
+                _substitute_schema_capture(
+                    case.output_type, capture, on_rewrite=on_rewrite
+                ),
+                on_rewrite=on_rewrite,
             )
 
-    return resolve_schema_type(default)
+    return resolve_schema_type(default, on_rewrite=on_rewrite)
 
 
 def _match_schema_pattern(
@@ -121,6 +153,7 @@ def _match_schema_pattern(
 def _substitute_schema_capture(
     expression: StubTypeExpression,
     capture: StubTypeExpression | None,
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> StubTypeExpression:
     return rewrite_type(
         expression,
@@ -129,6 +162,7 @@ def _substitute_schema_capture(
             if isinstance(current, MapValueType)
             else None
         ),
+        on_rewrite=on_rewrite,
     )
 
 
@@ -187,6 +221,7 @@ def _type_has_variable(expression: StubTypeExpression) -> bool:
 
 def union_types_for_schema(
     expressions: tuple[StubTypeExpression, ...],
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> StubTypeExpression:
     members: list[StubTypeExpression] = []
     for expression in expressions:
@@ -196,8 +231,20 @@ def union_types_for_schema(
             else (expression,)
         )
         for candidate in candidates:
-            if candidate != TypeName("Never") and candidate not in members:
+            if on_rewrite is not None and candidate is not expression:
+                on_rewrite(expression, candidate)
+
+            if candidate == TypeName("Never"):
+                continue
+
+            retained = next((member for member in members if member == candidate), None)
+            if retained is None:
                 members.append(candidate)
+            elif on_rewrite is not None:
+                for original, replacement in zip(
+                    walk_type(candidate), walk_type(retained), strict=True
+                ):
+                    on_rewrite(original, replacement)
 
     if not members:
         return TypeName("Never")

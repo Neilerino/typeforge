@@ -50,6 +50,7 @@ from typeforge.compiler.stub_ir import (
     TypeAliasDeclaration,
     TypeApplication,
     TypeName,
+    TypeRewriteObserver,
     UnionExpression,
     VariableDeclaration,
     rewrite_type,
@@ -66,7 +67,9 @@ from typeforge.semantics import (
 
 @safe(exceptions=(RecordMaterializationError,))
 def materialize_record_transforms(
-    module: SourceModule, stub: StubModule
+    module: SourceModule,
+    stub: StubModule,
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> RecordMaterialization:
     if not module.typed_dicts:
         return RecordMaterialization((), (), ())
@@ -97,7 +100,11 @@ def materialize_record_transforms(
         alias_name, controller = alias_reference
         specialized = tuple(
             specialize_record_function(
-                stub_functions[name], controller, item.input_name, item.shape.name
+                stub_functions[name],
+                controller,
+                item.input_name,
+                item.shape.name,
+                on_rewrite=on_rewrite,
             )
             for item in derived
             if item.alias == alias_name and item.shape.name is not None
@@ -134,39 +141,55 @@ def materialize_record_transforms(
 def replace_record_aliases_in_declaration(
     declaration: Declaration,
     derived: tuple[DerivedRecord, ...],
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> Declaration:
     match declaration:
         case FunctionDeclaration():
-            return replace_record_aliases_in_function(declaration, derived)
+            return replace_record_aliases_in_function(
+                declaration, derived, on_rewrite=on_rewrite
+            )
         case OverloadDeclaration():
-            return replace_record_aliases_in_overload(declaration, derived)
+            return replace_record_aliases_in_overload(
+                declaration, derived, on_rewrite=on_rewrite
+            )
         case TypeAliasDeclaration():
             return replace(
                 declaration,
-                value=replace_record_aliases(declaration.value, derived),
+                value=replace_record_aliases(
+                    declaration.value, derived, on_rewrite=on_rewrite
+                ),
             )
         case VariableDeclaration():
             return replace(
                 declaration,
-                annotation=replace_record_aliases(declaration.annotation, derived),
+                annotation=replace_record_aliases(
+                    declaration.annotation, derived, on_rewrite=on_rewrite
+                ),
             )
         case ClassDeclaration():
             return replace(
                 declaration,
                 bases=tuple(
-                    replace_record_aliases(base, derived) for base in declaration.bases
+                    replace_record_aliases(base, derived, on_rewrite=on_rewrite)
+                    for base in declaration.bases
                 ),
                 fields=tuple(
                     replace(
                         field,
-                        annotation=replace_record_aliases(field.annotation, derived),
+                        annotation=replace_record_aliases(
+                            field.annotation, derived, on_rewrite=on_rewrite
+                        ),
                     )
                     for field in declaration.fields
                 ),
                 methods=tuple(
-                    replace_record_aliases_in_function(method, derived)
+                    replace_record_aliases_in_function(
+                        method, derived, on_rewrite=on_rewrite
+                    )
                     if isinstance(method, FunctionDeclaration)
-                    else replace_record_aliases_in_overload(method, derived)
+                    else replace_record_aliases_in_overload(
+                        method, derived, on_rewrite=on_rewrite
+                    )
                     for method in declaration.methods
                 ),
             )
@@ -239,37 +262,48 @@ def render_typed_dict(shape: RecordShape[StaticType]) -> str:
 def replace_record_aliases_in_function(
     declaration: FunctionDeclaration,
     derived: tuple[DerivedRecord, ...],
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> FunctionDeclaration:
     return replace(
         declaration,
         parameters=tuple(
             replace(
                 parameter,
-                annotation=replace_record_aliases(parameter.annotation, derived),
+                annotation=replace_record_aliases(
+                    parameter.annotation, derived, on_rewrite=on_rewrite
+                ),
             )
             for parameter in declaration.parameters
         ),
-        return_type=replace_record_aliases(declaration.return_type, derived),
+        return_type=replace_record_aliases(
+            declaration.return_type, derived, on_rewrite=on_rewrite
+        ),
     )
 
 
 def replace_record_aliases_in_overload(
     declaration: OverloadDeclaration,
     derived: tuple[DerivedRecord, ...],
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> OverloadDeclaration:
     return replace(
         declaration,
         signatures=tuple(
-            replace_record_aliases_in_function(signature, derived)
+            replace_record_aliases_in_function(
+                signature, derived, on_rewrite=on_rewrite
+            )
             for signature in declaration.signatures
         ),
-        fallback=replace_record_aliases_in_function(declaration.fallback, derived),
+        fallback=replace_record_aliases_in_function(
+            declaration.fallback, derived, on_rewrite=on_rewrite
+        ),
     )
 
 
 def replace_record_aliases(
     expression: StubTypeExpression,
     derived: tuple[DerivedRecord, ...],
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> StubTypeExpression:
     replacements = {
         (item.alias, item.input_name): TypeName(item.shape.name or "object")
@@ -283,7 +317,7 @@ def replace_record_aliases(
             case _:
                 return None
 
-    return rewrite_type(expression, replace_alias)
+    return rewrite_type(expression, replace_alias, on_rewrite=on_rewrite)
 
 
 def build_record_shapes(
@@ -443,6 +477,7 @@ def specialize_record_function(
     controller: str,
     input_name: str,
     output_name: str | None,
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> FunctionDeclaration:
     concrete_input = TypeName(input_name)
     return replace(
@@ -451,7 +486,10 @@ def specialize_record_function(
             replace(
                 parameter,
                 annotation=substitute_type(
-                    parameter.annotation, controller, concrete_input
+                    parameter.annotation,
+                    controller,
+                    concrete_input,
+                    on_rewrite=on_rewrite,
                 ),
             )
             for parameter in function.parameters

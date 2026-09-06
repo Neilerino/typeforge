@@ -7,11 +7,15 @@ from typeforge.compiler.stub_ir._model import (
     AllPredicate,
     AnyPredicate,
     AssignablePredicate,
+    ClassDeclaration,
     CollectType,
+    Declaration,
     EachType,
     EqualPredicate,
     FieldType,
     FixedTuple,
+    FunctionDeclaration,
+    GeneratedElement,
     HomogeneousTuple,
     LiteralType,
     MapCase,
@@ -19,17 +23,23 @@ from typeforge.compiler.stub_ir._model import (
     MapType,
     MapValueType,
     NotPredicate,
+    OverloadDeclaration,
     Predicate,
     RuntimeInputType,
     SchemaType,
     StubTypeExpression,
+    TypeAliasDeclaration,
     TypeApplication,
     TypeName,
     TypeVariable,
     UnionExpression,
     UnpackedType,
+    VariableDeclaration,
     is_predicate,
 )
+
+type TypeRewriteObserver = Callable[[StubTypeExpression, StubTypeExpression], None]
+
 
 type TypeTransform = Callable[[StubTypeExpression], StubTypeExpression | None]
 
@@ -38,34 +48,56 @@ def substitute_type(
     expression: StubTypeExpression,
     variable: str,
     replacement: StubTypeExpression,
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> StubTypeExpression:
     target = TypeVariable(variable)
     return rewrite_type(
         expression,
         lambda current: replacement if current == target else None,
+        on_rewrite=on_rewrite,
     )
 
 
 def rewrite_type(
     expression: StubTypeExpression,
     transform: TypeTransform,
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> StubTypeExpression:
     """Rewrite a type tree top-down, without traversing replacements."""
     replacement = transform(expression)
-    if replacement is not None:
-        return replacement
+    if replacement is None:
+        replacement = rewrite_type_children(
+            expression,
+            lambda child: rewrite_type(child, transform, on_rewrite=on_rewrite),
+        )
 
-    return rewrite_type_children(
-        expression,
-        lambda child: rewrite_type(child, transform),
-    )
+    if on_rewrite is not None:
+        on_rewrite(expression, replacement)
+
+    return replacement
 
 
 def rewrite_type_children(
     expression: StubTypeExpression,
     rewrite: Callable[[StubTypeExpression], StubTypeExpression],
 ) -> StubTypeExpression:
-    """Rewrite only the immediate children of a type-expression node."""
+    """Rewrite immediate children, retaining the node when no child changes."""
+    changed = False
+
+    def rewrite_child(child: StubTypeExpression) -> StubTypeExpression:
+        nonlocal changed
+        replacement = rewrite(child)
+        changed = changed or replacement is not child
+        return replacement
+
+    replacement = _rewrite_type_children(expression, rewrite_child)
+    return replacement if changed else expression
+
+
+def _rewrite_type_children(
+    expression: StubTypeExpression,
+    rewrite: Callable[[StubTypeExpression], StubTypeExpression],
+) -> StubTypeExpression:
     match expression:
         case TypeApplication(constructor, arguments):
             return TypeApplication(
@@ -215,5 +247,35 @@ def _walk_predicate_types(predicate: Predicate) -> Iterator[StubTypeExpression]:
 
         case NotPredicate(item):
             yield from _walk_predicate_types(item)
+        case _ as unreachable:
+            assert_never(unreachable)
+
+
+def walk_declaration(declaration: Declaration) -> Iterator[GeneratedElement]:
+    """Yield a declaration and its nested declarations and type expressions."""
+    yield declaration
+    match declaration:
+        case FunctionDeclaration(parameters=parameters, return_type=return_type):
+            for parameter in parameters:
+                yield from walk_type(parameter.annotation)
+
+            yield from walk_type(return_type)
+        case OverloadDeclaration(signatures=signatures, fallback=fallback):
+            for signature in (*signatures, fallback):
+                yield from walk_declaration(signature)
+        case ClassDeclaration(bases=bases, fields=fields, methods=methods):
+            for base in bases:
+                yield from walk_type(base)
+
+            for field in fields:
+                yield from walk_type(field.annotation)
+
+            for method in methods:
+                yield from walk_declaration(method)
+        case (
+            TypeAliasDeclaration(value=expression)
+            | VariableDeclaration(annotation=expression)
+        ):
+            yield from walk_type(expression)
         case _ as unreachable:
             assert_never(unreachable)

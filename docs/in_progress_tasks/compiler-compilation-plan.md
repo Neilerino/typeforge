@@ -1,7 +1,7 @@
 # Compiler Compilation Plan
 
 Status: In progress — external seam and simplified `StubModule` stage composition
-agreed; prerequisite and first three implementation slices complete
+agreed; prerequisites and first five implementation slices complete
 
 ## Outcome
 
@@ -247,6 +247,9 @@ partially completed slices.
 ~~Reconcile the existing `TypeParameter.span` mismatch between the source model and
 parser.~~ — completed 2026-09-04
 
+~~Preserve unchanged type-expression identity in shared traversal for schema-origin
+tracking.~~ — completed 2026-09-05 (45 changed lines)
+
 1. ~~Core callable tracer~~ — completed 2026-09-04 (approximately 200–300 changed lines)
 
    Attach origins to top-level enriched functions during adaptation, carry those
@@ -269,17 +272,25 @@ parser.~~ — completed 2026-09-04
    compiler boundary. Complete this slice when the record-origin adaptation contract
    passes normally.
 
-4. **Enriched method origins** (approximately 100–200 changed lines)
+4. ~~Enriched method origins~~ — completed 2026-09-05 (117 changed lines)
 
    Extend class lowering so overloads generated for enriched methods retain the
    authored method origin. Complete this slice when `compile_source` associates a
    nested generated overload with its authored method declaration.
 
-5. **Nested schema origins** (approximately 150–250 changed lines)
+5. ~~Nested schema origins~~ — completed 2026-09-05 (1,170 changed lines, including
+   the 45-line traversal prerequisite)
 
    Attach origins to generated type expressions produced from `Schema`, including
    nested and repeated uses, without introducing pipeline-owned element variants.
    Complete this slice when schema-origin ordering and association are deterministic.
+
+   Reviewed in two increments: expression origins through adaptation and record
+   rewrites, then propagation through finite specialization. The original 400-line
+   review target was exceeded: exact identity tracking required explicit rewrite
+   notifications through existing recursive operations, plus regressions for nested
+   unions, repeated uses, alias copies, overloads, and fallbacks. Pipeline interfaces
+   and generated-text behavior remain unchanged; full `make check` passes.
 
 6. **Derived-record provenance** (approximately 150–250 changed lines)
 
