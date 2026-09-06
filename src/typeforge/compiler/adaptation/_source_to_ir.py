@@ -282,13 +282,6 @@ def adapt_source_module(
     )
 
 
-@safe(exceptions=(AdaptationError,))
-def collect_semantic_relationship_aliases(
-    aliases: tuple[SourceTypeAlias, ...],
-) -> tuple[SemanticRelationshipAlias, ...]:
-    return _collect_semantic_relationship_aliases(aliases)
-
-
 def _collect_semantic_relationship_aliases(
     aliases: tuple[SourceTypeAlias, ...],
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
@@ -523,14 +516,6 @@ def _adapt_alias_fallback(
 
         case ValueMarker():
             return TypeName("object")
-
-
-@safe(exceptions=(AdaptationError,))
-def adapt_function(
-    function: SourceFunction,
-    enclosing_type_parameters: tuple[str, ...] = (),
-) -> FunctionDeclaration:
-    return _adapt_function(function, enclosing_type_parameters)
 
 
 def _adapt_function(

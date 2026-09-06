@@ -1,7 +1,7 @@
 # Compiler analysis and overlay projection plan
 
-Status: In progress, 2026-09-06 — functional seams approved; slices 1–2 authorized
-for implementation and review. 2 of 6 slices complete; paused for user review.
+Status: In progress, 2026-09-06 — slices 1–2 accepted; slices 3–4 authorized
+for implementation and review. 3 of 6 slices complete.
 
 This is the active task document for the next compiler scope. The previous
 eleven-slice compilation-plan migration is complete and its task document has been
@@ -15,8 +15,9 @@ recheck repository state when resuming rather than assuming the checkout is unch
 
 This document records the approved seams, compatibility requirements, six tracked
 slices, and completion evidence. The user approved this approach and requested
-implementation of the first two slices on 2026-09-06; stop after those slices for
-review. That handoff supersedes the draft approval notes below for their scope.
+implementation of the first two slices on 2026-09-06. After reviewing them, the
+user accepted slices 1–2 and authorized slices 3–4. Stop after slice 4 for review.
+That handoff supersedes earlier stopping points and draft approval notes.
 
 ## Existing foundation and compatibility requirements
 
@@ -404,7 +405,7 @@ Further contracts before declaring the migration complete:
 ## Implementation slices
 
 These are tracked work items; completion evidence is recorded beneath each title.
-The representation choices for slices 1–2 are approved. Preserve the existing
+The functional seams for slices 1–4 are approved. Preserve the existing
 workflow: one implementation agent per slice, followed by independent primary
 review. Do not run dependent slices concurrently.
 
@@ -487,9 +488,9 @@ unrelated changes. Do not cross out partial slices or mark a planned test as pas
    deletions across 13 files, with no relocations.
 
    Combined slices 1–2: 700 source/test changed lines across 25 files, excluding
-   task documentation. Both slices received independent primary review. Stop here
-   for user review; verification ownership and consumer parsing remain for slices
-   3–6.
+   task documentation. Both slices received independent primary review and were
+   accepted by the user before authorizing slices 3–4. Verification ownership and
+   consumer parsing continue in the following slices.
 
    Implement the reviewed reusable-root representation. Retain interpreted
    callable signatures at adaptation, before record rewriting or specialization
@@ -507,8 +508,46 @@ unrelated changes. Do not cross out partial slices or mark a planned test as pas
    origins, IR traversal, emission, alias/schema overlays. Depends on the approved
    contract representation; follow slice 1 in the implementation sequence.
 
-3. **Separate verification analysis from overlay formatting** — planned
-   (300–450 substantive changed lines, plus code relocation)
+3. ~~Separate verification analysis from overlay formatting~~ — completed 2026-09-06
+   (654 changed lines after accounting for file moves)
+
+   Moved the existing verification package into `compiler.verification`.
+   `analyze_implementations(parsed, module)` associates retained callable roots
+   through origins and builds return contracts directly from typed IR. It no
+   longer adapts functions or collects/expands aliases independently. Removed
+   obsolete adaptation wrappers and pipeline exports after their callers migrated.
+
+   Obligations retain authored functions, return contracts, typed expected/narrowed
+   inputs, and explicit `ReturnSite` or `ImplicitReturnSite(suite)` data. Existing
+   frontend return/suite facts are reused. Overlay now owns source slicing,
+   placement, indentation, newline policy, provenance rendering, and name collision
+   avoidance. Expected-type emission failures still skip the obligation; removed
+   the unreachable verification-edit failure conversion. Existing flow policies
+   remain intact.
+
+   Real red: `test_guarded_return_uses_retained_contract_and_authored_site`
+   reached the declared seam after adaptation and failed for missing analysis.
+   Ordinary passing tests now cover that tracer with adaptation disabled, bare
+   versus implicit returns, generators/declaration-only bodies, unknown guards,
+   and controller reassignment. Architecture tests prohibit target dependencies
+   from compiler verification. No xfails were added.
+
+   Validation: `make check src/typeforge/compiler/verification src/typeforge/compiler/adaptation src/typeforge/compiler/pipeline src/typeforge/overlay tests/unit/compiler/verification tests/unit/verification tests/unit/overlay tests/unit/diagnostics tests/architecture`
+   and independent `make check` both passed all six checks. Focused pytest passed
+   123 cases. Independent replay matched all 107 pre-slice overlay outcomes exactly,
+   including mappings, diagnostics metadata, failures, Unicode, inline suites,
+   comments, EOF and CRLF cases. `git diff --check` passed.
+
+   Size: 359 additions plus 295 deletions after comparing the five moved files
+   against their former paths. The relocated package originally contained 1,100
+   lines; raw path-based additions/deletions total 2,414. Review was split into
+   compiler analysis/migration (361 lines), overlay formatting (137), and
+   regressions/architecture (156). The estimate was exceeded by the removal of
+   duplicate adaptation/callable walks and readable seam-level regression coverage.
+
+   Temporary migration entry: overlay still constructs `ParsedSource(module, tree)`
+   using its existing second parse and a temporary pipeline export. Slice 4 must
+   remove that construction, export, and direct analysis call.
 
    Move contract and flow analysis behind `compiler.verification`. Consume retained
    typed signatures and the original parsed bodies; remove independent annotation
@@ -620,7 +659,7 @@ cases, explicit expected types/text/spans, and keyword arguments for metadata.
 Accepted direction: verification analysis belongs behind the compiler seam;
 overlay projects completed compiler results; authored source is parsed once.
 
-Approved direction (2026-09-06); implementation is authorized for slices 1–2:
+Approved direction (2026-09-06); implementation is authorized through slice 4:
 
 1. Generalize reusable roots to include interpreted callable contracts, keeping
    adaptation's `StubModule` return rather than introducing a parallel catalog.
@@ -633,7 +672,7 @@ Names of new source-site records are deliberately not frozen yet. Their required
 information and owners are specified above; no generic Python AST replacement,
 service classes, speculative protocols, or extra configuration switches are planned.
 
-The implementation handoff is to complete slices 1–2, then stop for user review.
+The current implementation handoff is to complete slices 3–4, then stop for user review.
 Each slice starts with an executable failing contract and leaves it as an ordinary
 passing regression. Later slices remain planned. Relevant validation will cover
 compiler source/adaptation/specialization/pipeline/verification, module surface,

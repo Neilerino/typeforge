@@ -38,3 +38,19 @@ def test_consumers_use_the_public_pipeline_interface(consumer: str) -> None:
     )
 
     assert_passes(rule)
+
+
+@pytest.mark.parametrize("target", ["overlay", "diagnostics", "analysis", "adapters"])
+def test_verification_analysis_has_no_target_dependencies(target: str) -> None:
+    rule = (
+        project_files(TYPE_FORGE.path.parent.as_posix())
+        .in_path(TYPE_FORGE.mod("compiler.verification").pattern)
+        .should_not()
+        .depend_on_files()
+        .in_path(TYPE_FORGE.mod(target).pattern)
+        .because(
+            "compiler obligations describe source sites and types, not checker edits"
+        )
+    )
+
+    assert_passes(rule)

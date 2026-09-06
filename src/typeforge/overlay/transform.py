@@ -14,6 +14,7 @@ from typeforge.analysis.model import (
     SourceSpan,
     VirtualDocument,
 )
+from typeforge.analysis.positions import source_position_from_utf8
 from typeforge.compiler.emission import (
     EmissionError,
     emit_stub_module,
@@ -25,6 +26,7 @@ from typeforge.compiler.pipeline import (
     CompilationError,
     CompilationPlan,
     LoweringError,
+    ParsedSource,
     RecordMaterializationError,
     SourceSyntaxError,
     compile_source,
@@ -52,9 +54,12 @@ from typeforge.compiler.stub_ir import (
     UnpackedType,
     is_declaration,
 )
-from typeforge.verification.contracts import union_types
-from typeforge.verification.model import ReturnObligation, VerificationPlan
-from typeforge.verification.planner import plan_implementation_verification
+from typeforge.compiler.verification import (
+    ImplicitReturnSite,
+    VerificationPlan,
+    analyze_implementations,
+)
+from typeforge.compiler.verification.contracts import union_types
 
 _IMPORT_MARKER = "# typeforge: overlay-import"
 _START_MARKER = "# typeforge: overlay"
@@ -149,25 +154,12 @@ def transform_source(
     if isinstance(schema_edits, Failure):
         return schema_edits
 
-    verification = plan_implementation_verification(
-        source,
-        path,
-        module,
-        tree,
+    verification = analyze_implementations(ParsedSource(module, tree), plan.module)
+    verification_edits = _verification_edits(
+        source=source,
+        plan=verification,
+        reserved_names={item.name for item in module.identifiers},
     )
-    if isinstance(verification, Failure):
-        return Failure(_adaptation_error(module.path, verification.failure()))
-
-    verification_edits = _verification_edits(verification.unwrap())
-    if isinstance(verification_edits, Failure):
-        return Failure(
-            OverlayError(
-                OverlayErrorCode.EMISSION,
-                path,
-                verification_edits.failure(),
-            )
-        )
-
     records = _render_derived_records(plan) if schema_edits.unwrap() else Success(())
     if isinstance(records, Failure):
         return records
@@ -180,7 +172,7 @@ def transform_source(
             for item in (
                 *alias_edits.unwrap(),
                 *schema_edits.unwrap(),
-                *verification_edits.unwrap(),
+                *verification_edits,
             )
         )
         + record_declarations
@@ -211,7 +203,7 @@ def transform_source(
         *alias_edits.unwrap(),
         *schema_edits.unwrap(),
         *blocks,
-        *verification_edits.unwrap(),
+        *verification_edits,
     )
     if not edits:
         return Success(
@@ -651,12 +643,53 @@ def _checker_type(expression: StubTypeExpression) -> StubTypeExpression:
 
 
 def _verification_edits(
+    source: str,
     plan: VerificationPlan,
-) -> Result[tuple[_Edit, ...], str]:
-    reserved = set(plan.reserved_names)
+    reserved_names: set[str],
+) -> tuple[_Edit, ...]:
+    reserved = set(reserved_names)
     next_identifier = 1
     edits: list[_Edit] = []
     for obligation in plan.obligations:
+        site = obligation.site
+        if isinstance(site, ImplicitReturnSite):
+            end = source_position_from_utf8(
+                source, site.suite.end.line - 1, site.suite.end.column
+            )
+            line_end = source.find("\n", end.offset)
+            insertion_offset = len(source) if line_end < 0 else line_end + 1
+            position = _offset_position(source, insertion_offset)
+            expression_span = SourceSpan(position, position)
+            expression_text = "None"
+            indentation = " " * (obligation.function.span.start.column + 4)
+            inline = False
+            starts_line = True
+            leading_newline = line_end < 0
+        else:
+            authored = site.expression or site.statement
+            expression_span = SourceSpan(
+                source_position_from_utf8(
+                    source, authored.start.line - 1, authored.start.column
+                ),
+                source_position_from_utf8(
+                    source, authored.end.line - 1, authored.end.column
+                ),
+            )
+            expression_text = (
+                source[expression_span.start.offset : expression_span.end.offset]
+                if site.expression is not None
+                else "None"
+            )
+            insertion_offset = source_position_from_utf8(
+                source, site.statement.start.line - 1, site.statement.start.column
+            ).offset
+            line_start = source.rfind("\n", 0, insertion_offset) + 1
+            prefix = source[line_start:insertion_offset]
+            inline = bool(prefix.strip())
+            indentation = "" if inline else prefix
+            starts_line = False
+            leading_newline = False
+
         assignments: list[str] = []
         expected_types: list[str] = []
         for expected in obligation.expected_types:
@@ -672,45 +705,63 @@ def _verification_edits(
                     reserved.add(name)
                     break
 
-            assignments.append(
-                f"{name}: {emitted.unwrap()} = {obligation.expression_text}"
-            )
+            assignments.append(f"{name}: {emitted.unwrap()} = {expression_text}")
             expected_types.append(emitted.unwrap())
 
         if not assignments:
             continue
 
-        text = _render_verification_assignments(assignments, obligation)
+        text = _render_verification_assignments(
+            assignments,
+            indentation=indentation,
+            inline=inline,
+            starts_line=starts_line,
+            leading_newline=leading_newline,
+        )
         edits.append(
             _Edit(
-                start=obligation.insertion_offset,
-                end=obligation.insertion_offset,
+                start=insertion_offset,
+                end=insertion_offset,
                 text=text,
-                authored_span=obligation.expression_span,
+                authored_span=expression_span,
                 provenance=ReturnCheckProvenance(
-                    callable_name=obligation.qualified_name,
-                    return_annotation=obligation.return_annotation,
-                    controller_parameter=obligation.controller_parameter,
-                    narrowed_inputs=obligation.narrowed_inputs,
+                    callable_name=obligation.function.qualified_name,
+                    return_annotation=(
+                        obligation.function.returns.source
+                        if obligation.function.returns is not None
+                        else "Any"
+                    ),
+                    controller_parameter=obligation.contract.controller_parameter,
+                    narrowed_inputs=tuple(
+                        rendered
+                        for expression in obligation.narrowed_inputs
+                        if (rendered := emit_type_expression(expression).value_or(None))
+                        is not None
+                    ),
                     expected_types=tuple(expected_types),
                 ),
             )
         )
 
-    return Success(tuple(edits))
+    return tuple(edits)
 
 
 def _render_verification_assignments(
-    assignments: list[str], obligation: ReturnObligation
+    assignments: list[str],
+    *,
+    indentation: str,
+    inline: bool,
+    starts_line: bool,
+    leading_newline: bool,
 ) -> str:
-    if obligation.inline:
+    if inline:
         return "; ".join(assignments) + "; "
 
-    separator = f"\n{obligation.indentation}"
+    separator = f"\n{indentation}"
     rendered = separator.join(assignments)
-    if obligation.starts_line:
-        prefix = "\n" if obligation.leading_newline else ""
-        return f"{prefix}{obligation.indentation}{rendered}\n"
+    if starts_line:
+        prefix = "\n" if leading_newline else ""
+        return f"{prefix}{indentation}{rendered}\n"
 
     return f"{rendered}{separator}"
 

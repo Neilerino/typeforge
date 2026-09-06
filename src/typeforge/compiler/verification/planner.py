@@ -1,25 +1,31 @@
 import ast
 from dataclasses import dataclass
-from pathlib import Path
 
-from returns.result import Failure, Result, Success
-
-from typeforge.analysis.model import SourcePosition, SourceSpan
-from typeforge.analysis.positions import source_position_from_utf8
 from typeforge.compiler.emission import emit_type_expression
-from typeforge.compiler.pipeline import (
-    AdaptationError,
-    collect_semantic_relationship_aliases,
+from typeforge.compiler.source import (
+    FunctionDeclaration as SourceFunction,
 )
-from typeforge.compiler.source import SourceModule
-from typeforge.compiler.stub_ir import StubTypeExpression
-from typeforge.verification.contracts import aggregate_output, build_return_contract
-from typeforge.verification.guards import recognize_guard, recognize_pattern
-from typeforge.verification.model import (
+from typeforge.compiler.source import (
+    ParsedSource,
+    SourceModule,
+    SourcePosition,
+)
+from typeforge.compiler.stub_ir import (
+    FunctionDeclaration,
+    StubModule,
+    StubTypeExpression,
+)
+from typeforge.compiler.verification.contracts import (
+    aggregate_output,
+    build_return_contract,
+)
+from typeforge.compiler.verification.guards import recognize_guard, recognize_pattern
+from typeforge.compiler.verification.model import (
     Alternative,
     FlowState,
     Guard,
     GuardMode,
+    ImplicitReturnSite,
     ReturnContract,
     ReturnObligation,
     VerificationPlan,
@@ -34,32 +40,40 @@ class _FlowResult:
 
 @dataclass(frozen=True, slots=True)
 class _PlanningContext:
-    source: str
+    source: SourceModule
+    function: SourceFunction
     contract: ReturnContract
     never_functions: frozenset[str]
 
 
-def plan_implementation_verification(
-    source: str,
-    path: Path,
-    module: SourceModule,
-    tree: ast.Module,
-) -> Result[VerificationPlan, AdaptationError]:
-    del path
-    aliases = collect_semantic_relationship_aliases(module.aliases)
-    if isinstance(aliases, Failure):
-        return aliases
-
-    nodes = _function_nodes(tree)
+def analyze_implementations(
+    parsed: ParsedSource, module: StubModule
+) -> VerificationPlan:
+    source = parsed.source
+    nodes = {
+        SourcePosition(node.lineno, node.col_offset): node
+        for node in ast.walk(parsed.tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+    roots = {
+        id(element): element
+        for element in module.reusable_elements
+        if isinstance(element, FunctionDeclaration)
+    }
+    signatures = {
+        origin.origin: roots[id(origin.generated)]
+        for origin in module.origins
+        if id(origin.generated) in roots
+    }
     never_functions = frozenset(
         function.name
-        for function in module.functions
+        for function in source.functions
         if function.returns is not None
         and function.returns.source in {"Never", "NoReturn", "typing.Never"}
     )
     obligations: list[ReturnObligation] = []
-    for function in module.functions:
-        node = nodes.get((function.qualified_name, function.span.start.line))
+    for function in source.functions:
+        node = nodes.get(function.span.start)
         if (
             node is None
             or _is_generator(node)
@@ -68,39 +82,18 @@ def plan_implementation_verification(
         ):
             continue
 
-        enclosing = _enclosing_type_parameters(module, function.qualified_name)
-        contract_result = build_return_contract(function, aliases.unwrap(), enclosing)
-        if isinstance(contract_result, Failure):
-            return contract_result
-
-        contract = contract_result.unwrap()
+        signature = signatures.get(function.span)
+        contract = build_return_contract(signature) if signature is not None else None
         if contract is None:
             continue
 
         initial = FlowState(tuple(item.index for item in contract.alternatives))
-        context = _PlanningContext(source, contract, never_functions)
+        context = _PlanningContext(source, function, contract, never_functions)
         analyzed = _analyze_statements(node.body, (initial,), context)
         obligations.extend(analyzed.obligations)
-        obligations.extend(_fallthrough_obligations(node, analyzed.continuing, context))
+        obligations.extend(_fallthrough_obligations(analyzed.continuing, context))
 
-    reserved = tuple(
-        sorted(
-            {item.id for item in ast.walk(tree) if isinstance(item, ast.Name)}
-            | {
-                argument.arg
-                for item in ast.walk(tree)
-                if isinstance(item, ast.arguments)
-                for argument in (
-                    *item.posonlyargs,
-                    *item.args,
-                    *item.kwonlyargs,
-                    *((item.vararg,) if item.vararg is not None else ()),
-                    *((item.kwarg,) if item.kwarg is not None else ()),
-                )
-            }
-        )
-    )
-    return Success(VerificationPlan(tuple(obligations), reserved))
+    return VerificationPlan(tuple(obligations))
 
 
 def _analyze_statements(
@@ -430,70 +423,39 @@ def _return_obligation(
     state: FlowState,
     context: _PlanningContext,
 ) -> ReturnObligation:
-    expression = statement.value
-    expression_text = (
-        ast.get_source_segment(context.source, expression)
-        if expression is not None
-        else None
-    ) or "None"
-    expression_span = (
-        _node_span(context.source, expression)
-        if expression is not None
-        else _node_span(context.source, statement)
+    position = SourcePosition(statement.lineno, statement.col_offset)
+    site = next(
+        site for site in context.source.return_sites if site.statement.start == position
     )
-    expected = _expected_types(state, context.contract)
-    insertion = _node_span(context.source, statement).start
-    line_start = context.source.rfind("\n", 0, insertion.offset) + 1
-    prefix = context.source[line_start : insertion.offset]
-    inline = bool(prefix.strip())
-    indentation = "" if inline else prefix
     return ReturnObligation(
-        qualified_name=context.contract.qualified_name,
-        return_annotation=context.contract.return_annotation,
-        controller_parameter=context.contract.controller_parameter,
-        expected_types=expected,
+        function=context.function,
+        contract=context.contract,
+        site=site,
+        expected_types=_expected_types(state, context.contract),
         narrowed_inputs=tuple(
-            value
+            item.input_type
             for item in context.contract.alternatives
             if item.index in state.alternatives
             and not item.is_default
-            and (value := _render_input(item)) is not None
+            and item.input_type is not None
         ),
-        expression_text=expression_text,
-        expression_span=expression_span,
-        insertion_offset=insertion.offset,
-        indentation=indentation,
-        inline=inline,
     )
 
 
 def _fallthrough_obligations(
-    node: ast.FunctionDef | ast.AsyncFunctionDef,
     states: tuple[FlowState, ...],
     context: _PlanningContext,
 ) -> tuple[ReturnObligation, ...]:
-    if not states or not node.body:
+    if not states or context.function.body_span is None:
         return ()
 
-    state = _merged_state(states)
-    end = _node_span(context.source, node.body[-1]).end
-    line_end = context.source.find("\n", end.offset)
-    insertion_offset = len(context.source) if line_end < 0 else line_end + 1
-    position = _position(context.source, insertion_offset)
     return (
         ReturnObligation(
-            qualified_name=context.contract.qualified_name,
-            return_annotation=context.contract.return_annotation,
-            controller_parameter=context.contract.controller_parameter,
-            expected_types=_expected_types(state, context.contract),
+            function=context.function,
+            contract=context.contract,
+            site=ImplicitReturnSite(context.function.body_span),
+            expected_types=_expected_types(_merged_state(states), context.contract),
             narrowed_inputs=(),
-            expression_text="None",
-            expression_span=SourceSpan(position, position),
-            insertion_offset=insertion_offset,
-            indentation=" " * (node.col_offset + 4),
-            inline=False,
-            starts_line=True,
-            leading_newline=line_end < 0,
         ),
     )
 
@@ -622,52 +584,6 @@ def _normalize_type(value: str | None) -> str | None:
         return value
 
 
-def _function_nodes(
-    tree: ast.Module,
-) -> dict[tuple[tuple[str, ...], int], ast.FunctionDef | ast.AsyncFunctionDef]:
-    nodes: dict[
-        tuple[tuple[str, ...], int], ast.FunctionDef | ast.AsyncFunctionDef
-    ] = {}
-
-    def visit(statements: list[ast.stmt], scope: tuple[str, ...]) -> None:
-        for statement in statements:
-            if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
-                nodes[((*scope, statement.name), statement.lineno)] = statement
-            elif isinstance(statement, ast.ClassDef):
-                visit(statement.body, (*scope, statement.name))
-            elif isinstance(statement, ast.If | ast.While | ast.For | ast.AsyncFor):
-                visit(statement.body, scope)
-                visit(statement.orelse, scope)
-            elif isinstance(statement, ast.Try | ast.TryStar):
-                visit(statement.body, scope)
-                for handler in statement.handlers:
-                    visit(handler.body, scope)
-
-                visit(statement.orelse, scope)
-                visit(statement.finalbody, scope)
-            elif isinstance(statement, ast.With | ast.AsyncWith):
-                visit(statement.body, scope)
-            elif isinstance(statement, ast.Match):
-                for case in statement.cases:
-                    visit(case.body, scope)
-
-    visit(tree.body, ())
-    return nodes
-
-
-def _enclosing_type_parameters(
-    module: SourceModule, qualified_name: tuple[str, ...]
-) -> tuple[str, ...]:
-    if len(qualified_name) != 2:
-        return ()
-
-    owner = next(
-        (item for item in module.classes if item.name == qualified_name[0]),
-        None,
-    )
-    return () if owner is None else tuple(item.name for item in owner.type_parameters)
-
-
 def _is_generator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     class YieldFinder(ast.NodeVisitor):
         def __init__(self) -> None:
@@ -718,22 +634,3 @@ def _is_never_call(expression: ast.expr, never_functions: frozenset[str]) -> boo
         and isinstance(expression.func, ast.Name)
         and expression.func.id in never_functions
     )
-
-
-def _node_span(source: str, node: ast.AST) -> SourceSpan:
-    lineno = getattr(node, "lineno", 1)
-    column = getattr(node, "col_offset", 0)
-    end_lineno = getattr(node, "end_lineno", lineno)
-    end_column = getattr(node, "end_col_offset", column)
-    return SourceSpan(
-        source_position_from_utf8(source, lineno - 1, column),
-        source_position_from_utf8(source, end_lineno - 1, end_column),
-    )
-
-
-def _position(source: str, offset: int) -> SourcePosition:
-    prefix = source[:offset]
-    line = prefix.count("\n")
-    previous = prefix.rfind("\n")
-    column = offset if previous < 0 else offset - previous - 1
-    return SourcePosition(offset, line, column)

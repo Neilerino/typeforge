@@ -2,10 +2,6 @@
 
 from typeforge.compiler.adaptation import (
     AdaptationError,
-    SemanticRelationshipAlias,
-    adapt_function,
-    collect_semantic_relationship_aliases,
-    expand_function_map_aliases,
 )
 from typeforge.compiler.emission import EmissionError
 from typeforge.compiler.module_surface import UnsupportedPublicDeclaration
@@ -24,9 +20,8 @@ from typeforge.compiler.pipeline._models import (
 from typeforge.compiler.record_materialization import (
     RecordMaterializationError,
 )
-from typeforge.compiler.source import SourceSpan, SourceSyntaxError
+from typeforge.compiler.source import ParsedSource, SourceSpan, SourceSyntaxError
 from typeforge.compiler.specialization import LoweringError
-from typeforge.compiler.stub_ir import substitute_type
 
 __all__ = [
     "AdaptationError",
@@ -39,16 +34,12 @@ __all__ = [
     "GeneratedModule",
     "GenerationError",
     "LoweringError",
+    "ParsedSource",
     "RecordMaterializationError",
-    "SemanticRelationshipAlias",
     "SourceSpan",
     "SourceSyntaxError",
     "UnsupportedPublicDeclaration",
-    "adapt_function",
-    "collect_semantic_relationship_aliases",
     "compile_source",
     "describe_authored_callables",
-    "expand_function_map_aliases",
     "generate_module",
-    "substitute_type",
 ]

@@ -1,6 +1,6 @@
 import ast
 
-from typeforge.verification.model import Guard, GuardMode
+from typeforge.compiler.verification.model import Guard, GuardMode
 
 
 def recognize_guard(expression: ast.expr, controller: str) -> tuple[Guard, bool] | None:

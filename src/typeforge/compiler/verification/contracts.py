@@ -1,13 +1,5 @@
-from returns.result import Failure, Result, Success
+from returns.result import Failure
 
-from typeforge.compiler.pipeline import (
-    AdaptationError,
-    SemanticRelationshipAlias,
-    adapt_function,
-    expand_function_map_aliases,
-    substitute_type,
-)
-from typeforge.compiler.source import FunctionDeclaration as SourceFunction
 from typeforge.compiler.specialization import (
     map_default_output,
     map_specializations,
@@ -15,31 +7,24 @@ from typeforge.compiler.specialization import (
     predicate_is_supported,
 )
 from typeforge.compiler.stub_ir import (
+    FunctionDeclaration,
     MapType,
     StubTypeExpression,
     TypeName,
     TypeVariable,
     UnionExpression,
     is_predicate,
+    substitute_type,
 )
-from typeforge.verification.model import Alternative, ReturnContract
+from typeforge.compiler.verification.model import Alternative, ReturnContract
 
 
-def build_return_contract(
-    function: SourceFunction,
-    aliases: tuple[SemanticRelationshipAlias, ...],
-    enclosing_type_parameters: tuple[str, ...] = (),
-) -> Result[ReturnContract | None, AdaptationError]:
-    adapted = adapt_function(function, enclosing_type_parameters)
-    if isinstance(adapted, Failure):
-        return adapted
-
-    expanded = expand_function_map_aliases(adapted.unwrap(), aliases)
-    relationship = expanded.return_type
+def build_return_contract(signature: FunctionDeclaration) -> ReturnContract | None:
+    relationship = signature.return_type
     if not isinstance(relationship, MapType) or not isinstance(
         relationship.subject, TypeVariable
     ):
-        return Success(None)
+        return None
 
     controller = relationship.subject.name
     for case in relationship.cases:
@@ -52,7 +37,7 @@ def build_return_contract(
             or predicate_controller_result.unwrap() != controller
             or not predicate_is_supported(case.test, controller)
         ):
-            return Success(None)
+            return None
 
     mapping = MapType(
         relationship.subject,
@@ -61,11 +46,11 @@ def build_return_contract(
     )
     controller_parameters = tuple(
         parameter.name
-        for parameter in expanded.parameters
+        for parameter in signature.parameters
         if parameter.annotation == TypeVariable(controller)
     )
     if len(controller_parameters) != 1:
-        return Success(None)
+        return None
 
     alternatives = tuple(
         Alternative(
@@ -88,17 +73,11 @@ def build_return_contract(
             is_default=True,
         ),
     )
-    return Success(
-        ReturnContract(
-            qualified_name=function.qualified_name,
-            return_annotation=(
-                function.returns.source if function.returns is not None else "Any"
-            ),
-            controller_parameter=controller_parameters[0],
-            controller_type_parameter=controller,
-            mapping=mapping,
-            alternatives=alternatives,
-        )
+    return ReturnContract(
+        controller_parameter=controller_parameters[0],
+        controller_type_parameter=controller,
+        mapping=mapping,
+        alternatives=alternatives,
     )
 
 

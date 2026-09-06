@@ -45,9 +45,12 @@ TYPE_FORGE = ArchModule(
                 ArchModule(name="specialization"),
                 ArchModule(name="record_materialization"),
                 ArchModule(name="pipeline"),
+                ArchModule(name="verification"),
             ],
         ),
         ArchModule(name="overlay"),
         ArchModule(name="diagnostics"),
+        ArchModule(name="analysis"),
+        ArchModule(name="adapters"),
     ],
 )

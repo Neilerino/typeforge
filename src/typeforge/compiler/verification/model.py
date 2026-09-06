@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from typeforge.analysis.model import SourceSpan
+from typeforge.compiler.source import FunctionDeclaration, ReturnSite, SourceSpan
 from typeforge.compiler.stub_ir import MapType, StubTypeExpression
 
 
@@ -27,8 +27,6 @@ class Alternative:
 
 @dataclass(frozen=True, slots=True)
 class ReturnContract:
-    qualified_name: tuple[str, ...]
-    return_annotation: str
     controller_parameter: str
     controller_type_parameter: str
     mapping: MapType
@@ -43,22 +41,19 @@ class FlowState:
 
 
 @dataclass(frozen=True, slots=True)
+class ImplicitReturnSite:
+    suite: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
 class ReturnObligation:
-    qualified_name: tuple[str, ...]
-    return_annotation: str
-    controller_parameter: str
+    function: FunctionDeclaration
+    contract: ReturnContract
+    site: ReturnSite | ImplicitReturnSite
     expected_types: tuple[StubTypeExpression, ...]
-    narrowed_inputs: tuple[str, ...]
-    expression_text: str
-    expression_span: SourceSpan
-    insertion_offset: int
-    indentation: str
-    inline: bool
-    starts_line: bool = False
-    leading_newline: bool = False
+    narrowed_inputs: tuple[StubTypeExpression, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class VerificationPlan:
     obligations: tuple[ReturnObligation, ...]
-    reserved_names: tuple[str, ...]

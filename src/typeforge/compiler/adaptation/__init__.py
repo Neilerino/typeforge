@@ -5,19 +5,13 @@ from typeforge.compiler.adaptation._models import (
     SemanticRelationshipAlias,
 )
 from typeforge.compiler.adaptation._source_to_ir import (
-    adapt_function,
     adapt_source_module,
-    collect_semantic_relationship_aliases,
-    expand_function_map_aliases,
     expand_map_aliases,
 )
 
 __all__ = [
     "AdaptationError",
     "SemanticRelationshipAlias",
-    "adapt_function",
     "adapt_source_module",
-    "collect_semantic_relationship_aliases",
-    "expand_function_map_aliases",
     "expand_map_aliases",
 ]
