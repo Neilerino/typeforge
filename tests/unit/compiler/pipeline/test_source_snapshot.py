@@ -76,12 +76,16 @@ def test_source_facts_locate_preamble_decorators_and_return_sites() -> None:
 
 
 def test_public_plan_contains_facts_but_no_python_syntax_nodes() -> None:
-    source = "def example(value: str) -> str:\n    return value\n"
+    source = (
+        "from typeforge import Case, Map\n"
+        "def example[T](value: T) -> Map[T, Case[int, str]]:\n    return value\n"
+    )
     parsed = parse_source(source, path=Path("example.py")).unwrap()
     plan = compile_source(source, path=Path("example.py"), maximum_arity=2).unwrap()
 
     assert isinstance(parsed.tree, ast.Module)
     assert parsed.source == plan.source
+    assert plan.verification.obligations
     assert_no_ast(plan)
 
 

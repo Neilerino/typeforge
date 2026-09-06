@@ -1,4 +1,3 @@
-import ast
 import re
 from dataclasses import dataclass, replace
 from enum import StrEnum
@@ -26,7 +25,6 @@ from typeforge.compiler.pipeline import (
     CompilationError,
     CompilationPlan,
     LoweringError,
-    ParsedSource,
     RecordMaterializationError,
     SourceSyntaxError,
     compile_source,
@@ -57,7 +55,6 @@ from typeforge.compiler.stub_ir import (
 from typeforge.compiler.verification import (
     ImplicitReturnSite,
     VerificationPlan,
-    analyze_implementations,
 )
 from typeforge.compiler.verification.contracts import union_types
 
@@ -83,7 +80,7 @@ class OverlayError:
 
 @dataclass(frozen=True, slots=True)
 class _GeneratedOverloads:
-    qualified_name: tuple[str, ...]
+    decorator_spans: tuple[AuthoredSourceSpan, ...]
     source_span: SourceSpan
     text: str
 
@@ -125,27 +122,22 @@ def transform_source(
     if isinstance(compiled, Failure):
         return Failure(_compilation_error(path, compiled.failure()))
 
-    plan = compiled.unwrap()
+    return project_overlay(compiled.unwrap(), version=version)
+
+
+def project_overlay(
+    plan: CompilationPlan,
+    *,
+    version: int = 0,
+) -> Result[VirtualDocument, OverlayError]:
     module = plan.source
+    source = module.text
+    path = module.path
     generated = _generate_overloads(source, plan)
     if isinstance(generated, Failure):
         return generated
 
-    try:
-        tree = ast.parse(source, filename=str(path), type_comments=True)
-    except SyntaxError as error:
-        return Failure(OverlayError(OverlayErrorCode.SYNTAX, path, error.msg))
-
-    nodes = _function_nodes(tree)
-    blocks = tuple(
-        _overload_insertion(
-            source,
-            item,
-            nodes[(item.qualified_name, item.source_span.start.line + 1)],
-        )
-        for item in generated.unwrap()
-        if (item.qualified_name, item.source_span.start.line + 1) in nodes
-    )
+    blocks = tuple(_overload_insertion(source, item) for item in generated.unwrap())
     alias_edits = _alias_edits(source, plan)
     if isinstance(alias_edits, Failure):
         return alias_edits
@@ -154,10 +146,9 @@ def transform_source(
     if isinstance(schema_edits, Failure):
         return schema_edits
 
-    verification = analyze_implementations(ParsedSource(module, tree), plan.module)
     verification_edits = _verification_edits(
         source=source,
-        plan=verification,
+        plan=plan.verification,
         reserved_names={item.name for item in module.identifiers},
     )
     records = _render_derived_records(plan) if schema_edits.unwrap() else Success(())
@@ -178,7 +169,11 @@ def transform_source(
         + record_declarations
     )
     import_text = _typing_import(content, has_overloads=bool(generated.unwrap()))
-    import_offset = _import_offset(source, tree)
+    preamble = module.future_import_spans
+    if module.docstring_span is not None:
+        preamble = (module.docstring_span, *preamble)
+
+    import_offset = _line_offset(source, preamble[-1].end.line) if preamble else 0
     import_anchor = _offset_span(path, source, import_offset, import_offset)
     import_edit = (
         (_Edit(import_offset, import_offset, import_text, import_anchor),)
@@ -273,7 +268,7 @@ def _generate_overloads(
 
         generated.append(
             _GeneratedOverloads(
-                function.qualified_name,
+                function.decorator_spans,
                 _source_span(source, function.span),
                 emitted.unwrap().rstrip(),
             )
@@ -460,39 +455,6 @@ def _source_span(source: str, span: AuthoredSourceSpan) -> SourceSpan:
             column=span.end.column,
         ),
     )
-
-
-def _function_nodes(
-    tree: ast.Module,
-) -> dict[tuple[tuple[str, ...], int], ast.FunctionDef | ast.AsyncFunctionDef]:
-    nodes: dict[
-        tuple[tuple[str, ...], int], ast.FunctionDef | ast.AsyncFunctionDef
-    ] = {}
-
-    def visit(statements: list[ast.stmt], scope: tuple[str, ...]) -> None:
-        for statement in statements:
-            if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
-                nodes[((*scope, statement.name), statement.lineno)] = statement
-            elif isinstance(statement, ast.ClassDef):
-                visit(statement.body, (*scope, statement.name))
-            elif isinstance(statement, ast.If | ast.While | ast.For | ast.AsyncFor):
-                visit(statement.body, scope)
-                visit(statement.orelse, scope)
-            elif isinstance(statement, ast.Try | ast.TryStar):
-                visit(statement.body, scope)
-                for handler in statement.handlers:
-                    visit(handler.body, scope)
-
-                visit(statement.orelse, scope)
-                visit(statement.finalbody, scope)
-            elif isinstance(statement, ast.With | ast.AsyncWith):
-                visit(statement.body, scope)
-            elif isinstance(statement, ast.Match):
-                for case in statement.cases:
-                    visit(case.body, scope)
-
-    visit(tree.body, ())
-    return nodes
 
 
 def _alias_edits(
@@ -769,14 +731,13 @@ def _render_verification_assignments(
 def _overload_insertion(
     source: str,
     generated: _GeneratedOverloads,
-    node: ast.FunctionDef | ast.AsyncFunctionDef,
 ) -> _Edit:
     first_line = min(
-        (decorator.lineno for decorator in node.decorator_list),
-        default=node.lineno,
+        (span.start.line for span in generated.decorator_spans),
+        default=generated.source_span.start.line + 1,
     )
     offset = _line_offset(source, first_line - 1)
-    indentation = " " * node.col_offset
+    indentation = " " * generated.source_span.start.column
     member_indentation = f"{indentation}    "
     overloads = "\n".join(
         f"{member_indentation}{line}" if line else ""
@@ -803,33 +764,6 @@ def _typing_import(content: tuple[str, ...], has_overloads: bool) -> str:
         *((f"from typing import {', '.join(names)}",) if names else ()),
     )
     return "".join(f"{item}  {_IMPORT_MARKER}\n" for item in imports)
-
-
-def _import_offset(source: str, tree: ast.Module) -> int:
-    statements = tree.body
-    index = 0
-    if (
-        statements
-        and isinstance(statements[0], ast.Expr)
-        and isinstance(statements[0].value, ast.Constant)
-        and isinstance(statements[0].value.value, str)
-    ):
-        index = 1
-
-    while index < len(statements):
-        statement = statements[index]
-        if not (
-            isinstance(statement, ast.ImportFrom) and statement.module == "__future__"
-        ):
-            break
-
-        index += 1
-
-    if index == 0:
-        return 0
-
-    previous = statements[index - 1]
-    return _line_offset(source, (previous.end_lineno or previous.lineno))
 
 
 def _apply_edits(

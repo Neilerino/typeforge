@@ -11,7 +11,12 @@ from typeforge.compiler.stub_ir import (
     TypeName,
     walk_declaration,
 )
-from typeforge.overlay import OverlayError, OverlayErrorCode, transform_source
+from typeforge.overlay import (
+    OverlayError,
+    OverlayErrorCode,
+    project_overlay,
+    transform_source,
+)
 
 
 def test_schema_roots_cover_records_and_scoped_methods() -> None:
@@ -68,7 +73,8 @@ def test_schema_roots_preserve_unspecialized_emission_failures() -> None:
     plan = compile_source(source, path, maximum_arity=1).unwrap()
 
     assert plan.module.reusable_elements == (CollectType(TypeName("Ts")),)
-    result = transform_source(source, path, maximum_arity=1)
+    result = project_overlay(plan)
+    assert result == transform_source(source, path, maximum_arity=1)
     assert isinstance(result, Failure)
     assert result.failure().code is OverlayErrorCode.EMISSION
 

@@ -20,7 +20,7 @@ from typeforge.compiler.pipeline._models import (
 from typeforge.compiler.record_materialization import (
     RecordMaterializationError,
 )
-from typeforge.compiler.source import ParsedSource, SourceSpan, SourceSyntaxError
+from typeforge.compiler.source import SourceSpan, SourceSyntaxError
 from typeforge.compiler.specialization import LoweringError
 
 __all__ = [
@@ -34,7 +34,6 @@ __all__ = [
     "GeneratedModule",
     "GenerationError",
     "LoweringError",
-    "ParsedSource",
     "RecordMaterializationError",
     "SourceSpan",
     "SourceSyntaxError",

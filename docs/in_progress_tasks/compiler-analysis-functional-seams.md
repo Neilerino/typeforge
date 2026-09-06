@@ -1,7 +1,7 @@
 # Compiler analysis and overlay projection plan
 
 Status: In progress, 2026-09-06 — slices 1–2 accepted; slices 3–4 authorized
-for implementation and review. 3 of 6 slices complete.
+for implementation and review. 4 of 6 slices complete; ready for user review.
 
 This is the active task document for the next compiler scope. The previous
 eleven-slice compilation-plan migration is complete and its task document has been
@@ -21,8 +21,8 @@ That handoff supersedes earlier stopping points and draft approval notes.
 
 ## Existing foundation and compatibility requirements
 
-- `compile_source(source, path, maximum_arity)` currently returns
-  `CompilationPlan(source, module)`. Its path is source identity; it does not read
+- At the start of this scope, `compile_source(source, path, maximum_arity)` returned
+  `CompilationPlan(source, module)`; slice 4 adds completed verification. Its path is source identity; it does not read
   or execute the authored application. `generate_module` is the path-based entry.
 - Adaptation owns record materialization. Specialization consumes and returns
   `StubModule`. Preserve that composition without pipeline-owned rewrite deltas,
@@ -86,7 +86,7 @@ origins, and adaptation ownership of record materialization remain constraints.
 | `compiler.source` | Parse Python and describe authored syntax and locations | Source facts; compiler-internal parsed syntax |
 | `compiler.adaptation` | Interpret annotations, resolve aliases, materialize records, preserve authored typing contracts | Origin-bearing `StubModule`, including reusable semantic roots |
 | Shared `semantics` | Meaning of Typeforge relationships and predicates | Existing semantic results; no source layout or overlay policy |
-| `compiler.verification` (proposed home for verification analysis) | Derive return contracts and analyze recognized implementation flow | Checker-neutral return obligations |
+| `compiler.verification` | Derive return contracts and analyze recognized implementation flow | Checker-neutral return obligations |
 | `compiler.specialization` | Produce finite generated interfaces | Specialized `StubModule` |
 | `compiler.pipeline` | Order compiler work, preserve failure boundaries, assemble the plan | `CompilationPlan` |
 | `compiler.module_surface` | Decide what a complete published interface can preserve | `ModuleSurface` or its existing typed failure |
@@ -270,7 +270,7 @@ def compile_source(
 ) -> Result[CompilationPlan, CompilationError]: ...
 ```
 
-Proposed plan shape:
+Plan shape implemented in slice 4:
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -300,7 +300,7 @@ projection and performs no parsing or annotation interpretation.
 
 ## 6. Overlay seam: project a completed plan
 
-Proposed independently testable projection:
+Independently testable projection implemented in slice 4:
 
 ```python
 def project_overlay(
@@ -545,9 +545,9 @@ unrelated changes. Do not cross out partial slices or mark a planned test as pas
    regressions/architecture (156). The estimate was exceeded by the removal of
    duplicate adaptation/callable walks and readable seam-level regression coverage.
 
-   Temporary migration entry: overlay still constructs `ParsedSource(module, tree)`
-   using its existing second parse and a temporary pipeline export. Slice 4 must
-   remove that construction, export, and direct analysis call.
+   Temporary migration entry during this slice: overlay constructed
+   `ParsedSource(module, tree)` using its second parse and a temporary pipeline
+   export. Slice 4 removed that construction, export, and direct analysis call.
 
    Move contract and flow analysis behind `compiler.verification`. Consume retained
    typed signatures and the original parsed bodies; remove independent annotation
@@ -567,7 +567,45 @@ unrelated changes. Do not cross out partial slices or mark a planned test as pas
    and the existing implementation-verification/diagnostic regressions. Depends on
    slices 1–2 and agreement on return-site data.
 
-4. **Assemble completed plans and project overlays** — planned (200–350 changed lines)
+4. ~~Assemble completed plans and project overlays~~ — completed 2026-09-06
+   (420 changed lines)
+
+   `CompilationPlan.verification` is required and is populated after successful
+   adaptation and specialization. The shared internal compilation entry consumes
+   `ParsedSource`; publication passes its existing scoped facts with the original
+   tree and preserves surface-validation priority. Analysis failures cannot become
+   partial successful plans, and unsupported bodies have complete empty results.
+
+   Added `project_overlay(plan, *, version=0)`. It consumes retained source text,
+   locations, specialized IR and verification obligations. `transform_source`
+   preserves its early exits, compiles once and delegates projection. Removed
+   overlay's AST import/parse, duplicate callable walk, syntax-based import lookup,
+   direct analysis call, and temporary `ParsedSource` pipeline export. Decorator
+   and preamble placement now use frontend facts.
+
+   Real reds: the completed-plan tracer exposed the missing `verification` field;
+   the transformation tracer counted two authored-module parses. Passing tests
+   now project exact text/mappings/provenance with parsing, reads, compilation,
+   adaptation, specialization and analysis disabled. Further tests cover one module
+   parse, zero-parse fast paths, multiline preamble/decorated async scoped methods,
+   nonempty AST-free plans, failure ordering, unexpected analysis failures, empty
+   verification, arity independence and unchanged projection emission failures.
+   No xfails were added.
+
+   Validation: `make check src/typeforge/compiler/pipeline src/typeforge/compiler/verification src/typeforge/overlay tests/unit/compiler/pipeline tests/unit/compiler/verification tests/unit/verification tests/unit/overlay tests/unit/diagnostics tests/architecture`
+   and `make check` both passed all six checks. Independent primary review and
+   replay confirmed exact parity for 107 overlay outcomes and 36 publication
+   outcomes. All 107 transformation cases met their expected module-parse count:
+   one normally, zero for fast paths. `git diff --check` passed, and overlay has no
+   AST import or direct analysis call.
+
+   Size against the frozen slice-3 snapshot: 319 additions plus 101 deletions across
+   11 source/test files, without relocations. Reviewed as 142 source lines and 278
+   test lines; explicit expected output/mapping fixtures account for the overrun
+   against the 200–350-line estimate. The primary completed two test-harness fixes
+   after implementation-agent interruption, then ran focused and full checks.
+   Stop here for review. Publication surface reparsing and final dependency
+   enforcement/cleanup remain slices 5–6.
 
    Add completed verification data to `CompilationPlan`; compose analysis behind
    `compile_source`. Introduce `project_overlay(plan, version=...)` and make
@@ -605,9 +643,11 @@ unrelated changes. Do not cross out partial slices or mark a planned test as pas
 
    Extend the shared architecture topology and tests to prevent AST access and
    compiler-stage reconstruction in overlay/diagnostics, and compiler dependencies
-   on target/checker modules. Remove the superseded external verification package,
-   dead helpers, and compatibility exports once their callers have migrated. Keep
-   shared typing operations with their existing appropriate owner.
+   on target/checker modules. The superseded external verification package was
+   removed in slice 3. Finish removing dead helpers and compatibility exports once
+   their callers have migrated. Give shared typing operations their appropriate
+   owner; overlay currently still imports the generic `union_types` helper from
+   `compiler.verification.contracts`.
 
    Complete when architecture rules and full repository checks pass, no stale
    migration xfails or duplicate semantic paths remain, and all consumers use the

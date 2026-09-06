@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 from textwrap import dedent
 
@@ -325,6 +326,10 @@ def test_overlay_sentinel_and_invalid_arity_short_circuit_compilation(
         raise AssertionError(f"must not compile {module.path}")
 
     monkeypatch.setattr(_compilation, "adapt_source_module", unexpected_compilation)
+    monkeypatch.setattr(ast, "parse", unexpected_compilation)
+    monkeypatch.setattr(
+        "typeforge.overlay.transform.compile_source", unexpected_compilation
+    )
 
     result = transform_source(source, path, maximum_arity=maximum_arity)
 

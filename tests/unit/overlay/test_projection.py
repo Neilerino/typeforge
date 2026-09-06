@@ -62,7 +62,7 @@ def test_completed_plan_projects_guarded_return_without_compiler_work() -> None:
             @overload
             def convert(value: int) -> str: ...
             @overload
-            def convert[T](value: T) -> bytes: ...
+            def convert[T](value: T) -> str | bytes: ...
         # typeforge: overlay-end
         def convert[T](value: T) -> Map[T, Case[int, str], Default[bytes]]:
             if type(value) is int:
@@ -75,9 +75,12 @@ def test_completed_plan_projects_guarded_return_without_compiler_work() -> None:
     assert check.authored.start.line == 3
     assert check.authored.start.column == 15
     assert source[check.authored.start.offset : check.authored.end.offset] == "value"
-    assert document.generated_text[
-        check.generated.start.offset : check.generated.end.offset
-    ] == "__typeforge_return_1: str = value\n        "
+    assert (
+        document.generated_text[
+            check.generated.start.offset : check.generated.end.offset
+        ]
+        == "__typeforge_return_1: str = value\n        "
+    )
     assert check.provenance == ReturnCheckProvenance(
         callable_name=("convert",),
         return_annotation="Map[T, Case[int, str], Default[bytes]]",
@@ -97,14 +100,73 @@ def test_transformation_compiles_and_parses_the_authored_module_once() -> None:
         """)
     with (
         patch("ast.parse", wraps=ast.parse) as parse,
-        patch("typeforge.overlay.transform.compile_source", wraps=compile_source) as compile,
+        patch(
+            "typeforge.overlay.transform.compile_source", wraps=compile_source
+        ) as compile,
     ):
         document = overlay.transform_source(source).unwrap()
 
     assert "__typeforge_return_1: str = value" in document.generated_text
     assert compile.call_count == 1
     module_parses = tuple(
-        call for call in parse.call_args_list if call.kwargs.get("mode", "exec") == "exec"
+        call
+        for call in parse.call_args_list
+        if call.kwargs.get("mode", "exec") == "exec"
     )
     assert len(module_parses) == 1
     assert module_parses[0].args == (source,)
+
+
+def test_projection_uses_preamble_and_decorator_locations() -> None:
+    preamble = dedent('''\
+        """Documentation
+        across lines."""
+        from __future__ import (
+            annotations,
+        )
+        ''')
+    source = preamble + dedent("""\
+        from typeforge import Collect, Each
+        class First:
+            @decorate(
+                "first",
+            )
+            async def collect[T](*values: Each[T]) -> Collect[T]: ...
+        if enabled:
+            class Second:
+                @decorate(
+                    "second",
+                )
+                async def collect[T](*values: Each[T]) -> Collect[T]: ...
+        """)
+    plan = compile_source(source, Path("decorated.py"), maximum_arity=0).unwrap()
+
+    with patch("ast.parse", side_effect=AssertionError("unexpected parse")):
+        document = overlay.project_overlay(plan).unwrap()
+
+    assert document.generated_text.startswith(
+        preamble
+        + "from typing import TYPE_CHECKING, overload  # typeforge: overlay-import\n"
+    )
+    blocks = tuple(
+        mapping
+        for mapping in document.mappings
+        if mapping.origin is MappingKind.GENERATED
+        and "if TYPE_CHECKING:"
+        in document.generated_text[
+            mapping.generated.start.offset : mapping.generated.end.offset
+        ]
+    )
+    assert len(blocks) == 2
+    for block, indentation in zip(blocks, ("    ", "        "), strict=True):
+        emitted = document.generated_text[
+            block.generated.start.offset : block.generated.end.offset
+        ]
+        assert emitted.startswith(f"{indentation}if TYPE_CHECKING:")
+        assert "async def collect() -> tuple[()]: ..." in emitted
+        assert document.generated_text[block.generated.end.offset :].startswith(
+            f"{indentation}@decorate(\n"
+        )
+        assert source[block.authored.start.offset : block.authored.end.offset] == (
+            "async def collect[T](*values: Each[T]) -> Collect[T]: ..."
+        )

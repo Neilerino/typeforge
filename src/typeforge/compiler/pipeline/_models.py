@@ -15,6 +15,7 @@ from typeforge.compiler.source import (
 )
 from typeforge.compiler.specialization import LoweringError
 from typeforge.compiler.stub_ir import StubModule
+from typeforge.compiler.verification import VerificationPlan
 
 type CompilationError = (
     SourceSyntaxError | AdaptationError | LoweringError | RecordMaterializationError
@@ -34,6 +35,7 @@ type GenerationError = (
 class CompilationPlan:
     source: SourceModule
     module: StubModule
+    verification: VerificationPlan
 
 
 @dataclass(frozen=True, slots=True)
