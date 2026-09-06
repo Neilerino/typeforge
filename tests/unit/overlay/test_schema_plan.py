@@ -30,7 +30,7 @@ def test_schema_roots_cover_records_and_scoped_methods() -> None:
 
     plan = compile_source(source, path, maximum_arity=1).unwrap()
 
-    assert plan.module.expressions == (
+    assert plan.module.reusable_elements == (
         TypeName("Copy_Payload"),
         TypeName("bytes"),
         TypeName("int"),
@@ -38,7 +38,7 @@ def test_schema_roots_cover_records_and_scoped_methods() -> None:
     schema_origins = tuple(
         origin
         for origin in plan.module.origins
-        if any(origin.generated is root for root in plan.module.expressions)
+        if any(origin.generated is root for root in plan.module.reusable_elements)
     )
     assert tuple(origin.origin.start.line for origin in schema_origins) == (5, 9, 9)
     copied_record = next(
@@ -67,7 +67,7 @@ def test_schema_roots_preserve_unspecialized_emission_failures() -> None:
 
     plan = compile_source(source, path, maximum_arity=1).unwrap()
 
-    assert plan.module.expressions == (CollectType(TypeName("Ts")),)
+    assert plan.module.reusable_elements == (CollectType(TypeName("Ts")),)
     result = transform_source(source, path, maximum_arity=1)
     assert isinstance(result, Failure)
     assert result.failure().code is OverlayErrorCode.EMISSION
@@ -84,7 +84,7 @@ def test_shared_alias_outputs_do_not_create_overlapping_schema_edits() -> None:
         """)
 
     plan = compile_source(source, Path("schemas.py"), maximum_arity=1).unwrap()
-    _alias, first_schema, outer_schema = plan.module.expressions
+    _alias, first_schema, outer_schema = plan.module.reusable_elements
     schema_roots = (first_schema, outer_schema)
     declaration_nodes = tuple(
         node

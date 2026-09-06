@@ -36,6 +36,7 @@ from typeforge.compiler.stub_ir._model import (
     UnionExpression,
     UnpackedType,
     VariableDeclaration,
+    is_declaration,
     is_predicate,
 )
 
@@ -256,8 +257,11 @@ def walk_module(module: StubModule) -> Iterator[GeneratedElement]:
     for declaration in module.declarations:
         yield from walk_declaration(declaration)
 
-    for expression in module.expressions:
-        yield from walk_type(expression)
+    for element in module.reusable_elements:
+        if is_declaration(element):
+            yield from walk_declaration(element)
+        else:
+            yield from walk_type(element)
 
 
 def walk_declaration(declaration: Declaration) -> Iterator[GeneratedElement]:

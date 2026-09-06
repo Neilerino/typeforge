@@ -294,7 +294,7 @@ def test_record_failure_propagates_before_specialization(tmp_path: Path) -> None
         message="MapFields aliases require exactly one type parameter",
     )
 
-    adapted = adapt_source_module(parse_source(source, path).unwrap())
+    adapted = adapt_source_module(parse_source(source, path).unwrap().source)
     compiled = compile_source(source, path, maximum_arity=-1)
     generated = generate_module(path, maximum_arity=-1)
 
@@ -321,7 +321,7 @@ def test_nested_schema_origin_tracks_the_inner_type_and_its_span() -> None:
         plan.module.origins,
         (
             (_span_of(source, "Schema[int]"), generated_integer),
-            (_span_of(source, "Schema[int]"), plan.module.expressions[0]),
+            (_span_of(source, "Schema[int]"), plan.module.reusable_elements[0]),
         ),
     )
 
@@ -336,7 +336,9 @@ def test_repeated_schemas_keep_distinct_origins_and_plain_types_get_none() -> No
 
     plan = compile_source(source, SCHEMA_PATH, maximum_arity=1).unwrap()
 
-    first_replacement, second_replacement, return_replacement = plan.module.expressions
+    first_replacement, second_replacement, return_replacement = (
+        plan.module.reusable_elements
+    )
     function = plan.module.declarations[0]
     assert isinstance(function, FunctionDeclaration)
     parameter_tuple = function.parameters[0].annotation
@@ -424,7 +426,7 @@ def test_class_rewrites_preserve_field_parameter_and_return_schema_origins(
     plan = compile_source(source, SCHEMA_PATH, maximum_arity=1).unwrap()
 
     parameter_replacement, return_replacement, field_replacement = (
-        plan.module.expressions
+        plan.module.reusable_elements
     )
     consumer = next(
         declaration
@@ -522,7 +524,7 @@ def test_schema_around_each_and_collect_tracks_whole_specialized_types() -> None
 
     plan = compile_source(source, SCHEMA_PATH, maximum_arity=2).unwrap()
 
-    reusable_input, reusable_output = plan.module.expressions
+    reusable_input, reusable_output = plan.module.reusable_elements
     overload = plan.module.declarations[0]
     assert isinstance(overload, OverloadDeclaration)
     zero_arguments, one_argument, two_arguments = overload.signatures
@@ -560,7 +562,7 @@ def test_schema_inside_each_and_collect_tracks_individual_type_arguments() -> No
 
     plan = compile_source(source, SCHEMA_PATH, maximum_arity=2).unwrap()
 
-    reusable_input, reusable_output = plan.module.expressions
+    reusable_input, reusable_output = plan.module.reusable_elements
     overload = plan.module.declarations[0]
     assert isinstance(overload, OverloadDeclaration)
     zero_arguments, one_argument, two_arguments = overload.signatures
@@ -608,7 +610,7 @@ def test_composite_schema_results_are_ordered_by_source_then_overload_arity() ->
 
     plan = compile_source(source, SCHEMA_PATH, maximum_arity=2).unwrap()
 
-    reusable_input, reusable_output = plan.module.expressions
+    reusable_input, reusable_output = plan.module.reusable_elements
     overload = plan.module.declarations[0]
     assert isinstance(overload, OverloadDeclaration)
     zero_arguments, one_argument, two_arguments = overload.signatures

@@ -41,6 +41,7 @@ from typeforge.compiler.stub_ir._model import (
     UnionExpression,
     UnpackedType,
     VariableDeclaration,
+    is_declaration,
     is_predicate,
 )
 from typeforge.compiler.stub_ir._tree import (
@@ -96,6 +97,7 @@ __all__ = [
     "UnionExpression",
     "UnpackedType",
     "VariableDeclaration",
+    "is_declaration",
     "is_predicate",
     "merge_imports",
     "rewrite_type",

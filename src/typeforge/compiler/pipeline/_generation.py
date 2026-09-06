@@ -33,15 +33,17 @@ def generate_module(
     return Result.do(
         generated
         for parsed in parse_module(path)
-        for surface in inspect_module_surface(parsed)
+        for surface in inspect_module_surface(parsed.source)
         for plan in compile_module(
-            _published_source_scope(parsed), maximum_arity=maximum_arity
+            _published_source_scope(parsed.source), maximum_arity=maximum_arity
         )
         for generated in _emit_generated_module(
             plan,
             replace(
                 surface,
-                imports=merge_imports((*surface.imports, *annotation_imports(parsed))),
+                imports=merge_imports(
+                    (*surface.imports, *annotation_imports(parsed.source))
+                ),
             ),
         )
     )

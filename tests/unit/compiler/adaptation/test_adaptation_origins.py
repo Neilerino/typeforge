@@ -34,12 +34,16 @@ from typeforge.compiler.stub_ir import (
 
 def test_adapt_source_module_attaches_origin_to_enriched_function() -> None:
     path = Path("callables.py")
-    source = parse_source(
-        "from typeforge import Collect, Each\n"
-        "def identity[T](value: T) -> T: ...\n"
-        "def collect[*Ts](*values: Each[Ts]) -> Collect[Ts]: ...\n",
-        path,
-    ).unwrap()
+    source = (
+        parse_source(
+            "from typeforge import Collect, Each\n"
+            "def identity[T](value: T) -> T: ...\n"
+            "def collect[*Ts](*values: Each[Ts]) -> Collect[Ts]: ...\n",
+            path,
+        )
+        .unwrap()
+        .source
+    )
 
     result = adapt_source_module(source)
 
@@ -106,13 +110,13 @@ def test_adapt_source_module_retains_target_neutral_alias_with_origin() -> None:
     assert adapted.declarations == (generated_alias,)
     assert adapted.origins == (
         GeneratedElementOrigin(source_alias.span, generated_alias),
-        GeneratedElementOrigin(source_alias.span, adapted.expressions[0]),
+        GeneratedElementOrigin(source_alias.span, adapted.reusable_elements[0]),
     )
     assert adapted.origins[0].generated is adapted.declarations[0]
 
 
 def test_adapt_source_module_does_not_attach_origin_to_ordinary_alias() -> None:
-    source = parse_source("type Label = str\n", Path("aliases.py")).unwrap()
+    source = parse_source("type Label = str\n", Path("aliases.py")).unwrap().source
 
     adapted = adapt_source_module(source).unwrap()
 
@@ -121,10 +125,14 @@ def test_adapt_source_module_does_not_attach_origin_to_ordinary_alias() -> None:
 
 def test_adapt_source_module_materializes_record_with_origin() -> None:
     path = Path("records.py")
-    source = parse_source(
-        "from typing import TypedDict\nclass Payload(TypedDict):\n    value: int\n",
-        path,
-    ).unwrap()
+    source = (
+        parse_source(
+            "from typing import TypedDict\nclass Payload(TypedDict):\n    value: int\n",
+            path,
+        )
+        .unwrap()
+        .source
+    )
 
     result = adapt_source_module(source)
 
@@ -143,16 +151,21 @@ def test_adapt_source_module_materializes_record_with_origin() -> None:
 
 
 def test_record_replacements_retain_current_authored_origins() -> None:
-    source = parse_source(
-        "from typing import TypedDict\n"
-        "from typeforge import Case, Collect, Each, Field, Key, Map, MapFields, Value\n"
-        "class Payload(TypedDict):\n    value: int\n"
-        "type Copy[T] = MapFields[T, Field[Key, Value]]\n"
-        "type Encoded[T] = Map[T, Case[int, Copy[Payload]]]\n"
-        "def copy[T](value: T) -> Copy[T]: ...\n"
-        "def collect[*Ts](*values: Each[Ts]) -> Collect[Copy[Payload]]: ...\n",
-        Path("records.py"),
-    ).unwrap()
+    source = (
+        parse_source(
+            "from typing import TypedDict\n"
+            "from typeforge import Case, Collect, Each, Field, "
+            "Key, Map, MapFields, Value\n"
+            "class Payload(TypedDict):\n    value: int\n"
+            "type Copy[T] = MapFields[T, Field[Key, Value]]\n"
+            "type Encoded[T] = Map[T, Case[int, Copy[Payload]]]\n"
+            "def copy[T](value: T) -> Copy[T]: ...\n"
+            "def collect[*Ts](*values: Each[Ts]) -> Collect[Copy[Payload]]: ...\n",
+            Path("records.py"),
+        )
+        .unwrap()
+        .source
+    )
 
     adapted = adapt_source_module(source).unwrap()
 
@@ -171,7 +184,7 @@ def test_record_replacements_retain_current_authored_origins() -> None:
         GeneratedElementOrigin(source.aliases[0].span, copied),
         GeneratedElementOrigin(source.aliases[0].span, copy_alias),
         GeneratedElementOrigin(source.aliases[1].span, encoded),
-        GeneratedElementOrigin(source.aliases[1].span, adapted.expressions[0]),
+        GeneratedElementOrigin(source.aliases[1].span, adapted.reusable_elements[0]),
         GeneratedElementOrigin(source.functions[0].span, copy),
         GeneratedElementOrigin(source.functions[1].span, collect),
     )

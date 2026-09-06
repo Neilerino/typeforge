@@ -72,6 +72,7 @@ from typeforge.compiler.stub_ir import (
     EachType,
     EqualPredicate,
     FunctionDeclaration,
+    GeneratedElement,
     GeneratedElementOrigin,
     HomogeneousTuple,
     MapCase,
@@ -111,7 +112,7 @@ def adapt_source_module(
     semantic_aliases = _collect_semantic_relationship_aliases(
         module.aliases, origins=origins
     )
-    expressions: list[StubTypeExpression] = []
+    reusable_elements: list[GeneratedElement] = []
     declarations: list[tuple[int, Declaration]] = []
 
     def record_rewrite(
@@ -164,7 +165,7 @@ def adapt_source_module(
                 None,
             )
             if relationship is not None:
-                expressions.append(relationship)
+                reusable_elements.append(relationship)
                 origins.append(GeneratedElementOrigin(alias.span, relationship))
 
     for source_class in module.classes:
@@ -189,6 +190,12 @@ def adapt_source_module(
                 isinstance(generated, FunctionDeclaration)
                 and isinstance(generated.return_type, MapType)
             )
+        )
+        reusable_elements.extend(
+            method
+            for method in generated_class.methods
+            if isinstance(method, FunctionDeclaration)
+            and isinstance(method.return_type, MapType)
         )
 
     class_method_spans = {
@@ -232,6 +239,9 @@ def adapt_source_module(
         if has_origin:
             origins.append(GeneratedElementOrigin(function.span, generated_function))
 
+        if isinstance(generated_function.return_type, MapType):
+            reusable_elements.append(generated_function)
+
     # Schema roots keep authored parameter names and their own boundary identity,
     # even when semantic aliases reuse the same output node in other declarations.
     for boundary in _schema_boundaries(module):
@@ -240,7 +250,7 @@ def adapt_source_module(
                 _adapt_type_expression(boundary, "Schema", ()), semantic_aliases
             )
         )
-        expressions.append(expression)
+        reusable_elements.append(expression)
         origins.append(GeneratedElementOrigin(boundary.span, expression))
 
     ordered = tuple(
@@ -250,7 +260,7 @@ def adapt_source_module(
         module.path.stem,
         ordered,
         annotation_imports(module),
-        expressions=tuple(expressions),
+        reusable_elements=tuple(reusable_elements),
     )
     current: dict[int, int] = {}
     for element in walk_module(adapted_module):

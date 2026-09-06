@@ -64,8 +64,8 @@ def test_reusable_relationships_preserve_alias_names_and_schema_branches() -> No
 
     plan = compile_source(source, Path("relationships.py"), maximum_arity=1).unwrap()
 
-    assert len(plan.module.expressions) == 5
-    wire, named, record, explicit, wrapped = plan.module.expressions
+    assert len(plan.module.reusable_elements) == 5
+    wire, named, record, explicit, wrapped = plan.module.reusable_elements
     for expression in (wire, named, record, explicit, wrapped):
         assert isinstance(expression, MapType)
 
@@ -81,7 +81,7 @@ def test_reusable_relationships_preserve_alias_names_and_schema_branches() -> No
     assert explicit.cases[0].output_type == TypeName("Copy_Payload")
     assert wrapped == wire
     for authored, expression in zip(
-        plan.source.aliases[1:], plan.module.expressions, strict=True
+        plan.source.aliases[1:], plan.module.reusable_elements, strict=True
     ):
         assert any(
             origin.origin == authored.span and origin.generated is expression

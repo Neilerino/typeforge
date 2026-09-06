@@ -118,13 +118,18 @@ def test_failed_method_lowering_preserves_input_snapshot_and_origins() -> None:
 
 
 def test_failed_lowering_preserves_schema_origins_after_earlier_rewrites() -> None:
-    source = parse_source(
-        "from typeforge import Collect, Each\n"
-        "from typeforge.pydantic import Schema\n"
-        "def valid[*Ts](*values: Each[Schema[Ts]]) -> Collect[Schema[Ts]]: ...\n"
-        "def invalid[*Ts](*values: Each[Ts], second: Each[Ts]) -> Collect[Ts]: ...\n",
-        Path("schemas.py"),
-    ).unwrap()
+    source = (
+        parse_source(
+            "from typeforge import Collect, Each\n"
+            "from typeforge.pydantic import Schema\n"
+            "def valid[*Ts](*values: Each[Schema[Ts]]) -> Collect[Schema[Ts]]: ...\n"
+            "def invalid[*Ts](*values: Each[Ts], second: Each[Ts]) "
+            "-> Collect[Ts]: ...\n",
+            Path("schemas.py"),
+        )
+        .unwrap()
+        .source
+    )
     module = adapt_source_module(source).unwrap()
     declarations = module.declarations
     origins = module.origins

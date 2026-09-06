@@ -50,6 +50,7 @@ from typeforge.compiler.stub_ir import (
     TypeVariable,
     UnionExpression,
     UnpackedType,
+    is_declaration,
 )
 from typeforge.verification.contracts import union_types
 from typeforge.verification.model import ReturnObligation, VerificationPlan
@@ -512,7 +513,8 @@ def _alias_edits(
         for origin in plan.module.origins
         if isinstance(origin.generated, MapType)
         and any(
-            origin.generated is expression for expression in plan.module.expressions
+            origin.generated is expression
+            for expression in plan.module.reusable_elements
         )
     }
     edits: list[_Edit] = []
@@ -552,7 +554,11 @@ def _schema_edits(
     source: str, plan: CompilationPlan
 ) -> Result[tuple[_Edit, ...], OverlayError]:
     module = plan.source
-    roots = {id(expression): expression for expression in plan.module.expressions}
+    roots = {
+        id(element): element
+        for element in plan.module.reusable_elements
+        if not is_declaration(element)
+    }
     edits: list[_Edit] = []
     for origin in plan.module.origins:
         expression = roots.get(id(origin.generated))

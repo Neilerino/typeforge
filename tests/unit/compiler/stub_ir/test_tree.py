@@ -1,9 +1,11 @@
 from typeforge.compiler.stub_ir import (
     AllPredicate,
     EqualPredicate,
+    FunctionDeclaration,
     MapCase,
     MapType,
     NotPredicate,
+    Parameter,
     StubModule,
     TypeAliasDeclaration,
     TypeApplication,
@@ -15,16 +17,36 @@ from typeforge.compiler.stub_ir import (
 )
 
 
-def test_module_walk_visits_declarations_before_reusable_expression_roots() -> None:
+def test_module_walk_visits_declarations_before_reusable_roots_with_children() -> None:
     integer = TypeName("int")
     alias = TypeAliasDeclaration("Number", integer)
     string = TypeName("str")
     container = TypeName("list")
     reusable = TypeApplication(container, (string,))
-    module = StubModule("example", (alias,), expressions=(reusable, integer))
+    relationship = MapType(
+        integer, (MapCase(EqualPredicate(integer, string), reusable),), string
+    )
+    contract = FunctionDeclaration(
+        "convert", (Parameter("value", integer),), relationship
+    )
+    module = StubModule("example", (alias,), reusable_elements=(contract, integer))
 
     actual = tuple(walk_module(module))
-    expected = (alias, integer, reusable, container, string, integer)
+    expected = (
+        alias,
+        integer,
+        contract,
+        integer,
+        relationship,
+        integer,
+        integer,
+        string,
+        reusable,
+        container,
+        string,
+        string,
+        integer,
+    )
 
     assert len(actual) == len(expected)
     assert all(first is second for first, second in zip(actual, expected, strict=True))

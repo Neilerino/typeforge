@@ -13,7 +13,7 @@ def test_inspection_returns_public_module_variables_and_imports(
         "from external import Parser\nanswer: int = 42\n",
         encoding="utf-8",
     )
-    source = parse_module(path).unwrap()
+    source = parse_module(path).unwrap().source
 
     surface = inspect_module_surface(source).unwrap()
 

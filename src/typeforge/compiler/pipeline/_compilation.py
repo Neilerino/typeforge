@@ -23,7 +23,7 @@ def compile_source(
     return Result.do(
         plan
         for parsed in parse_source(source, path)
-        for plan in compile_module(parsed, maximum_arity=maximum_arity)
+        for plan in compile_module(parsed.source, maximum_arity=maximum_arity)
     )
 
 

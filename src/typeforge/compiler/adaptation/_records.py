@@ -15,6 +15,7 @@ from typeforge.compiler.stub_ir import (
     GeneratedElementOrigin,
     StubModule,
     StubTypeExpression,
+    is_declaration,
     merge_imports,
     walk_module,
 )
@@ -120,18 +121,16 @@ def materialize_records(source: SourceModule, module: StubModule) -> StubModule:
         for origin in module.origins
         if origin.origin in alias_spans
     }
-    expressions = tuple(
-        expression
-        if id(expression) in alias_roots
-        else replace_record_aliases(
-            expression, records.derived, on_rewrite=record_rewrite
-        )
-        for expression in module.expressions
+    reusable_elements = tuple(
+        element
+        if is_declaration(element) or id(element) in alias_roots
+        else replace_record_aliases(element, records.derived, on_rewrite=record_rewrite)
+        for element in module.reusable_elements
     )
     materialized = replace(
         module,
         declarations=tuple(declarations),
-        expressions=expressions,
+        reusable_elements=reusable_elements,
         imports=merge_imports((*module.imports, *records.imports)),
     )
     declaration_order: dict[int, int] = {}

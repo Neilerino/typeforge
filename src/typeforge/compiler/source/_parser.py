@@ -9,12 +9,14 @@ from typeforge.compiler.source._model import (
     ClassDeclaration,
     ClassField,
     FunctionDeclaration,
+    IdentifierOccurrence,
     MarkerKind,
     MarkerTypeExpression,
     NameTypeExpression,
     Parameter,
     ParameterKind,
     RawTypeExpression,
+    ReturnSite,
     RuntimeInputTypeExpression,
     SchemaTypeExpression,
     SourceModule,
@@ -44,6 +46,14 @@ class SourceSyntaxError:
     span: SourceSpan
 
 
+@dataclass(frozen=True, slots=True)
+class ParsedSource:
+    """Compiler-internal syntax and the public facts from the same parse."""
+
+    source: SourceModule
+    tree: ast.Module
+
+
 type FrontendError = SourceReadError | SourceSyntaxError
 
 
@@ -52,7 +62,7 @@ class _ImportBindings:
     names: tuple[tuple[str, tuple[str, ...]], ...]
 
 
-def parse_module(path: Path) -> Result[SourceModule, FrontendError]:
+def parse_module(path: Path) -> Result[ParsedSource, FrontendError]:
     source = _read_source(path)
     if isinstance(source, Failure):
         return source
@@ -62,7 +72,7 @@ def parse_module(path: Path) -> Result[SourceModule, FrontendError]:
 
 def parse_source(
     source: str, path: Path = Path("<memory>")
-) -> Result[SourceModule, SourceSyntaxError]:
+) -> Result[ParsedSource, SourceSyntaxError]:
     try:
         tree = ast.parse(source, filename=str(path), type_comments=True)
     except SyntaxError as error:
@@ -82,15 +92,69 @@ def parse_source(
     )
     typed_dicts = _parse_typed_dicts(path, source, scoped_statements, bindings)
     classes = _parse_classes(path, source, tree, bindings, typed_dicts)
-    return Success(
-        SourceModule(
-            path=path,
-            functions=functions,
-            aliases=aliases,
-            typed_dicts=typed_dicts,
-            classes=classes,
-        )
+    located_nodes = sorted(
+        (
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Return | ast.Name | ast.arg)
+        ),
+        key=lambda node: (node.lineno, node.col_offset),
     )
+    facts = SourceModule(
+        path=path,
+        functions=functions,
+        aliases=aliases,
+        typed_dicts=typed_dicts,
+        classes=classes,
+        text=source,
+        docstring_span=_docstring_span(path, tree),
+        future_import_spans=_future_import_spans(path, tree),
+        return_sites=tuple(
+            ReturnSite(
+                statement=_span(path, node),
+                expression=_span(path, node.value) if node.value is not None else None,
+            )
+            for node in located_nodes
+            if isinstance(node, ast.Return)
+        ),
+        identifiers=tuple(
+            IdentifierOccurrence(
+                name=node.id if isinstance(node, ast.Name) else node.arg,
+                span=_span(path, node),
+            )
+            for node in located_nodes
+            if isinstance(node, ast.Name | ast.arg)
+        ),
+    )
+    return Success(ParsedSource(source=facts, tree=tree))
+
+
+def _docstring_span(path: Path, tree: ast.Module) -> SourceSpan | None:
+    if tree.body:
+        first = tree.body[0]
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            return _span(path, first)
+
+    return None
+
+
+def _future_import_spans(path: Path, tree: ast.Module) -> tuple[SourceSpan, ...]:
+    start = 1 if _docstring_span(path, tree) is not None else 0
+    spans: list[SourceSpan] = []
+    for statement in tree.body[start:]:
+        if (
+            not isinstance(statement, ast.ImportFrom)
+            or statement.module != "__future__"
+        ):
+            break
+
+        spans.append(_span(path, statement))
+
+    return tuple(spans)
 
 
 def _read_source(path: Path) -> Result[str, SourceReadError]:
@@ -185,6 +249,12 @@ def _parse_function(
         span=_span(path, node),
         is_async=isinstance(node, ast.AsyncFunctionDef),
         decorators=tuple(ast.unparse(item) for item in node.decorator_list),
+        decorator_spans=tuple(_span(path, item) for item in node.decorator_list),
+        body_span=SourceSpan(
+            path=path,
+            start=_span(path, node.body[0]).start,
+            end=_span(path, node.body[-1]).end,
+        ),
     )
 
 

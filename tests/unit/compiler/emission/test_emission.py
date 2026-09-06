@@ -8,6 +8,7 @@ from typeforge.compiler.emission import (
 from typeforge.compiler.specialization import ArityFrontier, lower_variadic_module
 from typeforge.compiler.stub_ir import (
     EachType,
+    FunctionDeclaration,
     LiteralType,
     StubModule,
     TypeAliasDeclaration,
@@ -15,19 +16,23 @@ from typeforge.compiler.stub_ir import (
 )
 
 
-def test_unemitted_expression_roots_preserve_identity_without_adding_imports() -> None:
+def test_reusable_roots_keep_identity_without_emitting_declarations_or_imports() -> (
+    None
+):
     literal = LiteralType("'ready'")
     unlowered = EachType(TypeName("int"))
+    contract = FunctionDeclaration("unemitted", (), unlowered)
     module = StubModule(
         "example",
         (TypeAliasDeclaration("Number", TypeName("int")),),
-        expressions=(literal, unlowered),
+        reusable_elements=(literal, unlowered, contract),
     )
 
     specialized = lower_variadic_module(module, ArityFrontier(0, 1)).unwrap()
 
-    assert specialized.expressions[0] is literal
-    assert specialized.expressions[1] is unlowered
+    assert specialized.reusable_elements[0] is literal
+    assert specialized.reusable_elements[1] is unlowered
+    assert specialized.reusable_elements[2] is contract
     assert specialized.imports == ()
     assert emit_stub_module(specialized).unwrap() == "type Number = int\n"
 

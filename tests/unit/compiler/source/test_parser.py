@@ -28,7 +28,7 @@ def test_parse_module_finds_enriched_functions_and_preserves_spans() -> None:
     result = parse_module(path)
 
     assert isinstance(result, Success)
-    module = result.unwrap()
+    module = result.unwrap().source
     assert tuple(function.qualified_name for function in module.functions) == (
         ("combine",),
         ("Factory", "create"),
@@ -63,7 +63,7 @@ def test_module_aliases_resolve_to_markers() -> None:
     result = parse_module(FIXTURES / "enriched.py")
 
     assert isinstance(result, Success)
-    create = result.unwrap().functions[1]
+    create = result.unwrap().source.functions[1]
     values = create.parameters[1].annotation
     assert isinstance(values, MarkerTypeExpression)
     assert values.marker is MarkerKind.EACH
@@ -77,7 +77,7 @@ def test_unimported_marker_names_are_not_treated_as_typeforge_markers() -> None:
     result = parse_source("def f[T](value: Each[T]) -> Collect[T]: ...\n")
 
     assert isinstance(result, Success)
-    assert enriched_functions(result.unwrap()) == ()
+    assert enriched_functions(result.unwrap().source) == ()
 
 
 def test_pydantic_input_is_distinct_from_an_unrelated_input_type() -> None:
@@ -88,7 +88,7 @@ def test_pydantic_input_is_distinct_from_an_unrelated_input_type() -> None:
     )
 
     assert isinstance(result, Success)
-    runtime, ordinary = result.unwrap().aliases
+    runtime, ordinary = result.unwrap().source.aliases
     assert isinstance(runtime.value, RuntimeInputTypeExpression)
     assert not isinstance(ordinary.value, RuntimeInputTypeExpression)
 
@@ -100,7 +100,7 @@ def test_parses_markers_inside_unpacked_tuple_union() -> None:
     )
 
     assert isinstance(result, Success)
-    returns = result.unwrap().functions[0].returns
+    returns = result.unwrap().source.functions[0].returns
     assert isinstance(returns, UnionTypeExpression)
     tuple_type = returns.members[0]
     assert isinstance(tuple_type, AppliedTypeExpression)
@@ -149,7 +149,7 @@ def test_annotated_metadata_is_transparent_to_the_compiler_frontend() -> None:
         result = parse_source(source)
 
         assert isinstance(result, Success)
-        alias = result.unwrap().aliases[0]
+        alias = result.unwrap().source.aliases[0]
         assert isinstance(alias.value, MarkerTypeExpression)
         assert alias.value.marker is MarkerKind.MAP_FIELDS
 
@@ -163,7 +163,7 @@ def test_annotated_typed_dict_field_preserves_field_qualifiers() -> None:
     )
 
     assert isinstance(result, Success)
-    field = result.unwrap().typed_dicts[0].fields[0]
+    field = result.unwrap().source.typed_dicts[0].fields[0]
     assert not field.required
     assert field.readonly
     assert field.annotation.source == "int"
@@ -173,7 +173,7 @@ def test_full_typeforge_syntax_is_recognized_in_type_aliases() -> None:
     result = parse_module(FIXTURES / "full_syntax.py")
 
     assert isinstance(result, Success)
-    module = result.unwrap()
+    module = result.unwrap().source
     assert tuple(alias.name for alias in module.aliases) == (
         "JsonValue",
         "PublicRecord",
@@ -198,7 +198,7 @@ def test_typed_dict_fields_preserve_shape_modifiers() -> None:
     result = parse_module(FIXTURES / "full_syntax.py")
 
     assert isinstance(result, Success)
-    typed_dict = result.unwrap().typed_dicts[0]
+    typed_dict = result.unwrap().source.typed_dicts[0]
     assert typed_dict.name == "Payload"
     assert not typed_dict.total
     assert tuple(
@@ -212,7 +212,7 @@ def test_typed_dict_fields_preserve_shape_modifiers() -> None:
         ("owner", "str", False, True),
     )
     assert typed_dict.fields[0].span.start.line == 53
-    derived = result.unwrap().typed_dicts[1]
+    derived = result.unwrap().source.typed_dicts[1]
     assert derived.name == "ExtendedPayload"
     assert derived.bases == (("Payload",),)
     assert derived.fields[0].required
@@ -232,7 +232,7 @@ def test_ordinary_classes_preserve_generic_structure_and_members() -> None:
     )
 
     assert isinstance(result, Success)
-    entity, world = result.unwrap().classes
+    entity, world = result.unwrap().source.classes
     assert entity.bases[0].source == "Protocol"
     assert entity.methods[0].qualified_name == ("Entity", "__hash__")
     assert world.type_parameters[0].declaration == "E: Entity"
@@ -252,7 +252,7 @@ def test_qualified_pydantic_schema_is_a_distinct_source_boundary() -> None:
     )
 
     assert isinstance(result, Success)
-    value, ordinary = result.unwrap().classes[0].fields
+    value, ordinary = result.unwrap().source.classes[0].fields
     assert isinstance(value.annotation, SchemaTypeExpression)
     assert value.annotation.source.startswith("RuntimeSchema[")
     assert contains_marker(value.annotation, MarkerKind.MAP)

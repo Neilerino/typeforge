@@ -5,6 +5,12 @@ from pathlib import Path
 
 @dataclass(frozen=True, slots=True, order=True)
 class SourcePosition:
+    """One-based line and zero-based column.
+
+    Parsed syntax facts use UTF-8 byte columns. Syntax errors retain Python's
+    character offsets for compatibility with existing failure presentation.
+    """
+
     line: int
     column: int
 
@@ -14,6 +20,20 @@ class SourceSpan:
     path: Path
     start: SourcePosition
     end: SourcePosition
+
+
+@dataclass(frozen=True, slots=True)
+class ReturnSite:
+    statement: SourceSpan
+    expression: SourceSpan | None
+
+
+@dataclass(frozen=True, slots=True)
+class IdentifierOccurrence:
+    """A name use or parameter declaration; its span may include an annotation."""
+
+    name: str
+    span: SourceSpan
 
 
 class MarkerKind(Enum):
@@ -145,6 +165,8 @@ class FunctionDeclaration:
     span: SourceSpan
     is_async: bool
     decorators: tuple[str, ...] = ()
+    decorator_spans: tuple[SourceSpan, ...] = ()
+    body_span: SourceSpan | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +225,11 @@ class SourceModule:
     aliases: tuple[TypeAliasDeclaration, ...] = ()
     typed_dicts: tuple[TypedDictDeclaration, ...] = ()
     classes: tuple[ClassDeclaration, ...] = ()
+    text: str = ""
+    docstring_span: SourceSpan | None = None
+    future_import_spans: tuple[SourceSpan, ...] = ()
+    return_sites: tuple[ReturnSite, ...] = ()
+    identifiers: tuple[IdentifierOccurrence, ...] = ()
 
 
 def contains_marker(

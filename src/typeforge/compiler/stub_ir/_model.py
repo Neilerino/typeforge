@@ -238,6 +238,17 @@ type Declaration = (
 type GeneratedElement = Declaration | StubTypeExpression
 
 
+def is_declaration(value: GeneratedElement) -> TypeIs[Declaration]:
+    return isinstance(
+        value,
+        FunctionDeclaration
+        | OverloadDeclaration
+        | TypeAliasDeclaration
+        | VariableDeclaration
+        | ClassDeclaration,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class GeneratedElementOrigin[OriginType]:
     origin: OriginType
@@ -265,4 +276,4 @@ class StubModule:
     declarations: tuple[Declaration, ...]
     imports: tuple[ModuleImport, ...] = ()
     origins: tuple[GeneratedElementOrigin[SourceSpan], ...] = ()
-    expressions: tuple[StubTypeExpression, ...] = ()
+    reusable_elements: tuple[GeneratedElement, ...] = ()

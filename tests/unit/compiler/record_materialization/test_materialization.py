@@ -30,7 +30,7 @@ def test_materialization_preserves_typed_dict_field_order_and_modifiers(
         "    label: NotRequired[ReadOnly[str]]\n",
         encoding="utf-8",
     )
-    source = parse_module(path).unwrap()
+    source = parse_module(path).unwrap().source
     stub = adapt_source_module(source).unwrap()
 
     materialization = materialize_record_transforms(source, stub).unwrap()
@@ -70,7 +70,7 @@ def test_record_failures_are_owned_by_record_materialization(tmp_path: Path) -> 
         "type Copy = MapFields[Payload, Field[Key, Value]]\n",
         encoding="utf-8",
     )
-    source = parse_module(path).unwrap()
+    source = parse_module(path).unwrap().source
 
     result = derive_record_shapes(
         source.aliases,

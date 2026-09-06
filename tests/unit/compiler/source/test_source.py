@@ -11,10 +11,14 @@ from typeforge.compiler.source import (
 def test_parse_source_preserves_imported_marker_meaning() -> None:
     path = Path("example.py")
 
-    result = parse_source(
-        "from typeforge import Each\ndef first[T](values: Each[T]) -> T: ...\n",
-        path,
-    ).unwrap()
+    result = (
+        parse_source(
+            "from typeforge import Each\ndef first[T](values: Each[T]) -> T: ...\n",
+            path,
+        )
+        .unwrap()
+        .source
+    )
 
     annotation = result.functions[0].parameters[0].annotation
 
@@ -34,7 +38,7 @@ def test_parse_module_reads_authored_module_without_executing_it(
         encoding="utf-8",
     )
 
-    module = parse_module(path).unwrap()
+    module = parse_module(path).unwrap().source
 
     assert module.path == path
     assert tuple(function.name for function in module.functions) == ("choose",)

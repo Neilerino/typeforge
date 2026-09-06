@@ -19,7 +19,7 @@ def test_adapt_source_module_translates_authored_types_to_stub_ir(
         "def convert(items: list[int]) -> set[str]: ...\n",
         encoding="utf-8",
     )
-    source = parse_module(path).unwrap()
+    source = parse_module(path).unwrap().source
 
     adapted = adapt_source_module(source).unwrap()
 
