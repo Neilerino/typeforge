@@ -1,5 +1,7 @@
+import ast
 from pathlib import Path
 from textwrap import dedent
+from unittest.mock import patch
 
 from pytest import MonkeyPatch
 from returns.result import Failure, Success
@@ -146,3 +148,35 @@ def test_missing_source_is_a_modeled_read_failure(tmp_path: Path) -> None:
     error = published.failure()
     assert isinstance(error, SourceReadError)
     assert error.path == path
+
+
+def test_publication_reads_and_parses_the_authored_module_once(tmp_path: Path) -> None:
+    path = tmp_path / "snapshot.py"
+    source = dedent("""\
+        from external import Parser
+        answer = 42  # type: int
+        def identity[T](value: T) -> T: ...
+        """)
+    path.write_text(source, encoding="utf-8")
+
+    with (
+        patch.object(Path, "read_text", autospec=True, return_value=source) as read,
+        patch("ast.parse", wraps=ast.parse) as parse,
+    ):
+        published = generate_module(path, maximum_arity=2).unwrap()
+
+    assert published.content == dedent("""\
+        from external import Parser
+
+        answer: int
+
+        def identity[T](value: T) -> T: ...
+        """)
+    assert read.call_args_list == [((path,), {"encoding": "utf-8"})]
+    module_parses = [
+        call
+        for call in parse.call_args_list
+        if call.kwargs.get("mode", "exec") == "exec"
+    ]
+    assert len(module_parses) == 1
+    assert module_parses[0].args == (source,)

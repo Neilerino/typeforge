@@ -22,6 +22,7 @@ from typeforge.compiler.record_materialization import (
 )
 from typeforge.compiler.source import SourceSpan, SourceSyntaxError
 from typeforge.compiler.specialization import LoweringError
+from typeforge.compiler.verification import ImplicitReturnSite, VerificationPlan
 
 __all__ = [
     "AdaptationError",
@@ -33,11 +34,13 @@ __all__ = [
     "EmissionError",
     "GeneratedModule",
     "GenerationError",
+    "ImplicitReturnSite",
     "LoweringError",
     "RecordMaterializationError",
     "SourceSpan",
     "SourceSyntaxError",
     "UnsupportedPublicDeclaration",
+    "VerificationPlan",
     "compile_source",
     "describe_authored_callables",
     "generate_module",

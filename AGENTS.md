@@ -31,7 +31,9 @@
 * Represent expected failures crossing module or public API boundaries as typed results.
 * Within an implementation module, typed domain exceptions may bubble to the boundary that converts them into a result.
 * Convert between exceptions and results once at a deliberate boundary; avoid repeatedly converting within the same call graph.
-* Use `ok()` when a nested result should either return its value or re-raise its original failure.
+* At seams that consume nested results, use `safe_result(errors=(...))` from `typeforge.utils.error_handling` and `.unwrap()` inside the implementation. Declare the seam's accepted error types; the utility preserves original error values, including dataclasses, and propagates unexpected failures. See `DESIGN.md` for examples.
+* Keep private helpers on plain return values within that boundary. Inspect `Failure` explicitly when choosing recovery, fallback, or skipping behavior; use `.alt()` at the owning seam when translating errors.
+* Use `ok()` only when an exception-only result must re-raise its domain exception for an existing exception-based caller.
 * Catch only the modeled domain exceptions being converted. Unexpected exceptions must propagate.
 
 ## Implementation style

@@ -415,13 +415,6 @@ def _expand_map_aliases(
     )
 
 
-@safe(exceptions=(AdaptationError,))
-def adapt_class(
-    source_class: SourceClass,
-) -> ClassDeclaration:
-    return _adapt_class(source_class)
-
-
 def _adapt_class(
     source_class: SourceClass,
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,

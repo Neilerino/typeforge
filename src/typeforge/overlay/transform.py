@@ -24,9 +24,11 @@ from typeforge.compiler.pipeline import (
     AuthoredCallable,
     CompilationError,
     CompilationPlan,
+    ImplicitReturnSite,
     LoweringError,
     RecordMaterializationError,
     SourceSyntaxError,
+    VerificationPlan,
     compile_source,
     describe_authored_callables,
 )
@@ -51,12 +53,9 @@ from typeforge.compiler.stub_ir import (
     UnionExpression,
     UnpackedType,
     is_declaration,
+    union_types,
 )
-from typeforge.compiler.verification import (
-    ImplicitReturnSite,
-    VerificationPlan,
-)
-from typeforge.compiler.verification.contracts import union_types
+from typeforge.utils.error_handling import safe_result
 
 _IMPORT_MARKER = "# typeforge: overlay-import"
 _START_MARKER = "# typeforge: overlay"
@@ -118,11 +117,13 @@ def transform_source(
     if _START_MARKER in source:
         return Success(_identity_document(source, path, version))
 
-    compiled = compile_source(source, path, maximum_arity=maximum_arity)
-    if isinstance(compiled, Failure):
-        return Failure(_compilation_error(path, compiled.failure()))
-
-    return project_overlay(compiled.unwrap(), version=version)
+    return Result.do(
+        document
+        for plan in compile_source(source, path, maximum_arity=maximum_arity).alt(
+            lambda error: _compilation_error(path, error)
+        )
+        for document in project_overlay(plan, version=version)
+    )
 
 
 def project_overlay(
@@ -130,45 +131,39 @@ def project_overlay(
     *,
     version: int = 0,
 ) -> Result[VirtualDocument, OverlayError]:
+    return _project_overlay(plan, version=version).alt(
+        lambda error: _emission_error(plan.source.path, error)
+    )
+
+
+@safe_result(errors=(EmissionError,))
+def _project_overlay(plan: CompilationPlan, *, version: int) -> VirtualDocument:
     module = plan.source
     source = module.text
     path = module.path
     generated = _generate_overloads(source, plan)
-    if isinstance(generated, Failure):
-        return generated
-
-    blocks = tuple(_overload_insertion(source, item) for item in generated.unwrap())
+    blocks = tuple(_overload_insertion(source, item) for item in generated)
     alias_edits = _alias_edits(source, plan)
-    if isinstance(alias_edits, Failure):
-        return alias_edits
-
     schema_edits = _schema_edits(source, plan)
-    if isinstance(schema_edits, Failure):
-        return schema_edits
-
     verification_edits = _verification_edits(
         source=source,
         plan=plan.verification,
         reserved_names={item.name for item in module.identifiers},
     )
-    records = _render_derived_records(plan) if schema_edits.unwrap() else Success(())
-    if isinstance(records, Failure):
-        return records
-
-    record_declarations = records.unwrap()
+    record_declarations = _render_derived_records(plan) if schema_edits else ()
     content = (
-        tuple(item.text for item in generated.unwrap())
+        tuple(item.text for item in generated)
         + tuple(
             item.text
             for item in (
-                *alias_edits.unwrap(),
-                *schema_edits.unwrap(),
+                *alias_edits,
+                *schema_edits,
                 *verification_edits,
             )
         )
         + record_declarations
     )
-    import_text = _typing_import(content, has_overloads=bool(generated.unwrap()))
+    import_text = _typing_import(content, has_overloads=bool(generated))
     preamble = module.future_import_spans
     if module.docstring_span is not None:
         preamble = (module.docstring_span, *preamble)
@@ -195,39 +190,35 @@ def project_overlay(
     edits = (
         *import_edit,
         *record_edit,
-        *alias_edits.unwrap(),
-        *schema_edits.unwrap(),
+        *alias_edits,
+        *schema_edits,
         *blocks,
         *verification_edits,
     )
     if not edits:
-        return Success(
-            _identity_document(
-                source,
-                path,
-                version,
-                authored_callables=describe_authored_callables(plan),
-            )
+        return _identity_document(
+            source,
+            path,
+            version,
+            authored_callables=describe_authored_callables(plan),
         )
 
     generated_text, mappings = _apply_edits(source, path, edits)
-    return Success(
-        VirtualDocument(
-            uri=path.resolve().as_uri() if path != Path("<memory>") else str(path),
-            path=path,
-            version=version,
-            authored_text=source,
-            generated_text=generated_text,
-            mappings=mappings,
-            authored_callables=describe_authored_callables(plan),
-        )
+    return VirtualDocument(
+        uri=path.resolve().as_uri() if path != Path("<memory>") else str(path),
+        path=path,
+        version=version,
+        authored_text=source,
+        generated_text=generated_text,
+        mappings=mappings,
+        authored_callables=describe_authored_callables(plan),
     )
 
 
 def _generate_overloads(
     source: str,
     plan: CompilationPlan,
-) -> Result[tuple[_GeneratedOverloads, ...], OverlayError]:
+) -> tuple[_GeneratedOverloads, ...]:
     generated: list[_GeneratedOverloads] = []
     module = plan.source
     functions = {function.span: function for function in module.functions}
@@ -262,19 +253,19 @@ def _generate_overloads(
         if _declaration_contains_map_value(declaration):
             continue
 
-        emitted = emit_stub_module(StubModule(module.path.stem, (declaration,)))
-        if isinstance(emitted, Failure):
-            return Failure(_emission_error(module.path, emitted.failure()))
+        emitted = emit_stub_module(
+            StubModule(module.path.stem, (declaration,))
+        ).unwrap()
 
         generated.append(
             _GeneratedOverloads(
                 function.decorator_spans,
                 _source_span(source, function.span),
-                emitted.unwrap().rstrip(),
+                emitted.rstrip(),
             )
         )
 
-    return Success(tuple(generated))
+    return tuple(generated)
 
 
 def _has_variadic_specializations(declaration: OverloadDeclaration) -> bool:
@@ -457,9 +448,7 @@ def _source_span(source: str, span: AuthoredSourceSpan) -> SourceSpan:
     )
 
 
-def _alias_edits(
-    source: str, plan: CompilationPlan
-) -> Result[tuple[_Edit, ...], OverlayError]:
+def _alias_edits(source: str, plan: CompilationPlan) -> tuple[_Edit, ...]:
     module = plan.source
     aliases = {alias.span: alias for alias in module.aliases}
     relationships = {
@@ -484,9 +473,7 @@ def _alias_edits(
             if relationship is not None
             else declaration
         )
-        emitted = emit_stub_module(StubModule(module.path.stem, (projected,)))
-        if isinstance(emitted, Failure):
-            return Failure(_emission_error(module.path, emitted.failure()))
+        emitted = emit_stub_module(StubModule(module.path.stem, (projected,))).unwrap()
 
         start = (
             _line_offset(source, alias.span.start.line - 1) + alias.span.start.column
@@ -496,17 +483,15 @@ def _alias_edits(
             _Edit(
                 start=start,
                 end=end,
-                text=emitted.unwrap().rstrip(),
+                text=emitted.rstrip(),
                 authored_span=_offset_span(module.path, source, start, end),
             )
         )
 
-    return Success(tuple(edits))
+    return tuple(edits)
 
 
-def _schema_edits(
-    source: str, plan: CompilationPlan
-) -> Result[tuple[_Edit, ...], OverlayError]:
+def _schema_edits(source: str, plan: CompilationPlan) -> tuple[_Edit, ...]:
     module = plan.source
     roots = {
         id(element): element
@@ -523,9 +508,7 @@ def _schema_edits(
         ):
             continue
 
-        emitted = emit_type_expression(expression)
-        if isinstance(emitted, Failure):
-            return Failure(_emission_error(module.path, emitted.failure()))
+        emitted = emit_type_expression(expression).unwrap()
 
         span = origin.origin
         start = _line_offset(source, span.start.line - 1) + span.start.column
@@ -534,17 +517,17 @@ def _schema_edits(
             _Edit(
                 start,
                 end,
-                emitted.unwrap(),
+                emitted,
                 _offset_span(module.path, source, start, end),
             )
         )
 
-    return Success(tuple(edits))
+    return tuple(edits)
 
 
 def _render_derived_records(
     plan: CompilationPlan,
-) -> Result[tuple[str, ...], OverlayError]:
+) -> tuple[str, ...]:
     alias_spans = {alias.span for alias in plan.source.aliases}
     input_spans = {record.span for record in plan.source.typed_dicts}
     alias_records = {
@@ -567,13 +550,12 @@ def _render_derived_records(
             continue
 
         remaining_records.remove(id(declaration))
-        emitted = emit_stub_module(StubModule(plan.module.name, (declaration,)))
-        if isinstance(emitted, Failure):
-            return Failure(_emission_error(plan.source.path, emitted.failure()))
+        emitted = emit_stub_module(
+            StubModule(plan.module.name, (declaration,))
+        ).unwrap()
+        rendered.append(emitted.rstrip())
 
-        rendered.append(emitted.unwrap().rstrip())
-
-    return Success(tuple(rendered))
+    return tuple(rendered)
 
 
 def _relationship_fallback(expression: MapType) -> StubTypeExpression:

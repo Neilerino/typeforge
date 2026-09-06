@@ -1,7 +1,6 @@
 """AST inspection and import-handling utilities for the compiler pipeline."""
 
 import ast
-from pathlib import Path
 
 from returns.result import Failure, Result, Success
 
@@ -9,7 +8,7 @@ from typeforge.compiler.module_surface._models import (
     ModuleSurface,
     UnsupportedPublicDeclaration,
 )
-from typeforge.compiler.source import SourceModule, static_export_names
+from typeforge.compiler.source import ParsedSource, static_export_names
 from typeforge.compiler.stub_ir import (
     ImportFrom,
     TypeName,
@@ -19,35 +18,33 @@ from typeforge.compiler.stub_ir import (
 
 
 def inspect_module_surface(
-    module: SourceModule,
+    parsed: ParsedSource,
 ) -> Result[ModuleSurface, UnsupportedPublicDeclaration]:
-    validation = validate_public_surface(module)
+    validation = validate_public_surface(parsed)
     if isinstance(validation, Failure):
         return validation
 
-    variables = collect_module_variables(module.path)
+    variables = collect_module_variables(parsed.tree)
     return Success(
         ModuleSurface(
             declarations=variables.declarations,
             imports=merge_imports(
-                (*_collect_public_imports(module.path), *variables.imports)
+                (*_collect_public_imports(parsed.tree), *variables.imports)
             ),
         )
     )
 
 
 def validate_public_surface(
-    module: SourceModule,
+    parsed: ParsedSource,
 ) -> Result[None, UnsupportedPublicDeclaration]:
-    source = module.path.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(module.path), type_comments=True)
-    typed_dict_names = {declaration.name for declaration in module.typed_dicts}
-    for statement in tree.body:
+    typed_dict_names = {declaration.name for declaration in parsed.source.typed_dicts}
+    for statement in parsed.tree.body:
         unsupported = _unsupported_public_statement(statement, typed_dict_names)
         if unsupported is not None:
             return Failure(
                 UnsupportedPublicDeclaration(
-                    module.path,
+                    parsed.source.path,
                     statement.lineno,
                     unsupported,
                 )
@@ -166,9 +163,7 @@ def _is_main_literal(expression: ast.expr) -> bool:
     return isinstance(expression, ast.Constant) and expression.value == "__main__"
 
 
-def _collect_public_imports(path: Path) -> tuple[ImportFrom, ...]:
-    source = path.read_text(encoding="utf-8")
-    module = ast.parse(source, filename=str(path), type_comments=True)
+def _collect_public_imports(module: ast.Module) -> tuple[ImportFrom, ...]:
     exported_names = _collect_export_names(module)
     imports: list[ImportFrom] = []
     for statement in module.body:
@@ -219,9 +214,7 @@ def _render_import_name(alias: ast.alias, exported_names: frozenset[str]) -> str
     return alias.name
 
 
-def collect_module_variables(path: Path) -> ModuleSurface:
-    source = path.read_text(encoding="utf-8")
-    module = ast.parse(source, filename=str(path), type_comments=True)
+def collect_module_variables(module: ast.Module) -> ModuleSurface:
     declarations: list[VariableDeclaration] = []
     requires_any = False
     for statement in module.body:

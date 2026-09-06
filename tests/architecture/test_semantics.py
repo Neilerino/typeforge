@@ -33,7 +33,11 @@ def source_root(typeforge: ArchModule) -> str:
 @pytest.fixture
 def architecture(typeforge: ArchModule, semantics: ArchModule) -> LayeredArchitecture:
     architecture = project_layers(typeforge.path.parent.as_posix())
-    for layer in (*semantics.layers, typeforge):
+    for layer in (
+        *semantics.layers,
+        typeforge.file("utils.error_handling"),
+        typeforge,
+    ):
         architecture.layer(layer.name).defined_by(layer.pattern)
 
     return architecture
@@ -78,6 +82,7 @@ def test_semantics_dependencies_point_toward_the_domain(
     map_evaluation: ArchFile,
     evaluation: ArchFile,
     interface: ArchFile,
+    typeforge: ArchModule,
 ) -> None:
     """Keep domain data independent and orchestration at the outer seam."""
     rule = (
@@ -92,6 +97,7 @@ def test_semantics_dependencies_point_toward_the_domain(
             domain.name,
             protocols.name,
             map_evaluation.name,
+            typeforge.file("utils.error_handling").name,
         )
         .where_layer(interface.name)
         .may_only_depend_on_layers(domain.name, protocols.name, evaluation.name)

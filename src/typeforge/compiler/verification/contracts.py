@@ -10,11 +10,10 @@ from typeforge.compiler.stub_ir import (
     FunctionDeclaration,
     MapType,
     StubTypeExpression,
-    TypeName,
     TypeVariable,
-    UnionExpression,
     is_predicate,
     substitute_type,
+    union_types,
 )
 from typeforge.compiler.verification.model import Alternative, ReturnContract
 
@@ -83,24 +82,3 @@ def build_return_contract(signature: FunctionDeclaration) -> ReturnContract | No
 
 def aggregate_output(contract: ReturnContract) -> StubTypeExpression:
     return union_types(tuple(item.output_type for item in contract.alternatives))
-
-
-def union_types(expressions: tuple[StubTypeExpression, ...]) -> StubTypeExpression:
-    flattened: list[StubTypeExpression] = []
-    for expression in expressions:
-        members = (
-            expression.members
-            if isinstance(expression, UnionExpression)
-            else (expression,)
-        )
-        for member in members:
-            if member not in flattened:
-                flattened.append(member)
-
-    if not flattened:
-        return TypeName("Never")
-
-    if len(flattened) == 1:
-        return flattened[0]
-
-    return UnionExpression(tuple(flattened))

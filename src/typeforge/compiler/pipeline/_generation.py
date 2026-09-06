@@ -33,7 +33,7 @@ def generate_module(
     return Result.do(
         generated
         for parsed in parse_module(path)
-        for surface in inspect_module_surface(parsed.source)
+        for surface in inspect_module_surface(parsed)
         for plan in compile_module(
             replace(parsed, source=_published_source_scope(parsed.source)),
             maximum_arity=maximum_arity,

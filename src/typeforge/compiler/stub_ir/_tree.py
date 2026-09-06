@@ -292,3 +292,24 @@ def walk_declaration(declaration: Declaration) -> Iterator[GeneratedElement]:
             yield from walk_type(expression)
         case _ as unreachable:
             assert_never(unreachable)
+
+
+def union_types(expressions: tuple[StubTypeExpression, ...]) -> StubTypeExpression:
+    flattened: list[StubTypeExpression] = []
+    for expression in expressions:
+        members = (
+            expression.members
+            if isinstance(expression, UnionExpression)
+            else (expression,)
+        )
+        for member in members:
+            if member not in flattened:
+                flattened.append(member)
+
+    if not flattened:
+        return TypeName("Never")
+
+    if len(flattened) == 1:
+        return flattened[0]
+
+    return UnionExpression(tuple(flattened))

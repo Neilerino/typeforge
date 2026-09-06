@@ -3,8 +3,7 @@
 from dataclasses import replace
 from functools import singledispatch
 
-from returns.primitives.exceptions import UnwrapFailedError
-from returns.result import Result, safe
+from returns.result import Result
 
 from typeforge.semantics.domain.assertions import (
     expect_condition,
@@ -50,6 +49,7 @@ from typeforge.semantics.domain.models import (
 )
 from typeforge.semantics.map_evaluation import evaluate_map
 from typeforge.semantics.protocols import TypeSystem
+from typeforge.utils.error_handling import safe_result
 
 
 def evaluate[T](
@@ -60,20 +60,8 @@ def evaluate[T](
     """Evaluate a normalized expression through a type-system adapter."""
     evaluation_context = EvaluationContext[T]() if context is None else context
 
-    eval_safely = safe(exceptions=(SemanticIssue, UnwrapFailedError))(_evaluate)
-    return eval_safely(expression, type_system, evaluation_context).alt(_semantic_issue)
-
-
-def _semantic_issue(error: Exception) -> SemanticIssue:
-    if isinstance(error, SemanticIssue):
-        return error
-
-    if isinstance(error, UnwrapFailedError) and isinstance(
-        error.__cause__, SemanticIssue
-    ):
-        return error.__cause__
-
-    raise error
+    eval_safely = safe_result(errors=(SemanticIssue,))(_evaluate)
+    return eval_safely(expression, type_system, evaluation_context)
 
 
 @singledispatch

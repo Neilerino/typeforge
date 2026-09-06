@@ -44,6 +44,95 @@ Implementation verification produces checker-neutral obligations from Typeforge 
 
 Precise obligations are emitted only for recognized flow. Unknown predicates, ambiguous controllers, generators, and declaration-only bodies must degrade to an aggregate check or remain with the underlying checker rather than inventing a narrowing.
 
+## Compiler plans and target projections
+
+`compiler.source` parses one authored snapshot. Its compiler-internal
+`ParsedSource` carries the Python AST alongside `SourceModule`, whose Typeforge-owned
+facts include the exact text, declarations, identifiers, and source locations.
+Parsed syntax locations use one-based lines and zero-based UTF-8 byte columns;
+syntax errors retain Python's character offsets. Projection and integration code
+own conversion to editor or checker coordinates.
+
+Adaptation interprets annotations, expands aliases, and materializes records. Its
+`StubModule.reusable_elements` retains authored callable contracts and reusable
+type expressions before declaration rewriting and finite specialization discard
+their original form. Origins associate these elements with authored spans and
+always refer to elements reachable in the current immutable module snapshot.
+Retained roots do not emit additional declarations or imports.
+
+`compiler.verification` analyzes the original bodies against retained typed
+contracts. It produces expected and narrowed types with explicit return or
+implicit fallthrough sites. It owns flow analysis; it does not choose indentation,
+insertion offsets, generated names, or checker document models.
+
+`compiler.pipeline.compile_source` assembles a complete `CompilationPlan` containing
+source facts, specialized IR, and verification obligations. The plan exposes no
+AST. Failed compiler stages return their modeled failure without publishing a
+partial plan; an empty verification result is valid for unsupported flow.
+
+`overlay.project_overlay` consumes that plan to emit declarations and checks,
+place edits, and construct source mappings and diagnostic provenance.
+`transform_source` preserves its sentinel and invalid-arity fast paths, then
+compiles once and projects. Diagnostics use authored descriptions and provenance;
+neither consumer reparses source or reconstructs compiler stages.
+
+For published stubs, `generate_module` reads the file once and passes its parsed
+snapshot to `compiler.module_surface`. Surface inspection reuses the original AST
+to validate and preserve imports and variables. Publication then compiles its
+existing selected source scope and emits a complete interface without verification
+instrumentation. Syntax failures precede surface failures, which precede compiler
+failures. Published relationship aliases retain their conservative `object`
+fallback; overlays retain their union-of-outputs fallback.
+
 ## Explicit record semantics
 
 `TypedDict`, dataclasses, protocols, ordinary classes, attrs classes, and validation models have different construction, inheritance, and mutation semantics. Typeforge must support each family through an explicit adapter rather than treating every annotated object as the same kind of record.
+
+## Result boundaries
+
+Use `typeforge.utils.error_handling.safe_result` at a seam whose implementation
+consumes nested `Result` values. Declare the accepted error types and call
+`.unwrap()` where a nested failure should stop the operation:
+
+```python
+@safe_result(errors=(RenderError,))
+def render_document(document: Document) -> str:
+    header = render_header(document).unwrap()
+    body = render_body(document).unwrap()
+    return header + body
+```
+
+The decorated function returns `Result[str, RenderError]`. Private helpers inside
+the boundary return plain values. The utility uses `returns.safe` to catch the
+declared exception types and `UnwrapFailedError`, then recovers the original
+declared failure from its `Failure` container. This also supports error dataclasses
+that are not exceptions. It preserves error identity and short-circuits later
+steps; unexpected exceptions, undeclared failures, and unwraps of other container
+kinds propagate. There is no default catch-all error type.
+
+For several unrelated error classes, annotate the tuple with the intended union
+so both mypy and pyright retain that precise failure type:
+
+```python
+_RENDER_ERRORS: tuple[type[ParseError | RenderError], ...] = (ParseError, RenderError)
+```
+
+Pass that tuple as `safe_result(errors=_RENDER_ERRORS)`.
+
+When the seam translates another module's error into its own model, wrap the
+implementation once and map the resulting failure at that boundary:
+
+```python
+def project(plan: Plan) -> Result[Document, ProjectionError]:
+    project_safely = safe_result(errors=(RenderError,))(_project)
+    return project_safely(plan).alt(
+        lambda error: ProjectionError(plan.path, error.message)
+    )
+```
+
+Use explicit failure branches for decisions such as recovery, fallback, or
+skipping an unsupported obligation. These decisions differ from propagation and
+must remain visible. Existing exception-based callers may use `ok()` to re-raise
+an exception-only result; `returns.safe` remains sufficient for seams that only
+catch directly raised domain exceptions. The shared utility depends on no
+Typeforge domain or target modules; callers supply their own error classes.
