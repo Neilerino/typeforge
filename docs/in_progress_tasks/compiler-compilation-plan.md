@@ -1,7 +1,7 @@
 # Compiler Compilation Plan
 
 Status: In progress — external seam and simplified `StubModule` stage composition
-agreed; prerequisites and first five implementation slices complete
+agreed; prerequisites and first seven implementation slices complete
 
 ## Outcome
 
@@ -292,19 +292,29 @@ tracking.~~ — completed 2026-09-05 (45 changed lines)
    unions, repeated uses, alias copies, overloads, and fallbacks. Pipeline interfaces
    and generated-text behavior remain unchanged; full `make check` passes.
 
-6. **Derived-record provenance** (approximately 150–250 changed lines)
+6. ~~Derived-record provenance~~ — completed 2026-09-05 (101 changed lines)
 
    Allow a derived record to identify multiple authored causes using the existing
    `GeneratedElementOrigin` representation, without introducing record-specific
    origin variants. Complete this slice when shared records have all and only their
    current authored causes.
 
-7. **Published generation consumes the plan** (approximately 150–250 changed lines)
+   Each derived record retains its transform alias and input TypedDict declaration
+   as direct authored causes. Shared consumers retain their own overload origins.
+   Exact identity and ordering contracts pass normally; focused and full
+   `make check` pass.
+
+7. ~~Published generation consumes the plan~~ — completed 2026-09-05 (200 changed lines)
 
    Route published-stub generation through `CompilationPlan`, keeping target-specific
    module shaping in projection and preserving generated text and modeled failures.
    Complete this slice when duplicate published pipeline choreography has been
    removed.
+
+   Both entry points share parsed-source compilation into `CompilationPlan`.
+   Published projection consumes that plan, preserving surface-validation priority
+   and existing fixture output. Seven new contracts and all 55 pipeline tests pass;
+   focused and full `make check` pass.
 
 8. **Overlay overloads consume the plan** (approximately 250–350 changed lines)
 

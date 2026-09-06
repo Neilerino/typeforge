@@ -165,6 +165,7 @@ def test_record_replacements_retain_current_authored_origins() -> None:
     assert isinstance(collect, FunctionDeclaration)
     assert adapted.origins == (
         GeneratedElementOrigin(source.typed_dicts[0].span, payload),
+        GeneratedElementOrigin(source.typed_dicts[0].span, copied),
         GeneratedElementOrigin(source.aliases[0].span, copied),
         GeneratedElementOrigin(source.aliases[1].span, encoded),
         GeneratedElementOrigin(source.functions[0].span, copy),

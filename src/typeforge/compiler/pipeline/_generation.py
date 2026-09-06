@@ -5,12 +5,15 @@ from pathlib import Path
 
 from returns.result import Result
 
-from typeforge.compiler.adaptation import adapt_source_module
 from typeforge.compiler.emission import EmissionError, emit_stub_module
 from typeforge.compiler.module_surface import ModuleSurface, inspect_module_surface
-from typeforge.compiler.pipeline._models import GeneratedModule, GenerationError
+from typeforge.compiler.pipeline._compilation import compile_module
+from typeforge.compiler.pipeline._models import (
+    CompilationPlan,
+    GeneratedModule,
+    GenerationError,
+)
 from typeforge.compiler.source import parse_module
-from typeforge.compiler.specialization import ArityFrontier, lower_variadic_module
 from typeforge.compiler.stub_ir import (
     ClassDeclaration,
     Declaration,
@@ -30,22 +33,16 @@ def generate_module(
         generated
         for parsed in parse_module(path)
         for surface in inspect_module_surface(parsed)
-        for adapted in adapt_source_module(parsed)
-        for lowered in lower_variadic_module(
-            adapted,
-            ArityFrontier(0, maximum_arity),
-        )
-        for generated in _emit_generated_module(
-            path=path, lowered=lowered, surface=surface
-        )
+        for plan in compile_module(parsed, maximum_arity=maximum_arity)
+        for generated in _emit_generated_module(plan, surface)
     )
 
 
 def _emit_generated_module(
-    path: Path,
-    lowered: StubModule,
+    plan: CompilationPlan,
     surface: ModuleSurface,
 ) -> Result[GeneratedModule, EmissionError]:
+    lowered = plan.module
     generated = StubModule(
         name=lowered.name,
         declarations=(
@@ -60,7 +57,7 @@ def _emit_generated_module(
         imports=merge_imports((*lowered.imports, *surface.imports)),
     )
     return emit_stub_module(generated).map(
-        lambda emitted: GeneratedModule(path, emitted)
+        lambda emitted: GeneratedModule(plan.source.path, emitted)
     )
 
 

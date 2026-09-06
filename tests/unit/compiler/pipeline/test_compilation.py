@@ -72,6 +72,102 @@ def test_compile_source_keeps_record_origins_in_specialized_snapshot() -> None:
     assert plan.module.origins[0].generated is plan.module.declarations[0]
 
 
+def test_shared_derived_records_keep_only_their_alias_and_input_origins() -> None:
+    source = dedent("""\
+        from typing import TypedDict
+        from typeforge import Field, Key, MapFields, Value
+        class Payload(TypedDict):
+            value: int
+        class Message(TypedDict):
+            text: bytes
+        type Copy[T] = MapFields[T, Field[Key, Value]]
+        type Stringify[T] = MapFields[T, Field[Key, str]]
+        def copy[T](value: T) -> Copy[T]: ...
+        def copy_again[T](value: T) -> Copy[T]: ...
+        def ordinary(value: Payload) -> Payload: ...
+        """)
+
+    plan = compile_source(source, Path("records.py"), maximum_arity=1).unwrap()
+
+    (
+        payload,
+        message,
+        copied_payload,
+        copied_message,
+        stringified_payload,
+        stringified_message,
+        copy_alias,
+        stringify_alias,
+        copy,
+        copy_again,
+        ordinary,
+    ) = plan.module.declarations
+    assert isinstance(copied_payload, ClassDeclaration)
+    assert copied_payload.name == "Copy_Payload"
+    assert isinstance(copied_message, ClassDeclaration)
+    assert copied_message.name == "Copy_Message"
+    assert isinstance(copy, OverloadDeclaration)
+    assert isinstance(copy_again, OverloadDeclaration)
+    for consumer in (copy, copy_again):
+        assert tuple(signature.return_type for signature in consumer.signatures) == (
+            TypeName(copied_payload.name),
+            TypeName(copied_message.name),
+        )
+
+    authored_payload, authored_message = plan.source.typed_dicts
+    authored_copy, authored_stringify = plan.source.aliases
+    first_consumer, second_consumer, _ = plan.source.functions
+    _assert_origins(
+        plan.module.origins,
+        (
+            (authored_payload.span, payload),
+            (authored_payload.span, copied_payload),
+            (authored_payload.span, stringified_payload),
+            (authored_message.span, message),
+            (authored_message.span, copied_message),
+            (authored_message.span, stringified_message),
+            (authored_copy.span, copied_payload),
+            (authored_copy.span, copied_message),
+            (authored_stringify.span, stringified_payload),
+            (authored_stringify.span, stringified_message),
+            (first_consumer.span, copy),
+            (second_consumer.span, copy_again),
+        ),
+    )
+    assert all(
+        origin.generated is not declaration
+        for origin in plan.module.origins
+        for declaration in (copy_alias, stringify_alias, ordinary)
+    )
+    _assert_origins_are_current(plan.module)
+    assert compile_source(source, Path("records.py"), maximum_arity=1).unwrap() == plan
+
+
+def test_derived_record_origins_follow_source_order_when_alias_precedes_input() -> None:
+    source = dedent("""\
+        from typing import TypedDict
+        from typeforge import Field, Key, MapFields, Value
+        type Copy[T] = MapFields[T, Field[Key, Value]]
+        class Payload(TypedDict):
+            value: int
+        """)
+
+    plan = compile_source(source, Path("records.py"), maximum_arity=1).unwrap()
+
+    payload, copied_payload, _ = plan.module.declarations
+    authored_copy = plan.source.aliases[0]
+    authored_payload = plan.source.typed_dicts[0]
+    _assert_origins(
+        plan.module.origins,
+        (
+            (authored_copy.span, copied_payload),
+            (authored_payload.span, payload),
+            (authored_payload.span, copied_payload),
+        ),
+    )
+    _assert_origins_are_current(plan.module)
+
+
 @pytest.mark.parametrize(
     "record_declaration",
     [

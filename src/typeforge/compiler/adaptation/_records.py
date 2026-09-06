@@ -92,13 +92,15 @@ def materialize_records(source: SourceModule, module: StubModule) -> StubModule:
         )
     )
     aliases = {item.name: item for item in source.aliases}
+    source_records = {item.name: item for item in source.typed_dicts}
     origins.extend(
-        GeneratedElementOrigin(aliases[derived.alias].span, generated)
+        GeneratedElementOrigin(authored.span, generated)
         for derived, generated in zip(
             records.derived,
             records.declarations[source_record_count:],
             strict=True,
         )
+        for authored in (aliases[derived.alias], source_records[derived.input_name])
     )
     declaration_order: dict[int, int] = {}
     for declaration in declarations:
