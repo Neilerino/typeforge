@@ -4,12 +4,30 @@ from typeforge.compiler.stub_ir import (
     MapCase,
     MapType,
     NotPredicate,
+    StubModule,
+    TypeAliasDeclaration,
     TypeApplication,
     TypeName,
     TypeVariable,
     rewrite_type,
+    walk_module,
     walk_type,
 )
+
+
+def test_module_walk_visits_declarations_before_reusable_expression_roots() -> None:
+    integer = TypeName("int")
+    alias = TypeAliasDeclaration("Number", integer)
+    string = TypeName("str")
+    container = TypeName("list")
+    reusable = TypeApplication(container, (string,))
+    module = StubModule("example", (alias,), expressions=(reusable, integer))
+
+    actual = tuple(walk_module(module))
+    expected = (alias, integer, reusable, container, string, integer)
+
+    assert len(actual) == len(expected)
+    assert all(first is second for first, second in zip(actual, expected, strict=True))
 
 
 def test_rewrite_is_top_down_and_does_not_rewrite_replacements() -> None:

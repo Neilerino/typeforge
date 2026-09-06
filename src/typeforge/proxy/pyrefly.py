@@ -102,7 +102,7 @@ def present_pyrefly_diagnostic(
     if not isinstance(message, str) or not isinstance(code, str):
         return diagnostic
 
-    presented = present_pyrefly_message(document.authored_text, code, message)
+    presented = present_pyrefly_message(document.authored_callables, code, message)
     if presented == message:
         return diagnostic
 

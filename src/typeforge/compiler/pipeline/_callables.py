@@ -1,11 +1,10 @@
-from returns.result import Failure
-
-from typeforge.compiler.source import ParameterKind, enriched_functions, parse_source
-from typeforge.diagnostics.model import (
+from typeforge.compiler.pipeline._models import (
     AuthoredCallable,
     AuthoredParameter,
     AuthoredParameterKind,
+    CompilationPlan,
 )
+from typeforge.compiler.source import ParameterKind, enriched_functions
 
 _PARAMETER_KINDS = {
     ParameterKind.POSITIONAL_ONLY: AuthoredParameterKind.POSITIONAL_ONLY,
@@ -16,11 +15,7 @@ _PARAMETER_KINDS = {
 }
 
 
-def collect_authored_callables(source: str) -> tuple[AuthoredCallable, ...]:
-    parsed = parse_source(source)
-    if isinstance(parsed, Failure):
-        return ()
-
+def describe_authored_callables(plan: CompilationPlan) -> tuple[AuthoredCallable, ...]:
     return tuple(
         AuthoredCallable(
             qualified_name=function.qualified_name,
@@ -41,5 +36,5 @@ def collect_authored_callables(source: str) -> tuple[AuthoredCallable, ...]:
                 function.returns.source if function.returns is not None else None
             ),
         )
-        for function in enriched_functions(parsed.unwrap())
+        for function in enriched_functions(plan.source)
     )

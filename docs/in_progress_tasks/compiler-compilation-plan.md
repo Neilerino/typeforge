@@ -1,7 +1,7 @@
 # Compiler Compilation Plan
 
-Status: In progress — external seam and simplified `StubModule` stage composition
-agreed; prerequisites and first seven implementation slices complete
+Status: Complete — prerequisites and all eleven implementation slices completed;
+focused and full repository checks pass (2026-09-06).
 
 ## Outcome
 
@@ -19,7 +19,8 @@ Success is observable when:
 - diagnostics no longer imports `enriched_functions()` or reparses authored
   source to recover callable information; and
 - published stub text, overlay text and mappings, diagnostic presentation, and
-  modeled failures remain unchanged.
+  modeled failures remain unchanged, except for the explicitly approved malformed
+  class-marker validation below.
 
 ## System and ownership
 
@@ -39,6 +40,15 @@ not contain authored declarations or authored type-expression trees.
 Stub generation and overlay generation are target-specific projections of a
 compilation plan. Diagnostics consume authored information preserved by the
 plan rather than running compiler source queries independently.
+
+`compiler.pipeline` owns immutable `AuthoredCallable`, `AuthoredParameter`, and
+`AuthoredParameterKind` descriptions. Its `describe_authored_callables(plan)`
+projection uses the plan's retained source and preserves the original enriched
+callable selection, annotation spelling, parameter kinds, defaults, and qualified
+names. `VirtualDocument.authored_callables` transports those descriptions to
+diagnostics; presenting a diagnostic does not parse source again. Identity
+documents produced after compilation retain descriptions, while the existing
+generated-source sentinel remains a compilation-free fast path.
 
 ## Language
 
@@ -91,6 +101,7 @@ class StubModule:
     declarations: tuple[Declaration, ...]
     imports: tuple[ModuleImport, ...] = ()
     origins: tuple[GeneratedElementOrigin[SourceSpan], ...] = ()
+    expressions: tuple[StubTypeExpression, ...] = ()
 ```
 
 The compilation plan does not duplicate those origins:
@@ -101,6 +112,52 @@ class CompilationPlan:
     source: SourceModule
     module: StubModule
 ```
+
+### Reusable expressions — approved 2026-09-05
+
+Projection needs some typing expressions whose structure is lost when declaration
+values are expanded, materialized, or specialized. `StubModule.expressions` retains
+these reusable generated-IR roots alongside the generated declarations. Existing
+`GeneratedElementOrigin` associations link them to authored spans; no alias-,
+schema-, or record-specific transformation variants are introduced.
+
+For example, the overlay must retain `Wire[T] | None` for a relationship whose
+output refers to `Wire[T]`, even if its compiled declaration has expanded that
+reference. A schema-wrapped relationship alias must retain its original Map branches
+for the overlay's union fallback while publication retains its existing resolved
+declaration value. Record applications such as `Copy[Payload]` likewise remain
+available for the overlay's alias projection.
+
+Rules for these roots:
+
+- They contain Typeforge-owned generated typing expressions, not authored syntax
+  trees or emitted text. Retain only expressions needed by current projections.
+- They are current module contents, not a history of every intermediate rewrite.
+  Each origin target must be reachable from declarations or expression roots by
+  identity. Shared elements use their first traversal occurrence.
+- Origin ordering remains authored position first, followed by declaration
+  traversal order, then expression-root traversal order.
+- Stages preserve reusable roots while rewriting declarations. A projection can
+  select a reusable root by its origin and root identity; it does not re-adapt it.
+- Normal module emission emits declarations only. Reusable roots are not extra
+  published declarations and do not add imports unless a target emits them.
+- Existing published and overlay text, mappings, and modeled failures remain
+  unchanged, including failures when an overlay cannot emit a reusable expression.
+
+Considered retaining a relationship field on each alias declaration. The generic
+root collection also supports schema replacements that need unspecialized typing
+expressions, without adding separate metadata fields for each declaration kind.
+
+Slice 9 introduces the roots for alias relationships; slice 10 uses the same seam
+for schema replacements. The public `compile_source` signature remains unchanged.
+
+### Malformed class markers — approved 2026-09-06
+
+Shared compilation validates malformed Typeforge markers in class fields and
+bases. The overlay now returns the compiler's typed adaptation error for inputs
+such as `value: Map[int]` or `class Payload(Each[int, str]): ...`, which the previous
+overlay passed through unchanged. This is the approved exception to unchanged
+failure behavior; valid output and source mappings remain unchanged.
 
 `CompilationError` contains only modeled failures possible before target
 surface assembly and emission: source syntax, adaptation, specialization, and
@@ -191,7 +248,8 @@ fallback is selected during adaptation.
     static checking expose unhandled generated-element categories when the IR
     is extended.
 11. Target projections preserve current generated text, source mapping,
-    failure, and diagnostic behavior.
+    failure, and diagnostic behavior, subject to the approved malformed
+    class-marker validation exception above.
 12. Modules outside the compiler consume compilation through
     `compiler.pipeline`; they do not import compiler source queries or
     individual compiler stages to reconstruct the plan.
@@ -316,25 +374,47 @@ tracking.~~ — completed 2026-09-05 (45 changed lines)
    and existing fixture output. Seven new contracts and all 55 pipeline tests pass;
    focused and full `make check` pass.
 
-8. **Overlay overloads consume the plan** (approximately 250–350 changed lines)
+8. ~~Overlay overloads consume the plan~~ — completed 2026-09-05 (531 changed lines)
 
    Make overlay transformation obtain generated overloads from `CompilationPlan`
    while preserving rendering, insertion locations, and source mappings. Complete
    this slice when the overlay no longer independently compiles enriched functions.
 
-9. **Overlay aliases consume the plan** (approximately 180–300 changed lines)
+   Alias-generated and scoped method overloads now retain callable origins. The
+   overlay renders those plan elements while retaining its existing projection
+   policies. Published generation selects its historical authored scope before the
+   shared compiler and retains existing annotation imports, including ignored
+   scoped callables. The 400-line target was exceeded to preserve nested/conditional
+   methods, ignored publication failures, and same-name record consumers. Exact
+   overlay baseline comparisons and focused/full `make check` pass.
+
+9. ~~Overlay aliases consume the plan~~ — completed 2026-09-05 (383 changed lines)
 
    Render alias replacements from the plan, apply the overlay-specific union fallback
    during projection, and remove the overlay dependency on `contains_marker`.
    Complete this slice when alias output remains unchanged through the common seam.
 
-10. **Overlay schemas and records consume the plan** (approximately 250–350 changed lines)
+   Alias origins select generated declarations, and reusable expression roots
+   retain the original relationship structure for overlay fallbacks. Ordinary
+   aliases remain excluded. Schema-wrapped relationships, named outputs, record
+   applications, duplicate-name bindings, and exact source mappings are covered.
+   All 20 saved overlay results match; focused and full `make check` pass.
+
+10. ~~Overlay schemas and records consume the plan~~ — completed 2026-09-05 (485 changed lines)
 
     Render schema replacements and records from plan IR plus origins, remove direct
     record-helper imports from overlay, and preserve output and source mappings.
     Complete this slice when all remaining overlay generation uses the common seam.
 
-11. **Diagnostics and architecture enforcement** (approximately 250–350 changed lines)
+    Schema replacements use reusable roots, and record insertion selects current
+    declarations through their authored causes. Separate root identity prevents
+    overlapping nested schema edits. Published TypedDict annotations retain their
+    existing opaque source representation, including malformed Schema syntax that
+    only the overlay rejects. The review target was exceeded to move boundary
+    traversal and preserve these compatibility cases. All 20 saved overlay results
+    match; focused and full `make check` pass.
+
+11. ~~Diagnostics and architecture enforcement~~ — completed 2026-09-06 (533 changed lines)
 
     Carry authored callable descriptions through the compiler seam, update diagnostics
     to consume them instead of reparsing through `enriched_functions`, and add
@@ -342,6 +422,16 @@ tracking.~~ — completed 2026-09-05 (45 changed lines)
     `compiler.source` helpers directly. Resolve the final ownership of callable
     descriptions within this slice. Complete it when obsolete exports are removed and
     the architecture checks pass.
+
+    Pipeline-owned callable descriptions travel on `VirtualDocument`; diagnostics
+    reuse them without parsing authored source. Ten architecture checks enforce
+    the boundary. Removed the old provenance parser, unused adaptation and record
+    rendering wrappers, and obsolete pipeline exports. Live verification helpers
+    retain their existing consumers. The review target was exceeded by relocating
+    the data models, removing superseded code, and testing explicit parameter
+    metadata; 25 lines cover the separately approved malformed class-marker errors.
+    Focused checks, all 20 saved overlay comparisons, and final full `make check`
+    pass. No migration xfails remain.
 
 ## Counterexamples and edge cases
 
@@ -360,7 +450,8 @@ tracking.~~ — completed 2026-09-05 (45 changed lines)
 
 ## Non-goals
 
-- Do not change Typeforge marker or schema semantics.
+- Do not change Typeforge marker or schema semantics beyond the approved
+  malformed class-marker validation exception above.
 - Do not change generated stub or overlay output.
 - Do not add `AdaptedModule`, `MaterializedModule`, `SpecializedModule`, or other
   stage-specific wrappers around `StubModule`.
@@ -380,8 +471,9 @@ tracking.~~ — completed 2026-09-05 (45 changed lines)
 
 ## Assumptions and open questions
 
-No material question remains about stage composition. Feature implementation
-begins only after an explicit implementation handoff.
+No material question remains about stage composition. All accepted slices are
+implemented and validated.
 
-The transport used to carry diagnostic information from an overlay remains a
-later non-blocking implementation choice constrained by the rules above.
+Callable description ownership and transport are resolved above. Implementation
+verification retains its existing live helper exports through `compiler.pipeline`;
+its separate obligations workflow remains outside this migration.

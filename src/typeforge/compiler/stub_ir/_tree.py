@@ -27,6 +27,7 @@ from typeforge.compiler.stub_ir._model import (
     Predicate,
     RuntimeInputType,
     SchemaType,
+    StubModule,
     StubTypeExpression,
     TypeAliasDeclaration,
     TypeApplication,
@@ -249,6 +250,14 @@ def _walk_predicate_types(predicate: Predicate) -> Iterator[StubTypeExpression]:
             yield from _walk_predicate_types(item)
         case _ as unreachable:
             assert_never(unreachable)
+
+
+def walk_module(module: StubModule) -> Iterator[GeneratedElement]:
+    for declaration in module.declarations:
+        yield from walk_declaration(declaration)
+
+    for expression in module.expressions:
+        yield from walk_type(expression)
 
 
 def walk_declaration(declaration: Declaration) -> Iterator[GeneratedElement]:

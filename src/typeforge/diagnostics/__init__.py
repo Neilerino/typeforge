@@ -1,8 +1,10 @@
-from typeforge.diagnostics.explain import DEFAULT_EXPLANATION_RULES, explain_problem
-from typeforge.diagnostics.model import (
+from typeforge.compiler.pipeline import (
     AuthoredCallable,
     AuthoredParameter,
     AuthoredParameterKind,
+)
+from typeforge.diagnostics.explain import DEFAULT_EXPLANATION_RULES, explain_problem
+from typeforge.diagnostics.model import (
     CheckerDetail,
     Explanation,
     ExplanationRule,

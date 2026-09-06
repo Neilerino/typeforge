@@ -1,8 +1,8 @@
 import re
 
+from typeforge.compiler.pipeline import AuthoredCallable
 from typeforge.diagnostics.explain import explain_problem
 from typeforge.diagnostics.model import CheckerDetail, ProblemKind, TypeProblem
-from typeforge.diagnostics.provenance import collect_authored_callables
 from typeforge.diagnostics.render import render_compact
 
 _NO_MATCHING_OVERLOAD = re.compile(
@@ -11,12 +11,14 @@ _NO_MATCHING_OVERLOAD = re.compile(
 )
 
 
-def present_pyrefly_message(source: str, code: str | None, message: str) -> str:
+def present_pyrefly_message(
+    callables: tuple[AuthoredCallable, ...], code: str | None, message: str
+) -> str:
     problem = parse_pyrefly_problem(code, message)
     if problem is None:
         return message
 
-    explanation = explain_problem(problem, collect_authored_callables(source))
+    explanation = explain_problem(problem, callables)
     return render_compact(explanation) if explanation is not None else message
 
 

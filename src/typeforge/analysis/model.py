@@ -5,6 +5,8 @@ from typing import Protocol
 
 from returns.result import Result
 
+from typeforge.compiler.pipeline import AuthoredCallable
+
 
 @dataclass(frozen=True, slots=True, order=True)
 class SourcePosition:
@@ -49,6 +51,7 @@ class VirtualDocument:
     authored_text: str
     generated_text: str
     mappings: tuple[SourceMapping, ...]
+    authored_callables: tuple[AuthoredCallable, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

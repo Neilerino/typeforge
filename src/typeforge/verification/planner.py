@@ -9,7 +9,7 @@ from typeforge.analysis.positions import source_position_from_utf8
 from typeforge.compiler.emission import emit_type_expression
 from typeforge.compiler.pipeline import (
     AdaptationError,
-    SemanticRelationshipAlias,
+    collect_semantic_relationship_aliases,
 )
 from typeforge.compiler.source import SourceModule
 from typeforge.compiler.stub_ir import StubTypeExpression
@@ -44,9 +44,12 @@ def plan_implementation_verification(
     path: Path,
     module: SourceModule,
     tree: ast.Module,
-    aliases: tuple[SemanticRelationshipAlias, ...],
 ) -> Result[VerificationPlan, AdaptationError]:
     del path
+    aliases = collect_semantic_relationship_aliases(module.aliases)
+    if isinstance(aliases, Failure):
+        return aliases
+
     nodes = _function_nodes(tree)
     never_functions = frozenset(
         function.name
@@ -66,7 +69,7 @@ def plan_implementation_verification(
             continue
 
         enclosing = _enclosing_type_parameters(module, function.qualified_name)
-        contract_result = build_return_contract(function, aliases, enclosing)
+        contract_result = build_return_contract(function, aliases.unwrap(), enclosing)
         if isinstance(contract_result, Failure):
             return contract_result
 

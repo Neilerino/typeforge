@@ -255,6 +255,10 @@ uv run typeforge show src/example.py
 
 Use the module path relative to `source-roots` when importing generated modules. If generated stubs are consumed directly by another checker, add `.typeforge/stubs` to that checker's import path.
 
+Overlay compilation uses the shared compiler's marker validation, including class
+fields and bases. Malformed expressions such as `value: Map[int]` or
+`class Payload(Each[int, str]): ...` fail compilation with an adaptation error.
+
 
 ## VS Code 
 

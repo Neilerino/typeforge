@@ -50,6 +50,7 @@ from typeforge.compiler.stub_ir._tree import (
     rewrite_type_children,
     substitute_type,
     walk_declaration,
+    walk_module,
     walk_type,
 )
 
@@ -101,5 +102,6 @@ __all__ = [
     "rewrite_type_children",
     "substitute_type",
     "walk_declaration",
+    "walk_module",
     "walk_type",
 ]

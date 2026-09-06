@@ -31,9 +31,9 @@ def source_root(typeforge: ArchModule) -> str:
 
 
 @pytest.fixture
-def architecture(typeforge: ArchModule) -> LayeredArchitecture:
+def architecture(typeforge: ArchModule, semantics: ArchModule) -> LayeredArchitecture:
     architecture = project_layers(typeforge.path.parent.as_posix())
-    for layer in typeforge.layers:
+    for layer in (*semantics.layers, typeforge):
         architecture.layer(layer.name).defined_by(layer.pattern)
 
     return architecture

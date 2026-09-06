@@ -265,3 +265,4 @@ class StubModule:
     declarations: tuple[Declaration, ...]
     imports: tuple[ModuleImport, ...] = ()
     origins: tuple[GeneratedElementOrigin[SourceSpan], ...] = ()
+    expressions: tuple[StubTypeExpression, ...] = ()

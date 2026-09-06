@@ -22,7 +22,7 @@ from typeforge.compiler.stub_ir import (
     ParameterKind,
     StubModule,
     TypeVariable,
-    walk_declaration,
+    walk_module,
 )
 
 
@@ -141,10 +141,6 @@ def test_failed_lowering_preserves_schema_origins_after_earlier_rewrites() -> No
     assert module.declarations is declarations
     assert module.origins is origins
     assert all(
-        any(
-            item.generated is element
-            for declaration in declarations
-            for element in walk_declaration(declaration)
-        )
+        any(item.generated is element for element in walk_module(module))
         for item in origins
     )

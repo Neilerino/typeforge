@@ -5,7 +5,7 @@ from functools import singledispatch
 
 from returns.result import safe
 
-from typeforge.compiler.adaptation._imports import annotation_contains_default_never
+from typeforge.compiler.adaptation._imports import annotation_imports
 from typeforge.compiler.adaptation._legacy_schema import resolve_schema_type
 from typeforge.compiler.adaptation._models import (
     AdaptationError,
@@ -44,6 +44,7 @@ from typeforge.compiler.source import (
     StarredTypeExpression,
     UnionTypeExpression,
     ValueMarker,
+    contains_marker,
     is_enriched,
     normalize_marker,
     schema_inner_expression,
@@ -73,11 +74,9 @@ from typeforge.compiler.stub_ir import (
     FunctionDeclaration,
     GeneratedElementOrigin,
     HomogeneousTuple,
-    ImportFrom,
     MapCase,
     MapType,
     MapValueType,
-    ModuleImport,
     NotPredicate,
     Parameter,
     ParameterKind,
@@ -93,10 +92,9 @@ from typeforge.compiler.stub_ir import (
     TypeVariable,
     UnionExpression,
     UnpackedType,
-    merge_imports,
     rewrite_type_children,
     substitute_type,
-    walk_declaration,
+    walk_module,
 )
 
 _ADAPTATION_ERRORS: tuple[type[AdaptationError | RecordMaterializationError], ...] = (
@@ -109,12 +107,11 @@ _ADAPTATION_ERRORS: tuple[type[AdaptationError | RecordMaterializationError], ..
 def adapt_source_module(
     module: SourceModule,
 ) -> StubModule:
-    imports: tuple[ModuleImport, ...] = ()
     origins: list[GeneratedElementOrigin[SourceSpan]] = []
     semantic_aliases = _collect_semantic_relationship_aliases(
         module.aliases, origins=origins
     )
-    semantic_alias_names = {alias.name for alias in semantic_aliases}
+    expressions: list[StubTypeExpression] = []
     declarations: list[tuple[int, Declaration]] = []
 
     def record_rewrite(
@@ -131,6 +128,7 @@ def adapt_source_module(
         if len(alias.qualified_name) != 1:
             continue
 
+        origin_count_before_alias = len(origins)
         lowered_alias = TypeAliasDeclaration(
             name=alias.name,
             value=_adapt_alias_fallback(
@@ -145,6 +143,9 @@ def adapt_source_module(
                 parameter.declaration for parameter in alias.type_parameters
             ),
         )
+        has_authored_transform = (
+            contains_marker(alias.value) or len(origins) > origin_count_before_alias
+        )
         generated_alias = replace(
             lowered_alias,
             value=expand_map_aliases(
@@ -152,10 +153,19 @@ def adapt_source_module(
             ),
         )
         declarations.append((alias.span.start.line, generated_alias))
-        if alias.name in semantic_alias_names and isinstance(
-            generated_alias.value, MapType
-        ):
+        if has_authored_transform:
             origins.append(GeneratedElementOrigin(alias.span, generated_alias))
+            relationship = next(
+                (
+                    item.relationship
+                    for item in semantic_aliases
+                    if item.name == alias.name
+                ),
+                None,
+            )
+            if relationship is not None:
+                expressions.append(relationship)
+                origins.append(GeneratedElementOrigin(alias.span, relationship))
 
     for source_class in module.classes:
         generated_class = expand_class_map_aliases(
@@ -175,54 +185,76 @@ def adapt_source_module(
                 source_class.methods, generated_class.methods, strict=True
             )
             if is_enriched(authored)
+            or (
+                isinstance(generated, FunctionDeclaration)
+                and isinstance(generated.return_type, MapType)
+            )
         )
 
+    class_method_spans = {
+        method.span
+        for source_class in module.classes
+        for method in source_class.methods
+    }
+    class_parameters = {
+        declaration.name: tuple(
+            parameter.name for parameter in declaration.type_parameters
+        )
+        for declaration in module.classes
+    }
     for function in module.functions:
-        if len(function.qualified_name) != 1:
+        if function.span in class_method_spans:
             continue
 
         generated_function = expand_function_map_aliases(
-            _adapt_function(function, origins=origins),
+            _adapt_function(
+                function,
+                class_parameters.get(function.qualified_name[0], ())
+                if len(function.qualified_name) == 2
+                else (),
+                origins=origins,
+            ),
             semantic_aliases,
             on_rewrite=record_rewrite,
         )
+        has_origin = is_enriched(function) or isinstance(
+            generated_function.return_type, MapType
+        )
+        if len(function.qualified_name) > 1 and not has_origin:
+            continue
+
         declarations.append(
             (
                 function.span.start.line,
                 generated_function,
             )
         )
-        if is_enriched(function):
+        if has_origin:
             origins.append(GeneratedElementOrigin(function.span, generated_function))
 
-    all_functions = (
-        *module.functions,
-        *(method for source_class in module.classes for method in source_class.methods),
-    )
-    if any(
-        function.returns is None
-        or any(parameter.annotation is None for parameter in function.parameters)
-        for function in all_functions
-    ):
-        imports = merge_imports((*imports, ImportFrom("typing", ("Any",))))
-
-    if any(
-        annotation_contains_default_never(function.returns)
-        or any(
-            annotation_contains_default_never(parameter.annotation)
-            for parameter in function.parameters
+    # Schema roots keep authored parameter names and their own boundary identity,
+    # even when semantic aliases reuse the same output node in other declarations.
+    for boundary in _schema_boundaries(module):
+        expression = replace(
+            expand_map_aliases(
+                _adapt_type_expression(boundary, "Schema", ()), semantic_aliases
+            )
         )
-        for function in module.functions
-    ):
-        imports = merge_imports((*imports, ImportFrom("typing", ("Never",))))
+        expressions.append(expression)
+        origins.append(GeneratedElementOrigin(boundary.span, expression))
 
     ordered = tuple(
         declaration for _, declaration in sorted(declarations, key=lambda item: item[0])
     )
+    adapted_module = StubModule(
+        module.path.stem,
+        ordered,
+        annotation_imports(module),
+        expressions=tuple(expressions),
+    )
     current: dict[int, int] = {}
-    for item in ordered:
-        for element in walk_declaration(item):
-            current.setdefault(id(element), len(current))
+    for element in walk_module(adapted_module):
+        current.setdefault(id(element), len(current))
 
     ordered_origins = tuple(
         sorted(
@@ -236,7 +268,7 @@ def adapt_source_module(
     )
     return materialize_records(
         module,
-        StubModule(module.path.stem, ordered, imports, ordered_origins),
+        replace(adapted_module, origins=ordered_origins),
     )
 
 
@@ -377,21 +409,6 @@ def _expand_map_aliases(
     return rewrite_type_children(
         expression,
         lambda child: expand_map_aliases(child, aliases, on_rewrite=on_rewrite),
-    )
-
-
-@safe(exceptions=(AdaptationError,))
-def adapt_alias(
-    alias: SourceTypeAlias,
-) -> TypeAliasDeclaration:
-    parameter_names = tuple(parameter.name for parameter in alias.type_parameters)
-    type_parameters = tuple(
-        parameter.declaration for parameter in alias.type_parameters
-    )
-    return TypeAliasDeclaration(
-        alias.name,
-        _adapt_alias_fallback(alias.name, alias.value, parameter_names),
-        type_parameters,
     )
 
 
@@ -550,15 +567,6 @@ def _adapt_function(
         is_async=function.is_async,
         decorators=function.decorators,
     )
-
-
-@safe(exceptions=(AdaptationError,))
-def adapt_type_expression(
-    declaration: str,
-    expression: SourceTypeExpression,
-    type_parameters: tuple[str, ...],
-) -> StubTypeExpression:
-    return _adapt_type_expression(expression, declaration, type_parameters)
 
 
 @singledispatch
@@ -863,3 +871,70 @@ def _adapt_type_expressions(
 
 def adapt_parameter_kind(kind: SourceParameterKind) -> ParameterKind:
     return ParameterKind(kind.value)
+
+
+def _schema_boundaries(module: SourceModule) -> tuple[SchemaTypeExpression, ...]:
+    alias_spans = {alias.span for alias in module.aliases}
+    expressions = (
+        *(
+            annotation
+            for function in module.functions
+            for annotation in (
+                *(parameter.annotation for parameter in function.parameters),
+                function.returns,
+            )
+            if annotation is not None
+        ),
+        *(
+            field.annotation
+            for declaration in module.typed_dicts
+            for field in declaration.fields
+        ),
+        *(base for declaration in module.classes for base in declaration.bases),
+        *(
+            field.annotation
+            for declaration in module.classes
+            for field in declaration.fields
+        ),
+        *(
+            annotation
+            for declaration in module.classes
+            for method in declaration.methods
+            for annotation in (
+                *(parameter.annotation for parameter in method.parameters),
+                method.returns,
+            )
+            if annotation is not None
+        ),
+    )
+    boundaries: dict[SourceSpan, SchemaTypeExpression] = {}
+    for expression in expressions:
+        for boundary in _outer_schema_boundaries(expression):
+            if boundary.span in alias_spans:
+                continue
+
+            boundaries[boundary.span] = boundary
+
+    return tuple(boundaries.values())
+
+
+def _outer_schema_boundaries(
+    expression: SourceTypeExpression,
+) -> tuple[SchemaTypeExpression, ...]:
+    if isinstance(expression, SchemaTypeExpression):
+        return (expression,)
+
+    if isinstance(expression, AppliedTypeExpression):
+        children = (expression.constructor, *expression.arguments)
+    elif isinstance(expression, UnionTypeExpression):
+        children = expression.members
+    elif isinstance(expression, StarredTypeExpression):
+        children = (expression.item,)
+    elif isinstance(expression, MarkerTypeExpression):
+        children = expression.arguments
+    else:
+        children = ()
+
+    return tuple(
+        boundary for child in children for boundary in _outer_schema_boundaries(child)
+    )

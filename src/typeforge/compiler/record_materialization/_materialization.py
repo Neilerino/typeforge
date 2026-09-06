@@ -5,7 +5,6 @@ from typing import assert_never
 
 from returns.result import Failure, safe
 
-from typeforge.compiler.emission import emit_stub_module
 from typeforge.compiler.record_materialization._models import (
     DerivedRecord,
     RecordMaterialization,
@@ -82,10 +81,19 @@ def materialize_record_transforms(
         for function in module.functions
         if len(function.qualified_name) == 1
     }
+    scoped_spans = {
+        function.span
+        for function in module.functions
+        if len(function.qualified_name) > 1
+    }
+    scoped_functions = {
+        id(origin.generated) for origin in stub.origins if origin.origin in scoped_spans
+    }
     stub_functions = {
         declaration.name: declaration
         for declaration in stub.declarations
         if isinstance(declaration, FunctionDeclaration)
+        and id(declaration) not in scoped_functions
     }
     for name, source_function in source_functions.items():
         if name not in stub_functions or source_function.returns is None:
@@ -248,15 +256,6 @@ def _static_type_expression(value: StaticType) -> StubTypeExpression:
             return TypeName(name or "object")
         case _ as unreachable:
             assert_never(unreachable)
-
-
-def render_typed_dict(shape: RecordShape[StaticType]) -> str:
-    """Render one TypedDict declaration for overlay consumers."""
-    rendered = emit_stub_module(StubModule("", (typed_dict_declaration(shape),)))
-    if isinstance(rendered, Failure):
-        raise ValueError(rendered.failure().message)
-
-    return rendered.unwrap().rstrip()
 
 
 def replace_record_aliases_in_function(

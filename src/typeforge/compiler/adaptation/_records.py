@@ -4,6 +4,7 @@ from dataclasses import replace
 
 from typeforge.compiler.record_materialization import (
     materialize_record_transforms,
+    replace_record_aliases,
     replace_record_aliases_in_declaration,
 )
 from typeforge.compiler.source import SourceModule, SourceSpan
@@ -15,7 +16,7 @@ from typeforge.compiler.stub_ir import (
     StubModule,
     StubTypeExpression,
     merge_imports,
-    walk_declaration,
+    walk_module,
 )
 from typeforge.utils.error_handling import ok
 
@@ -45,10 +46,21 @@ def materialize_records(source: SourceModule, module: StubModule) -> StubModule:
     functions = {
         item.name: item for item in source.functions if len(item.qualified_name) == 1
     }
+    scoped_spans = {
+        function.span
+        for function in source.functions
+        if len(function.qualified_name) > 1
+    }
+    scoped_functions = {
+        id(origin.generated)
+        for origin in module.origins
+        if origin.origin in scoped_spans
+    }
     for declaration in module.declarations:
         replacement = replace_record_aliases_in_declaration(
             replacements.get(declaration.name, declaration)
             if isinstance(declaration, FunctionDeclaration)
+            and id(declaration) not in scoped_functions
             else declaration,
             records.derived,
             on_rewrite=record_rewrite,
@@ -102,15 +114,32 @@ def materialize_records(source: SourceModule, module: StubModule) -> StubModule:
         )
         for authored in (aliases[derived.alias], source_records[derived.input_name])
     )
-    declaration_order: dict[int, int] = {}
-    for declaration in declarations:
-        for element in walk_declaration(declaration):
-            declaration_order.setdefault(id(element), len(declaration_order))
-
-    return replace(
+    alias_spans = {alias.span for alias in source.aliases}
+    alias_roots = {
+        id(origin.generated)
+        for origin in module.origins
+        if origin.origin in alias_spans
+    }
+    expressions = tuple(
+        expression
+        if id(expression) in alias_roots
+        else replace_record_aliases(
+            expression, records.derived, on_rewrite=record_rewrite
+        )
+        for expression in module.expressions
+    )
+    materialized = replace(
         module,
         declarations=tuple(declarations),
+        expressions=expressions,
         imports=merge_imports((*module.imports, *records.imports)),
+    )
+    declaration_order: dict[int, int] = {}
+    for element in walk_module(materialized):
+        declaration_order.setdefault(id(element), len(declaration_order))
+
+    return replace(
+        materialized,
         origins=tuple(
             sorted(
                 {

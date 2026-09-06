@@ -177,7 +177,7 @@ def normalize_diagnostic(
         render_return_check(provenance, diagnostic.message)
         if provenance is not None
         else present_pyrefly_message(
-            document.authored_text,
+            document.authored_callables,
             str(diagnostic.code) if diagnostic.code is not None else None,
             diagnostic.message,
         )

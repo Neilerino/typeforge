@@ -12,11 +12,39 @@ from typeforge.compiler.source import (
     RawTypeExpression,
     RuntimeInputTypeExpression,
     SchemaTypeExpression,
+    SourceModule,
     SourceTypeExpression,
     StarredTypeExpression,
     UnionTypeExpression,
     normalize_marker,
 )
+from typeforge.compiler.stub_ir import ImportFrom
+
+
+def annotation_imports(module: SourceModule) -> tuple[ImportFrom, ...]:
+    names: list[str] = []
+    all_functions = (
+        *module.functions,
+        *(method for source_class in module.classes for method in source_class.methods),
+    )
+    if any(
+        function.returns is None
+        or any(parameter.annotation is None for parameter in function.parameters)
+        for function in all_functions
+    ):
+        names.append("Any")
+
+    if any(
+        annotation_contains_default_never(function.returns)
+        or any(
+            annotation_contains_default_never(parameter.annotation)
+            for parameter in function.parameters
+        )
+        for function in module.functions
+    ):
+        names.append("Never")
+
+    return (ImportFrom("typing", tuple(names)),) if names else ()
 
 
 def annotation_contains_default_never(

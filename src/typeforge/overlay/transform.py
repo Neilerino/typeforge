@@ -1,6 +1,6 @@
 import ast
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 
@@ -21,41 +21,18 @@ from typeforge.compiler.emission import (
 )
 from typeforge.compiler.pipeline import (
     AdaptationError,
-    DerivedRecord,
-    RecordMaterializationError,
-    SemanticRelationshipAlias,
-    adapt_alias,
-    adapt_function,
-    adapt_type_expression,
-    build_record_shapes,
-    collect_semantic_relationship_aliases,
-    derive_record_shapes,
-    expand_function_map_aliases,
-    expand_map_aliases,
-    render_typed_dict,
-    replace_record_aliases,
-)
-from typeforge.compiler.source import (
-    AppliedTypeExpression,
-    MarkerTypeExpression,
-    SchemaTypeExpression,
-    SourceModule,
-    SourceSyntaxError,
-    SourceTypeExpression,
-    StarredTypeExpression,
-    UnionTypeExpression,
-    contains_marker,
-    parse_source,
-)
-from typeforge.compiler.source import (
-    FunctionDeclaration as SourceFunction,
-)
-from typeforge.compiler.specialization import (
-    ArityFrontier,
+    AuthoredCallable,
+    CompilationError,
+    CompilationPlan,
     LoweringError,
-    lower_variadic_module,
+    RecordMaterializationError,
+    SourceSyntaxError,
+    compile_source,
+    describe_authored_callables,
 )
+from typeforge.compiler.pipeline import SourceSpan as AuthoredSourceSpan
 from typeforge.compiler.stub_ir import (
+    ClassDeclaration,
     EachType,
     FixedTuple,
     FunctionDeclaration,
@@ -138,24 +115,13 @@ def transform_source(
     if _START_MARKER in source:
         return Success(_identity_document(source, path, version))
 
-    parsed = parse_source(source, path)
-    if isinstance(parsed, Failure):
-        return Failure(_frontend_error(parsed.failure()))
+    compiled = compile_source(source, path, maximum_arity=maximum_arity)
+    if isinstance(compiled, Failure):
+        return Failure(_compilation_error(path, compiled.failure()))
 
-    module = parsed.unwrap()
-    aliases = collect_semantic_relationship_aliases(module.aliases)
-    if isinstance(aliases, Failure):
-        return Failure(_adaptation_error(module.path, aliases.failure()))
-
-    relationships = aliases.unwrap()
-    derived_result = derive_record_shapes(
-        module.aliases, build_record_shapes(module.typed_dicts)
-    )
-    if isinstance(derived_result, Failure):
-        return Failure(_adaptation_error(module.path, derived_result.failure()))
-
-    derived = derived_result.unwrap()
-    generated = _generate_overloads(source, module, maximum_arity, relationships)
+    plan = compiled.unwrap()
+    module = plan.source
+    generated = _generate_overloads(source, plan)
     if isinstance(generated, Failure):
         return generated
 
@@ -174,11 +140,11 @@ def transform_source(
         for item in generated.unwrap()
         if (item.qualified_name, item.source_span.start.line + 1) in nodes
     )
-    alias_edits = _alias_edits(source, module, relationships, derived)
+    alias_edits = _alias_edits(source, plan)
     if isinstance(alias_edits, Failure):
         return alias_edits
 
-    schema_edits = _schema_edits(source, module, relationships, derived)
+    schema_edits = _schema_edits(source, plan)
     if isinstance(schema_edits, Failure):
         return schema_edits
 
@@ -187,7 +153,6 @@ def transform_source(
         path,
         module,
         tree,
-        relationships,
     )
     if isinstance(verification, Failure):
         return Failure(_adaptation_error(module.path, verification.failure()))
@@ -202,11 +167,11 @@ def transform_source(
             )
         )
 
-    record_declarations = (
-        tuple(render_typed_dict(item.shape) for item in derived)
-        if schema_edits.unwrap()
-        else ()
-    )
+    records = _render_derived_records(plan) if schema_edits.unwrap() else Success(())
+    if isinstance(records, Failure):
+        return records
+
+    record_declarations = records.unwrap()
     content = (
         tuple(item.text for item in generated.unwrap())
         + tuple(
@@ -248,7 +213,14 @@ def transform_source(
         *verification_edits.unwrap(),
     )
     if not edits:
-        return Success(_identity_document(source, path, version))
+        return Success(
+            _identity_document(
+                source,
+                path,
+                version,
+                authored_callables=describe_authored_callables(plan),
+            )
+        )
 
     generated_text, mappings = _apply_edits(source, path, edits)
     return Success(
@@ -259,23 +231,18 @@ def transform_source(
             authored_text=source,
             generated_text=generated_text,
             mappings=mappings,
+            authored_callables=describe_authored_callables(plan),
         )
     )
 
 
 def _generate_overloads(
     source: str,
-    module: SourceModule,
-    maximum_arity: int,
-    aliases: tuple[SemanticRelationshipAlias, ...],
+    plan: CompilationPlan,
 ) -> Result[tuple[_GeneratedOverloads, ...], OverlayError]:
     generated: list[_GeneratedOverloads] = []
-    class_parameters = {
-        declaration.name: tuple(
-            parameter.name for parameter in declaration.type_parameters
-        )
-        for declaration in module.classes
-    }
+    module = plan.source
+    functions = {function.span: function for function in module.functions}
     generic_classes = tuple(
         _GenericClass(
             declaration.name,
@@ -287,33 +254,21 @@ def _generate_overloads(
         for declaration in module.classes
         if declaration.type_parameters
     )
-    for function in module.functions:
-        enclosing = (
-            class_parameters.get(function.qualified_name[0], ())
-            if len(function.qualified_name) == 2
-            else ()
-        )
-        adapted = adapt_function(function, enclosing)
-        if isinstance(adapted, Failure):
-            return Failure(_adaptation_error(module.path, adapted.failure()))
+    for origin in plan.module.origins:
+        declaration = origin.generated
+        if not isinstance(declaration, OverloadDeclaration) or (
+            declaration.decorator != "overload"
+        ):
+            # Record materialization's tf_typing.overload declarations belong to
+            # published interfaces; overlays retain their authored implementations.
+            continue
 
-        expanded = expand_function_map_aliases(adapted.unwrap(), aliases)
-        lowered = lower_variadic_module(
-            StubModule(module.path.stem, (expanded,)),
-            ArityFrontier(0, maximum_arity),
-        )
-        if isinstance(lowered, Failure):
-            return Failure(_lowering_error(module.path, lowered.failure()))
-
-        declaration = lowered.unwrap().declarations[0]
-        if not isinstance(declaration, OverloadDeclaration):
+        function = functions.get(origin.origin)
+        if function is None:
             continue
 
         declaration = _bound_structural_type_parameters(declaration, generic_classes)
-        if any(
-            isinstance(parameter.annotation, EachType)
-            for parameter in expanded.parameters
-        ):
+        if _has_variadic_specializations(declaration):
             declaration = _positional_variadic_overloads(declaration)
 
         if _declaration_contains_map_value(declaration):
@@ -326,12 +281,31 @@ def _generate_overloads(
         generated.append(
             _GeneratedOverloads(
                 function.qualified_name,
-                _source_span(source, function),
+                _source_span(source, function.span),
                 emitted.unwrap().rstrip(),
             )
         )
 
     return Success(tuple(generated))
+
+
+def _has_variadic_specializations(declaration: OverloadDeclaration) -> bool:
+    if any(
+        isinstance(parameter.annotation, EachType)
+        for parameter in declaration.fallback.parameters
+    ):
+        return True
+
+    return any(
+        parameter.kind is ParameterKind.VAR_POSITIONAL
+        for parameter in declaration.fallback.parameters
+    ) and any(
+        all(
+            parameter.kind is not ParameterKind.VAR_POSITIONAL
+            for parameter in signature.parameters
+        )
+        for signature in declaration.signatures
+    )
 
 
 def _declaration_contains_map_value(declaration: OverloadDeclaration) -> bool:
@@ -478,23 +452,19 @@ def _positional_variadic_overloads(
     )
 
 
-def _source_span(source: str, function: SourceFunction) -> SourceSpan:
-    start_offset = _line_offset(source, function.span.start.line - 1) + (
-        function.span.start.column
-    )
-    end_offset = _line_offset(source, function.span.end.line - 1) + (
-        function.span.end.column
-    )
+def _source_span(source: str, span: AuthoredSourceSpan) -> SourceSpan:
+    start_offset = _line_offset(source, span.start.line - 1) + (span.start.column)
+    end_offset = _line_offset(source, span.end.line - 1) + (span.end.column)
     return SourceSpan(
         start=SourcePosition(
             offset=start_offset,
-            line=function.span.start.line - 1,
-            column=function.span.start.column,
+            line=span.start.line - 1,
+            column=span.start.column,
         ),
         end=SourcePosition(
             offset=end_offset,
-            line=function.span.end.line - 1,
-            column=function.span.end.column,
+            line=span.end.line - 1,
+            column=span.end.column,
         ),
     )
 
@@ -533,48 +503,32 @@ def _function_nodes(
 
 
 def _alias_edits(
-    source: str,
-    module: SourceModule,
-    semantic_aliases: tuple[SemanticRelationshipAlias, ...],
-    derived: tuple[DerivedRecord, ...],
+    source: str, plan: CompilationPlan
 ) -> Result[tuple[_Edit, ...], OverlayError]:
+    module = plan.source
+    aliases = {alias.span: alias for alias in module.aliases}
+    relationships = {
+        origin.origin: origin.generated
+        for origin in plan.module.origins
+        if isinstance(origin.generated, MapType)
+        and any(
+            origin.generated is expression for expression in plan.module.expressions
+        )
+    }
     edits: list[_Edit] = []
-    for alias in module.aliases:
-        if len(alias.qualified_name) != 1 or not (
-            contains_marker(alias.value) or _contains_schema(alias.value)
-        ):
+    for origin in plan.module.origins:
+        declaration = origin.generated
+        if not isinstance(declaration, TypeAliasDeclaration):
             continue
 
-        relationship = next(
-            (item for item in semantic_aliases if item.name == alias.name),
-            None,
-        )
-        adapted = (
-            Success(
-                TypeAliasDeclaration(
-                    name=alias.name,
-                    value=_relationship_fallback(relationship.relationship),
-                    type_parameters=tuple(
-                        parameter.declaration for parameter in alias.type_parameters
-                    ),
-                )
-            )
+        alias = aliases[origin.origin]
+        relationship = relationships.get(origin.origin)
+        projected = (
+            replace(declaration, value=_relationship_fallback(relationship))
             if relationship is not None
-            else adapt_alias(alias).map(
-                lambda declaration: TypeAliasDeclaration(
-                    declaration.name,
-                    replace_record_aliases(
-                        expand_map_aliases(declaration.value, semantic_aliases),
-                        derived,
-                    ),
-                    declaration.type_parameters,
-                )
-            )
+            else declaration
         )
-        if isinstance(adapted, Failure):
-            return Failure(_adaptation_error(module.path, adapted.failure()))
-
-        emitted = emit_stub_module(StubModule(module.path.stem, (adapted.unwrap(),)))
+        emitted = emit_stub_module(StubModule(module.path.stem, (projected,)))
         if isinstance(emitted, Failure):
             return Failure(_emission_error(module.path, emitted.failure()))
 
@@ -595,79 +549,27 @@ def _alias_edits(
 
 
 def _schema_edits(
-    source: str,
-    module: SourceModule,
-    semantic_aliases: tuple[SemanticRelationshipAlias, ...],
-    derived: tuple[DerivedRecord, ...],
+    source: str, plan: CompilationPlan
 ) -> Result[tuple[_Edit, ...], OverlayError]:
-    alias_spans = {alias.span for alias in module.aliases}
-    expressions = (
-        *(
-            annotation
-            for function in module.functions
-            for annotation in (
-                *(parameter.annotation for parameter in function.parameters),
-                function.returns,
-            )
-            if annotation is not None
-        ),
-        *(
-            field.annotation
-            for declaration in module.typed_dicts
-            for field in declaration.fields
-        ),
-        *(base for declaration in module.classes for base in declaration.bases),
-        *(
-            field.annotation
-            for declaration in module.classes
-            for field in declaration.fields
-        ),
-        *(
-            annotation
-            for declaration in module.classes
-            for method in declaration.methods
-            for annotation in (
-                *(parameter.annotation for parameter in method.parameters),
-                method.returns,
-            )
-            if annotation is not None
-        ),
-    )
-    boundaries: dict[tuple[int, int, int, int], SchemaTypeExpression] = {}
-    for expression in expressions:
-        for boundary in _outer_schema_boundaries(expression):
-            if boundary.span in alias_spans:
-                continue
-
-            key = (
-                boundary.span.start.line,
-                boundary.span.start.column,
-                boundary.span.end.line,
-                boundary.span.end.column,
-            )
-            boundaries[key] = boundary
-
+    module = plan.source
+    roots = {id(expression): expression for expression in plan.module.expressions}
     edits: list[_Edit] = []
-    for boundary in boundaries.values():
-        adapted = adapt_type_expression("Schema", boundary, ())
-        if isinstance(adapted, Failure):
-            return Failure(_adaptation_error(module.path, adapted.failure()))
+    for origin in plan.module.origins:
+        expression = roots.get(id(origin.generated))
+        if expression is None or any(
+            alias.span.start <= origin.origin.start
+            and origin.origin.end <= alias.span.end
+            for alias in module.aliases
+        ):
+            continue
 
-        resolved = replace_record_aliases(
-            expand_map_aliases(adapted.unwrap(), semantic_aliases),
-            derived,
-        )
-        emitted = emit_type_expression(resolved)
+        emitted = emit_type_expression(expression)
         if isinstance(emitted, Failure):
             return Failure(_emission_error(module.path, emitted.failure()))
 
-        start = (
-            _line_offset(source, boundary.span.start.line - 1)
-            + boundary.span.start.column
-        )
-        end = (
-            _line_offset(source, boundary.span.end.line - 1) + boundary.span.end.column
-        )
+        span = origin.origin
+        start = _line_offset(source, span.start.line - 1) + span.start.column
+        end = _line_offset(source, span.end.line - 1) + span.end.column
         edits.append(
             _Edit(
                 start,
@@ -680,30 +582,38 @@ def _schema_edits(
     return Success(tuple(edits))
 
 
-def _contains_schema(expression: SourceTypeExpression) -> bool:
-    return bool(_outer_schema_boundaries(expression))
+def _render_derived_records(
+    plan: CompilationPlan,
+) -> Result[tuple[str, ...], OverlayError]:
+    alias_spans = {alias.span for alias in plan.source.aliases}
+    input_spans = {record.span for record in plan.source.typed_dicts}
+    alias_records = {
+        id(origin.generated)
+        for origin in plan.module.origins
+        if origin.origin in alias_spans
+    }
+    input_records = {
+        id(origin.generated)
+        for origin in plan.module.origins
+        if origin.origin in input_spans
+    }
+    remaining_records = alias_records & input_records
+    rendered: list[str] = []
+    for declaration in plan.module.declarations:
+        if (
+            not isinstance(declaration, ClassDeclaration)
+            or id(declaration) not in remaining_records
+        ):
+            continue
 
+        remaining_records.remove(id(declaration))
+        emitted = emit_stub_module(StubModule(plan.module.name, (declaration,)))
+        if isinstance(emitted, Failure):
+            return Failure(_emission_error(plan.source.path, emitted.failure()))
 
-def _outer_schema_boundaries(
-    expression: SourceTypeExpression,
-) -> tuple[SchemaTypeExpression, ...]:
-    if isinstance(expression, SchemaTypeExpression):
-        return (expression,)
+        rendered.append(emitted.unwrap().rstrip())
 
-    if isinstance(expression, AppliedTypeExpression):
-        children = (expression.constructor, *expression.arguments)
-    elif isinstance(expression, UnionTypeExpression):
-        children = expression.members
-    elif isinstance(expression, StarredTypeExpression):
-        children = (expression.item,)
-    elif isinstance(expression, MarkerTypeExpression):
-        children = expression.arguments
-    else:
-        children = ()
-
-    return tuple(
-        boundary for child in children for boundary in _outer_schema_boundaries(child)
-    )
+    return Success(tuple(rendered))
 
 
 def _relationship_fallback(expression: MapType) -> StubTypeExpression:
@@ -928,7 +838,12 @@ def _apply_edits(
     return generated_text, tuple(mappings)
 
 
-def _identity_document(source: str, path: Path, version: int) -> VirtualDocument:
+def _identity_document(
+    source: str,
+    path: Path,
+    version: int,
+    authored_callables: tuple[AuthoredCallable, ...] = (),
+) -> VirtualDocument:
     span = _offset_span(path, source, 0, len(source))
     return VirtualDocument(
         uri=path.resolve().as_uri() if path != Path("<memory>") else str(path),
@@ -937,6 +852,7 @@ def _identity_document(source: str, path: Path, version: int) -> VirtualDocument
         authored_text=source,
         generated_text=source,
         mappings=(_mapping(MappingKind.AUTHORED, span, span),),
+        authored_callables=authored_callables,
     )
 
 
@@ -985,8 +901,14 @@ def _line_offset(source: str, zero_based_line: int) -> int:
     return offset
 
 
-def _frontend_error(error: SourceSyntaxError) -> OverlayError:
-    return OverlayError(OverlayErrorCode.SYNTAX, error.path, error.message)
+def _compilation_error(path: Path, error: CompilationError) -> OverlayError:
+    match error:
+        case SourceSyntaxError():
+            return OverlayError(OverlayErrorCode.SYNTAX, error.path, error.message)
+        case AdaptationError() | RecordMaterializationError():
+            return _adaptation_error(path, error)
+        case LoweringError():
+            return OverlayError(OverlayErrorCode.LOWERING, path, error.message)
 
 
 def _adaptation_error(
@@ -994,10 +916,6 @@ def _adaptation_error(
     error: AdaptationError | RecordMaterializationError,
 ) -> OverlayError:
     return OverlayError(OverlayErrorCode.ADAPTATION, path, error.message)
-
-
-def _lowering_error(path: Path, error: LoweringError) -> OverlayError:
-    return OverlayError(OverlayErrorCode.LOWERING, path, error.message)
 
 
 def _emission_error(path: Path, error: EmissionError) -> OverlayError:

@@ -48,7 +48,7 @@ from typeforge.compiler.stub_ir import (
     is_predicate,
     merge_imports,
     rewrite_type_children,
-    walk_declaration,
+    walk_module,
     walk_type,
 )
 
@@ -121,10 +121,10 @@ def lower_variadic_module(
     if has_overloads:
         imports = _add_import(imports, ImportFrom("typing", ("overload",)))
 
+    lowered_module = replace(module, declarations=tuple(lowered), imports=imports)
     order: dict[int, int] = {}
-    for declaration in lowered:
-        for element in walk_declaration(declaration):
-            order.setdefault(id(element), len(order))
+    for element in walk_module(lowered_module):
+        order.setdefault(id(element), len(order))
 
     current_origins = {
         (item.origin, id(item.generated)): item
@@ -137,7 +137,7 @@ def lower_variadic_module(
             key=lambda item: (item.origin.start, order[id(item.generated)]),
         )
     )
-    lowered_module = StubModule(module.name, tuple(lowered), imports, origins)
+    lowered_module = replace(lowered_module, origins=origins)
     if _module_contains_literal(lowered_module):
         lowered_module = replace(
             lowered_module,

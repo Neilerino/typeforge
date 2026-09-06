@@ -28,6 +28,7 @@ from typeforge.compiler.stub_ir import (
     TypeAliasDeclaration,
     TypeName,
     TypeVariable,
+    walk_module,
 )
 
 
@@ -105,6 +106,7 @@ def test_adapt_source_module_retains_target_neutral_alias_with_origin() -> None:
     assert adapted.declarations == (generated_alias,)
     assert adapted.origins == (
         GeneratedElementOrigin(source_alias.span, generated_alias),
+        GeneratedElementOrigin(source_alias.span, adapted.expressions[0]),
     )
     assert adapted.origins[0].generated is adapted.declarations[0]
 
@@ -154,7 +156,7 @@ def test_record_replacements_retain_current_authored_origins() -> None:
 
     adapted = adapt_source_module(source).unwrap()
 
-    payload, copied, _, encoded, copy, collect = adapted.declarations
+    payload, copied, copy_alias, encoded, copy, collect = adapted.declarations
     assert isinstance(copied, ClassDeclaration)
     assert copied.name == "Copy_Payload"
     assert isinstance(encoded, TypeAliasDeclaration)
@@ -167,12 +169,14 @@ def test_record_replacements_retain_current_authored_origins() -> None:
         GeneratedElementOrigin(source.typed_dicts[0].span, payload),
         GeneratedElementOrigin(source.typed_dicts[0].span, copied),
         GeneratedElementOrigin(source.aliases[0].span, copied),
+        GeneratedElementOrigin(source.aliases[0].span, copy_alias),
         GeneratedElementOrigin(source.aliases[1].span, encoded),
+        GeneratedElementOrigin(source.aliases[1].span, adapted.expressions[0]),
         GeneratedElementOrigin(source.functions[0].span, copy),
         GeneratedElementOrigin(source.functions[1].span, collect),
     )
     assert all(
-        any(item.generated is declaration for declaration in adapted.declarations)
+        any(item.generated is element for element in walk_module(adapted))
         for item in adapted.origins
     )
     assert adapt_source_module(source).unwrap() == adapted

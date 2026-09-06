@@ -5,6 +5,7 @@ from pathlib import Path
 
 from returns.result import Result
 
+from typeforge.compiler.adaptation._imports import annotation_imports
 from typeforge.compiler.emission import EmissionError, emit_stub_module
 from typeforge.compiler.module_surface import ModuleSurface, inspect_module_surface
 from typeforge.compiler.pipeline._compilation import compile_module
@@ -13,7 +14,7 @@ from typeforge.compiler.pipeline._models import (
     GeneratedModule,
     GenerationError,
 )
-from typeforge.compiler.source import parse_module
+from typeforge.compiler.source import RawTypeExpression, SourceModule, parse_module
 from typeforge.compiler.stub_ir import (
     ClassDeclaration,
     Declaration,
@@ -33,8 +34,51 @@ def generate_module(
         generated
         for parsed in parse_module(path)
         for surface in inspect_module_surface(parsed)
-        for plan in compile_module(parsed, maximum_arity=maximum_arity)
-        for generated in _emit_generated_module(plan, surface)
+        for plan in compile_module(
+            _published_source_scope(parsed), maximum_arity=maximum_arity
+        )
+        for generated in _emit_generated_module(
+            plan,
+            replace(
+                surface,
+                imports=merge_imports((*surface.imports, *annotation_imports(parsed))),
+            ),
+        )
+    )
+
+
+def _published_source_scope(source: SourceModule) -> SourceModule:
+    # Private nested classes and main guards have historically been accepted but
+    # omitted from published interfaces, including their callable failures.
+    class_method_spans = {
+        method.span
+        for source_class in source.classes
+        for method in source_class.methods
+    }
+    return replace(
+        source,
+        functions=tuple(
+            function
+            for function in source.functions
+            if len(function.qualified_name) == 1 or function.span in class_method_spans
+        ),
+        # Published record fields retain authored annotations; schema replacements
+        # belong to overlays and must not introduce additional publication failures.
+        typed_dicts=tuple(
+            replace(
+                record,
+                fields=tuple(
+                    replace(
+                        field,
+                        annotation=RawTypeExpression(
+                            field.annotation.source, field.annotation.span
+                        ),
+                    )
+                    for field in record.fields
+                ),
+            )
+            for record in source.typed_dicts
+        ),
     )
 
 

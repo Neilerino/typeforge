@@ -28,6 +28,7 @@ from typeforge.compiler.stub_ir import (
     UnionExpression,
     UnpackedType,
     walk_declaration,
+    walk_module,
 )
 
 SCHEMA_PATH = Path("schemas.py")
@@ -128,17 +129,15 @@ def test_shared_derived_records_keep_only_their_alias_and_input_origins() -> Non
             (authored_message.span, stringified_message),
             (authored_copy.span, copied_payload),
             (authored_copy.span, copied_message),
+            (authored_copy.span, copy_alias),
             (authored_stringify.span, stringified_payload),
             (authored_stringify.span, stringified_message),
+            (authored_stringify.span, stringify_alias),
             (first_consumer.span, copy),
             (second_consumer.span, copy_again),
         ),
     )
-    assert all(
-        origin.generated is not declaration
-        for origin in plan.module.origins
-        for declaration in (copy_alias, stringify_alias, ordinary)
-    )
+    assert all(origin.generated is not ordinary for origin in plan.module.origins)
     _assert_origins_are_current(plan.module)
     assert compile_source(source, Path("records.py"), maximum_arity=1).unwrap() == plan
 
@@ -154,13 +153,14 @@ def test_derived_record_origins_follow_source_order_when_alias_precedes_input() 
 
     plan = compile_source(source, Path("records.py"), maximum_arity=1).unwrap()
 
-    payload, copied_payload, _ = plan.module.declarations
+    payload, copied_payload, copy_alias = plan.module.declarations
     authored_copy = plan.source.aliases[0]
     authored_payload = plan.source.typed_dicts[0]
     _assert_origins(
         plan.module.origins,
         (
             (authored_copy.span, copied_payload),
+            (authored_copy.span, copy_alias),
             (authored_payload.span, payload),
             (authored_payload.span, copied_payload),
         ),
@@ -319,7 +319,10 @@ def test_nested_schema_origin_tracks_the_inner_type_and_its_span() -> None:
     assert generated_integer == TypeName("int")
     _assert_origins(
         plan.module.origins,
-        ((_span_of(source, "Schema[int]"), generated_integer),),
+        (
+            (_span_of(source, "Schema[int]"), generated_integer),
+            (_span_of(source, "Schema[int]"), plan.module.expressions[0]),
+        ),
     )
 
 
@@ -333,6 +336,7 @@ def test_repeated_schemas_keep_distinct_origins_and_plain_types_get_none() -> No
 
     plan = compile_source(source, SCHEMA_PATH, maximum_arity=1).unwrap()
 
+    first_replacement, second_replacement, return_replacement = plan.module.expressions
     function = plan.module.declarations[0]
     assert isinstance(function, FunctionDeclaration)
     parameter_tuple = function.parameters[0].annotation
@@ -347,8 +351,11 @@ def test_repeated_schemas_keep_distinct_origins_and_plain_types_get_none() -> No
         plan.module.origins,
         (
             (_span_of(source, "Schema[int]", occurrence=1), first_integer),
+            (_span_of(source, "Schema[int]", occurrence=1), first_replacement),
             (_span_of(source, "Schema[int]", occurrence=2), second_integer),
+            (_span_of(source, "Schema[int]", occurrence=2), second_replacement),
             (_span_of(source, "Schema[list[Schema[int]]]"), returned_list),
+            (_span_of(source, "Schema[list[Schema[int]]]"), return_replacement),
             (_span_of(source, "Schema[int]", occurrence=3), returned_list.arguments[0]),
         ),
     )
@@ -368,6 +375,7 @@ def test_collapsing_equal_schema_results_retains_all_three_authored_causes() -> 
     _assert_origins(
         plan.module.origins,
         (
+            (plan.source.aliases[0].span, alias),
             (_span_of(source, "Schema[Schema[int] | Schema[int]]"), alias.value),
             (_span_of(source, "Schema[int]", occurrence=1), alias.value),
             (_span_of(source, "Schema[int]", occurrence=2), alias.value),
@@ -415,6 +423,9 @@ def test_class_rewrites_preserve_field_parameter_and_return_schema_origins(
 ) -> None:
     plan = compile_source(source, SCHEMA_PATH, maximum_arity=1).unwrap()
 
+    parameter_replacement, return_replacement, field_replacement = (
+        plan.module.expressions
+    )
     consumer = next(
         declaration
         for declaration in plan.module.declarations
@@ -441,8 +452,11 @@ def test_class_rewrites_preserve_field_parameter_and_return_schema_origins(
         class_origins,
         (
             (authored_field_schema.span, field_annotation),
+            (authored_field_schema.span, field_replacement),
             (authored_parameter_schema.span, method.parameters[1].annotation),
+            (authored_parameter_schema.span, parameter_replacement),
             (authored_return_schema.span, method.return_type),
+            (authored_return_schema.span, return_replacement),
         ),
     )
 
@@ -464,6 +478,7 @@ def test_flattening_an_inner_schema_union_attaches_its_origin_to_each_member() -
     _assert_origins(
         plan.module.origins,
         (
+            (plan.source.aliases[0].span, alias),
             (_span_of(source, "Schema[Schema[int | str] | bytes]"), flattened_union),
             (inner_schema, integer),
             (inner_schema, string),
@@ -487,6 +502,7 @@ def test_deduplicating_equal_containers_preserves_both_inner_schema_origins() ->
     _assert_origins(
         plan.module.origins,
         (
+            (plan.source.aliases[0].span, alias),
             (
                 _span_of(source, "Schema[list[Schema[int]] | list[Schema[int]]]"),
                 retained_list,
@@ -506,6 +522,7 @@ def test_schema_around_each_and_collect_tracks_whole_specialized_types() -> None
 
     plan = compile_source(source, SCHEMA_PATH, maximum_arity=2).unwrap()
 
+    reusable_input, reusable_output = plan.module.expressions
     overload = plan.module.declarations[0]
     assert isinstance(overload, OverloadDeclaration)
     zero_arguments, one_argument, two_arguments = overload.signatures
@@ -523,10 +540,12 @@ def test_schema_around_each_and_collect_tracks_whole_specialized_types() -> None
             (input_schema, two_arguments.parameters[0].annotation),
             (input_schema, two_arguments.parameters[1].annotation),
             (input_schema, fallback.parameters[0].annotation),
+            (input_schema, reusable_input),
             (output_schema, zero_arguments.return_type),
             (output_schema, one_argument.return_type),
             (output_schema, two_arguments.return_type),
             (output_schema, fallback.return_type),
+            (output_schema, reusable_output),
         ),
     )
     _assert_origins_are_current(plan.module)
@@ -541,6 +560,7 @@ def test_schema_inside_each_and_collect_tracks_individual_type_arguments() -> No
 
     plan = compile_source(source, SCHEMA_PATH, maximum_arity=2).unwrap()
 
+    reusable_input, reusable_output = plan.module.expressions
     overload = plan.module.declarations[0]
     assert isinstance(overload, OverloadDeclaration)
     zero_arguments, one_argument, two_arguments = overload.signatures
@@ -566,10 +586,12 @@ def test_schema_inside_each_and_collect_tracks_individual_type_arguments() -> No
             (input_schema, two_arguments.parameters[0].annotation),
             (input_schema, two_arguments.parameters[1].annotation),
             (input_schema, fallback_input.item),
+            (input_schema, reusable_input),
             (output_schema, one_result.items[0]),
             (output_schema, two_results.items[0]),
             (output_schema, two_results.items[1]),
             (output_schema, fallback_output.item),
+            (output_schema, reusable_output),
         ),
     )
     _assert_origins_are_current(plan.module)
@@ -586,6 +608,7 @@ def test_composite_schema_results_are_ordered_by_source_then_overload_arity() ->
 
     plan = compile_source(source, SCHEMA_PATH, maximum_arity=2).unwrap()
 
+    reusable_input, reusable_output = plan.module.expressions
     overload = plan.module.declarations[0]
     assert isinstance(overload, OverloadDeclaration)
     zero_arguments, one_argument, two_arguments = overload.signatures
@@ -600,10 +623,12 @@ def test_composite_schema_results_are_ordered_by_source_then_overload_arity() ->
             (input_schema, two_arguments.parameters[0].annotation),
             (input_schema, two_arguments.parameters[1].annotation),
             (input_schema, fallback.parameters[0].annotation),
+            (input_schema, reusable_input),
             (output_schema, zero_arguments.return_type),
             (output_schema, one_argument.return_type),
             (output_schema, two_arguments.return_type),
             (output_schema, fallback.return_type),
+            (output_schema, reusable_output),
         ),
     )
     assert compile_source(source, SCHEMA_PATH, maximum_arity=2).unwrap() == plan
@@ -694,10 +719,6 @@ def _assert_origins(
 
 
 def _assert_origins_are_current(module: StubModule) -> None:
-    elements = tuple(
-        element
-        for declaration in module.declarations
-        for element in walk_declaration(declaration)
-    )
+    elements = tuple(walk_module(module))
     for origin in module.origins:
         assert any(origin.generated is element for element in elements)

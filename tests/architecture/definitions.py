@@ -35,5 +35,19 @@ SEMANTICS = ArchModule(
 
 TYPE_FORGE = ArchModule(
     name="typeforge",
-    sub_modules=[SEMANTICS],
+    sub_modules=[
+        SEMANTICS,
+        ArchModule(
+            name="compiler",
+            sub_modules=[
+                ArchModule(name="source"),
+                ArchModule(name="adaptation"),
+                ArchModule(name="specialization"),
+                ArchModule(name="record_materialization"),
+                ArchModule(name="pipeline"),
+            ],
+        ),
+        ArchModule(name="overlay"),
+        ArchModule(name="diagnostics"),
+    ],
 )

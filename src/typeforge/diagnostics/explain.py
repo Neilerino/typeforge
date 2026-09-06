@@ -1,7 +1,9 @@
-from typeforge.diagnostics.model import (
+from typeforge.compiler.pipeline import (
     AuthoredCallable,
     AuthoredParameter,
     AuthoredParameterKind,
+)
+from typeforge.diagnostics.model import (
     Explanation,
     ExplanationRule,
     ProblemKind,
