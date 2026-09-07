@@ -25,6 +25,7 @@ from typeforge.semantics.domain.exceptions import (
 )
 from typeforge.semantics.domain.models import (
     AllExpression,
+    AnnotatedExpression,
     AnyExpression,
     AssignableExpression,
     Condition,
@@ -52,6 +53,7 @@ from typeforge.semantics.domain.models import (
     ParameterizedTypeTemplate,
     ReadonlyFieldExpression,
     RecordField,
+    RecordShape,
     ResolvedType,
     TypeReference,
     TypeValue,
@@ -227,6 +229,24 @@ class Evaluator[T]:
             ResolvedType(expression.origin), tuple(arguments)
         )
         return build_type(shape, self.type_system)
+
+    @_dispatch.register(AnnotatedExpression)
+    def _annotated(self, expression: AnnotatedExpression[T]) -> EvaluationValue[T]:
+        value = self._evaluate(expression.value)
+        if isinstance(value, RecordShape):
+            return replace(value, metadata=(*value.metadata, *expression.metadata))
+
+        annotated = expect_type_value(
+            value.possible_output if isinstance(value, DeferredMap) else value,
+            "annotations require a type or a record",
+        )
+        return build_type(
+            ParameterizedTypeShape(
+                ResolvedType(expression.origin),
+                (annotated, *(ResolvedType(item) for item in expression.metadata)),
+            ),
+            self.type_system,
+        )
 
     @_dispatch.register(
         FieldExpression | OptionalFieldExpression | ReadonlyFieldExpression

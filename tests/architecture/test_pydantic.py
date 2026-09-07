@@ -36,6 +36,8 @@ def test_replacement_dependencies_keep_policy_and_emission_separate(
         .where_layer(file("_policy"))
         .may_only_depend_on_layers(file("_errors"), SEMANTICS.interface.name)
         .where_layer(file("_type_system"))
+        .may_only_depend_on_layers(file("_records"), file("_policy"), *shared)
+        .where_layer(file("_records"))
         .may_only_depend_on_layers(*shared)
         .where_layer(file("_frontend"))
         .may_only_depend_on_layers(
@@ -47,7 +49,7 @@ def test_replacement_dependencies_keep_policy_and_emission_separate(
             *shared,
         )
         .where_layer(file("_emission"))
-        .may_only_depend_on_layers(file("_errors"), file("_type_system"))
+        .may_only_depend_on_layers(file("_errors"), file("_type_system"), *shared)
         .where_layer(file("_compile"))
         .may_only_depend_on_layers(
             file("_frontend"),
@@ -55,6 +57,7 @@ def test_replacement_dependencies_keep_policy_and_emission_separate(
             file("_type_system"),
             file("_emission"),
             file("_errors"),
+            file("_records"),
             TYPE_FORGE.interface.name,
             *shared,
         )

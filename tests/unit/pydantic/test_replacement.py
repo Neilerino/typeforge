@@ -268,13 +268,9 @@ def test_supported_path_does_not_call_legacy_parser_evaluator_or_emitter(
 
 
 def test_later_slice_operators_fail_explicitly() -> None:
-    from typeforge import MapFields, Value
     from typeforge.pydantic import Input
 
-    for expression in (
-        Map[Input, Case[int, str]],
-        MapFields[int, Value],
-    ):
+    for expression in (Map[Input, Case[int, str]],):
         with pytest.raises(
             PydanticSchemaGenerationError, match="unsupported_relationship"
         ):

@@ -144,6 +144,13 @@ fallback; overlays retain their union-of-outputs fallback.
 
 `TypedDict`, dataclasses, protocols, ordinary classes, attrs classes, and validation models have different construction, inheritance, and mutation semantics. Typeforge must support each family through an explicit adapter rather than treating every annotated object as the same kind of record.
 
+Shared `AnnotatedExpression` carries backend-owned metadata around a type or a
+synthesized record. Evaluation preserves record metadata in order without
+interpreting it; type annotations use the backend's ordinary type construction.
+This lets a Map select an annotated record while keeping annotation execution and
+schema construction in the consumer. Field operators continue to define output
+requiredness and readonly flags explicitly.
+
 ## Result boundaries
 
 Use `typeforge.utils.error_handling.safe_result` at a seam whose implementation

@@ -23,6 +23,15 @@ class UnresolvedAnnotationIssue(SchemaIssue):
 
 
 @dataclass(frozen=True, slots=True)
+class UnsupportedRecordIssue(SchemaIssue):
+    uses_generic_fallback: bool
+    subject: object
+
+    def render(self) -> str:
+        return f"{SchemaIssue.render(self)} (subject: {self.subject!r})"
+
+
+@dataclass(frozen=True, slots=True)
 class MapNoMatchIssue(SchemaIssue):
     uses_generic_fallback: bool
     subject: object

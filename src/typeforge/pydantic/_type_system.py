@@ -1,23 +1,30 @@
 """Python typing operations behind the shared TypeSystem interface."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from functools import partial
 from operator import getitem
 from typing import (
+    Annotated,
     Any,
     Literal,
     Never,
     Protocol,
     Self,
+    TypeVar,
     Union,
     cast,
     get_args,
     get_origin,
 )
 
-from returns.result import Failure, Result, Success
+from returns.result import Result, Success
 
+from typeforge.pydantic import _records
+from typeforge.pydantic._policy import generic_fallback
+from typeforge.pydantic._records import UnsupportedRecord, record_shape
 from typeforge.semantics import (
     ParameterizedTypeShape,
+    RecordField,
     RecordShape,
     SemanticAdapterError,
     SemanticIssue,
@@ -38,7 +45,7 @@ class RuntimeType:
     annotation: object
 
     @classmethod
-    def of(cls, *args: tuple[object, object]) -> Self:
+    def of(cls, args: tuple[object, object]) -> Self:
         value, annotation = args
         return cls(value=value, annotation=annotation)
 
@@ -156,10 +163,34 @@ class RuntimeTypeSystem:
             )
         )
 
-    def record(
-        self, value: RuntimeType
-    ) -> Result[RecordShape[RuntimeType], SemanticIssue]:
-        return Failure(SemanticAdapterError("Record adaptation is not available yet"))
+    @safe_result(errors=(SemanticIssue,))
+    def record(self, value: RuntimeType) -> RecordShape[RuntimeType]:
+        shape = (
+            record_shape(value.value)
+            .alt(
+                lambda issue: (
+                    replace(issue, annotation=value.annotation)
+                    if isinstance(issue, UnsupportedRecord)
+                    else issue
+                )
+            )
+            .unwrap()
+        )
+        return RecordShape(
+            shape.family,
+            shape.name,
+            tuple(
+                RecordField(
+                    name=field.name,
+                    value=_runtime_type(
+                        value=field.value, bindings=_record_bindings(value)
+                    ),
+                    required=field.required,
+                    readonly=field.readonly,
+                )
+                for field in shape.fields
+            ),
+        )
 
     def inspect(
         self, value: RuntimeType
@@ -202,3 +233,59 @@ class RuntimeTypeSystem:
 
 
 RUNTIME_TYPE_SYSTEM = RuntimeTypeSystem()
+
+
+@safe_result(errors=(SemanticIssue,))
+def runtime_type(value: object) -> RuntimeType:
+    """Resolve ordinary typing structure and retain its Pydantic annotation."""
+    return _runtime_type(value, {})
+
+
+def _runtime_type(value: object, bindings: dict[TypeVar, RuntimeType]) -> RuntimeType:
+    _p_runtime_type = partial(_runtime_type, bindings=bindings)
+
+    if isinstance(value, TypeVar):
+        if value in bindings:
+            return bindings[value]
+
+        default = (
+            _runtime_type(value.__default__, bindings) if value.has_default() else None
+        )
+        bounds = (
+            _runtime_type(value.__bound__, bindings)
+            if value.__bound__ is not None
+            else None
+        )
+
+        choices = generic_fallback(
+            default=default,
+            constraints=tmap(_p_runtime_type, value.__constraints__),
+            bound=bounds,
+            any_type=concrete_type(Any),
+        )
+        return RuntimeType(RUNTIME_TYPE_SYSTEM.union(choices).unwrap().value, value)
+
+    origin = get_origin(value)
+    arguments: tuple[object, ...] = get_args(value)
+    if origin is None or origin is Literal:
+        return concrete_type(value)
+
+    parts = tuple(
+        concrete_type(argument)
+        if origin is Annotated and index
+        else _p_runtime_type(argument)
+        for index, argument in enumerate(arguments)
+    )
+    return RUNTIME_TYPE_SYSTEM.build(
+        ParameterizedTypeShape(concrete_type(origin), parts)
+    ).unwrap()
+
+
+def _record_bindings(value: RuntimeType) -> dict[TypeVar, RuntimeType]:
+    bindings = dict(
+        zip(_records.parameters(value.value), _arguments(value), strict=False)
+    )
+    for base in _records.bases(value.value):
+        bindings.update(_record_bindings(_runtime_type(base, bindings)))
+
+    return bindings

@@ -1,6 +1,6 @@
 # Pydantic Integration Redesign
 
-Status: In progress — slices 1–3 complete; next: TypedDict records and MapFields (slice 4)
+Status: In progress — slices 1–4 complete; next: deferred Input selection and emission (slice 5)
 
 Priority: Next implementation scope
 
@@ -499,8 +499,8 @@ output does not defer an unrelated concrete failure.
 
 Architecture tests protect the new module responsibilities and compiler/runtime
 separation. Slice 3 extends this seam for alias expansion, dependent alias defaults,
-and structural templates. Records and Input remain later-slice work and fail
-explicitly on the private path. There is no fallback to the legacy evaluator.
+and structural templates. Slice 4 adds records; Input remains later-slice work and
+fails explicitly on the private path. There is no fallback to the legacy evaluator.
 
 Implemented scope:
 
@@ -571,6 +571,41 @@ the lifecycle contracts from slice 1.
 
 ### 4. Integrate TypedDict records and MapFields
 
+Status: Complete through the private hook. The public cutover remains slice 6.
+
+`_records` owns TypedDict reflection, inherited field qualifiers, parameter and
+base declarations, and modeled reflection failures. The runtime TypeSystem binds
+generic record arguments and applies the existing fallback policy to field types,
+preserving their authored annotations. The frontend lowers MapFields, field
+operators, Drop, and contextual field-name Literals into shared expressions.
+Shared evaluation owns transformations, duplicate-name checks, and output flags;
+Field/OptionalField/ReadonlyField explicitly define the output requiredness and
+readonly state rather than implicitly copying those flags from the input.
+
+An invalid generic record origin has an uninhabited validation schema with
+`typeforge_unsupported_record` at the field. Concrete invalid record operands fail
+construction. These errors retain the actual subject separately from no-match
+failures, and a parameter appearing only in the transform cannot defer a concrete
+invalid operand. Valid bounds, defaults, and concrete record specializations
+compile normally. Missing record annotation names retain model_rebuild behavior.
+
+Shared AnnotatedExpression and opaque RecordShape metadata preserve annotations
+even when a Map selects an annotated record. Emission owns a private record hook,
+uses fresh child schema generation to isolate field metadata, and continues root
+middleware for record annotations. Pydantic's alias machinery owns references
+and per-build reuse; repeated fields and qualified generic inputs remain distinct
+and deterministic across rebuilds, with no global schema cache.
+
+`test_records.py` covers Python/JSON validation, serialization, field modifiers,
+inherited and generic TypedDicts, partial model specialization, constraints and
+documentation, field error locations, references in both schema modes, unsupported
+records and transforms, and expected/unexpected emission failures. Resolved record
+paths add no validation callback and never call the legacy implementation.
+Shared annotation tests protect metadata ordering, source immutability, and
+failure propagation. Input planning and public hook replacement remain pending.
+
+Implemented scope:
+
 Adapt TypedDicts to family-aware shared RecordShape data. Evaluate field
 transformations through semantics and emit synthesized schemas, preserving
 inherited fields, requiredness, readonly information, constraints, documentation,
@@ -627,9 +662,10 @@ dependencies actually change.
 
 ## Immediate next action
 
-Implement slice 4 using the [contract handoff](pydantic-characterization.md).
-Extend the existing private frontend and TypeSystem for TypedDict records and
-MapFields, with shared semantic field transformations and synthesized Pydantic
-schemas. Preserve field metadata, requiredness, readonly information, authored
-errors, and deterministic references. Include generic MapFields fields specialized
-with a TypedDict. Retain the public strict xfail until the slice 6 cutover.
+Implement slice 5 using the [contract handoff](pydantic-characterization.md).
+Add raw Input observation and selection, consume shared DeferredMap outcomes,
+and emit validation of only the selected output. Preserve first-match ordering,
+type-and-value Literal matching, unsupported runtime pattern rejection, nested
+cases, serialization, and failures without swallowing predicate errors. Include
+generic fields mixing static parameters with Input; never infer an omitted type
+argument from the raw value. Retain the public strict xfail until slice 6.

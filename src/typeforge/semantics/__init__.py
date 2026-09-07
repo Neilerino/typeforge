@@ -18,6 +18,7 @@ from typeforge.semantics.domain.exceptions import (
 )
 from typeforge.semantics.domain.models import (
     AllExpression,
+    AnnotatedExpression,
     AnyExpression,
     AssignableExpression,
     CaptureValuePattern,
@@ -69,6 +70,7 @@ from typeforge.semantics.protocols import EvaluationPolicy, TypeSystem
 
 __all__ = (
     "AllExpression",
+    "AnnotatedExpression",
     "AnyExpression",
     "AssignableExpression",
     "CaptureValuePattern",

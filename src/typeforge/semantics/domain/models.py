@@ -33,6 +33,16 @@ class RecordShape[T]:
     family: RecordFamily
     name: str | None
     fields: tuple[RecordField[T], ...]
+    metadata: tuple[T, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class AnnotatedExpression[T]:
+    """Backend-owned metadata attached to a type or a synthesized record."""
+
+    origin: T
+    value: Expression[T]
+    metadata: tuple[T, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -296,6 +306,7 @@ type EvaluationValue[T] = (
 
 type Expression[T] = (
     TypeReference[T]
+    | AnnotatedExpression[T]
     | TypeValueReference[T]
     | UnionExpression[T]
     | InputReference

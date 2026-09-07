@@ -1,9 +1,8 @@
 """Adapt supported runtime annotations directly to shared expressions."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import (
     Annotated,
-    Any,
     Literal,
     TypeAliasType,
     TypeVar,
@@ -36,13 +35,14 @@ from typeforge import Any as AnyCondition
 from typeforge import semantics as s
 from typeforge.pydantic import Input
 from typeforge.pydantic._errors import SchemaIssue, UnresolvedAnnotationIssue
-from typeforge.pydantic._policy import generic_fallback
 from typeforge.pydantic._type_system import (
     RUNTIME_TYPE_SYSTEM,
     RuntimeType,
     concrete_type,
+    runtime_type,
 )
 from typeforge.utils.error_handling import safe_result
+from typeforge.utils.iteration import tmap
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,15 +129,17 @@ def uses_generic_fallback(
 ) -> bool:
     """Inspect bound operands, rather than parameters in the authored alias body."""
     match expression:
+        case s.AnnotatedExpression(value=value):
+            return uses_generic_fallback(value)
+
         case s.TypeReference(value=value) | s.ExactTypePattern(value=value):
             return has_parameters(value.annotation)
 
         case (
-            s.ParameterizedTypeTemplate(origin=origin, arguments=arguments)
-            | s.ParameterizedTypePattern(origin=origin, arguments=arguments)
+            s.ParameterizedTypeTemplate(arguments=arguments)
+            | s.ParameterizedTypePattern(arguments=arguments)
         ):
-            operands = arguments[:1] if origin.value is Annotated else arguments
-            return any(uses_generic_fallback(argument) for argument in operands)
+            return any(uses_generic_fallback(argument) for argument in arguments)
 
         case s.UnionExpression(members=members):
             return any(uses_generic_fallback(member) for member in members)
@@ -199,7 +201,7 @@ class _AnnotationAdapter:
         bindings: AnnotationBindingMap | None = None,
         aliases: tuple[TypeAliasType, ...] | None = None,
     ) -> None:
-        self.origins: dict[int, object] = origins or {}
+        self.origins: dict[int, object] = {} if origins is None else origins
         self.bindings: AnnotationBindingMap = bindings or {}
         self.aliases: tuple[TypeAliasType, ...] = aliases or ()
 
@@ -216,6 +218,20 @@ class _AnnotationAdapter:
 
         if origin is Map:
             return self._map(value, arguments)
+
+        if origin is MapFields:
+            if len(arguments) != 2:
+                raise invalid(value, "MapFields requires a record and a transform")
+
+            return s.MapFieldsExpression(
+                self.adapt(arguments[0]), self.adapt(arguments[1])
+            )
+
+        if origin in (Field, OptionalField, ReadonlyField):
+            return self._field(value, origin, arguments)
+
+        if origin is Drop:
+            return s.DropExpression()
 
         if origin is Equal or origin is Assignable:
             return self._binary_predicate(value, origin, arguments)
@@ -269,38 +285,7 @@ class _AnnotationAdapter:
         return bound if bound is not None else self._type_variable(value)
 
     def _type_variable(self, value: TypeVar) -> s.TypeReference[RuntimeType]:
-        default = (
-            self._type_argument(value.__default__, parameter=value)
-            if value.has_default()
-            else None
-        )
-        bound = (
-            self._type_argument(value.__bound__, parameter=value)
-            if value.__bound__ is not None
-            else None
-        )
-        choices = generic_fallback(
-            default=default,
-            constraints=tuple(
-                self._type_argument(item, parameter=value)
-                for item in value.__constraints__
-            ),
-            bound=bound,
-            any_type=concrete_type(Any),
-        )
-        effective = RUNTIME_TYPE_SYSTEM.union(choices).unwrap().value
-        return s.TypeReference(RuntimeType(effective, value))
-
-    def _type_argument(self, item: object, *, parameter: TypeVar) -> RuntimeType:
-        if isinstance(item, TypeVar):
-            raise SchemaIssue(
-                code="unsupported_relationship",
-                phase="parsing",
-                expression=parameter,
-                message="A dependent generic fallback requires a bound alias parameter",
-            )
-
-        return concrete_type(item)
+        return s.TypeReference(runtime_type(value).unwrap())
 
     def _map(
         self, value: object, arguments: tuple[object, ...]
@@ -320,7 +305,80 @@ class _AnnotationAdapter:
             else:
                 default = adapted
 
-        return s.MapExpression(self.adapt(arguments[0]), tuple(cases), default)
+        subject = self.adapt(arguments[0])
+        if isinstance(subject, s.KeyReference | s.FieldName):
+            cases = [
+                replace(case, test=self._name_expression(case.test)) for case in cases
+            ]
+
+        return s.MapExpression(subject, tuple(cases), default)
+
+    def _field(
+        self, value: object, origin: object, arguments: tuple[object, ...]
+    ) -> (
+        s.FieldExpression[RuntimeType]
+        | s.OptionalFieldExpression[RuntimeType]
+        | s.ReadonlyFieldExpression[RuntimeType]
+    ):
+        if len(arguments) != 2:
+            raise invalid(value, "Field requires a name and a type")
+
+        name = self._name_expression(self.adapt(arguments[0]))
+        output = self.adapt(arguments[1])
+        if origin is OptionalField:
+            return s.OptionalFieldExpression(name, output)
+
+        if origin is ReadonlyField:
+            return s.ReadonlyFieldExpression(name, output)
+
+        return s.FieldExpression(name, output)
+
+    def _name_expression(
+        self, expression: s.Expression[RuntimeType] | s.TypePattern[RuntimeType]
+    ) -> s.Expression[RuntimeType]:
+        result = self._lower_name(expression)
+        self.origins[id(result)] = self.origins.get(id(expression), expression)
+        return result
+
+    def _lower_name(
+        self, expression: s.Expression[RuntimeType] | s.TypePattern[RuntimeType]
+    ) -> s.Expression[RuntimeType]:
+        match expression:
+            case s.AnnotatedExpression(value=value):
+                return self._name_expression(value)
+
+            case s.TypeReference(value=value) | s.ExactTypePattern(value=value):
+                values = get_args(value.value)
+                if (
+                    get_origin(value.value) is Literal
+                    and len(values) == 1
+                    and isinstance(values[0], str)
+                ):
+                    return s.FieldName(values[0])
+
+                return s.TypeReference(value)
+
+            case s.MapExpression(cases=cases, default=default):
+                return replace(
+                    expression,
+                    cases=tmap(
+                        lambda c: replace(c, output=self._name_expression(c.output)),
+                        cases,
+                    ),
+                    default=None if default is None else self._name_expression(default),
+                )
+
+            case s.CaptureValuePattern():
+                return s.ValueReference()
+
+            case s.ParameterizedTypePattern():
+                raise invalid(
+                    self.origins[id(expression)],
+                    "A field name must be Key or a string Literal",
+                )
+
+            case _:
+                return expression
 
     def _map_entry(
         self, value: object, *, expression: object
@@ -356,6 +414,9 @@ class _AnnotationAdapter:
         self, expression: s.Expression[RuntimeType]
     ) -> s.TypePattern[RuntimeType] | None:
         match expression:
+            case s.AnnotatedExpression(value=value):
+                return self._pattern(value)
+
             case s.ValueReference():
                 return s.CaptureValuePattern()
 
@@ -374,20 +435,16 @@ class _AnnotationAdapter:
                     )
 
             case s.ParameterizedTypeTemplate(origin=origin, arguments=arguments):
-                if origin.value is Annotated:
-                    return self._pattern(arguments[0])
-
                 patterns = tuple(self._pattern(argument) for argument in arguments)
                 if all(pattern is not None for pattern in patterns):
                     return s.ParameterizedTypePattern(
                         origin,
                         tuple(pattern for pattern in patterns if pattern is not None),
                     )
+
             case _:
-                raise invalid(
-                    expression,
-                    f"Expression [{expression.__class__.__name__}] not patternable",
-                )
+                # Predicates and contextual expressions remain evaluator inputs.
+                return None
 
     def _binary_predicate(
         self, value: object, origin: object, arguments: tuple[object, ...]
@@ -396,6 +453,11 @@ class _AnnotationAdapter:
             raise invalid(value, "Binary predicates require two operands")
 
         left, right = (self.adapt(arg) for arg in arguments)
+        if isinstance(left, s.KeyReference | s.FieldName) or isinstance(
+            right, s.KeyReference | s.FieldName
+        ):
+            left, right = self._name_expression(left), self._name_expression(right)
+
         return (
             s.EqualExpression(left, right)
             if origin is Equal
@@ -422,16 +484,11 @@ class _AnnotationAdapter:
 
     def _annotated(
         self, arguments: tuple[object, ...]
-    ) -> s.ParameterizedTypeTemplate[RuntimeType]:
-        return s.ParameterizedTypeTemplate(
+    ) -> s.AnnotatedExpression[RuntimeType]:
+        return s.AnnotatedExpression(
             concrete_type(Annotated),
-            (
-                self.adapt(arguments[0]),
-                *(
-                    s.TypeReference(concrete_type(metadata))
-                    for metadata in arguments[1:]
-                ),
-            ),
+            self.adapt(arguments[0]),
+            tuple(concrete_type(metadata) for metadata in arguments[1:]),
         )
 
     def _union(self, arguments: tuple[object, ...]) -> s.UnionExpression[RuntimeType]:

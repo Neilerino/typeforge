@@ -5,8 +5,13 @@ from returns.result import Failure, Result, Success
 
 from pydantic import GetCoreSchemaHandler
 from typeforge import semantics as s
-from typeforge.pydantic._emission import emit_no_match, emit_type
-from typeforge.pydantic._errors import MapNoMatchIssue, SchemaIssue
+from typeforge.pydantic._emission import emit_generic_failure, emit_output
+from typeforge.pydantic._errors import (
+    MapNoMatchIssue,
+    SchemaIssue,
+    UnresolvedAnnotationIssue,
+    UnsupportedRecordIssue,
+)
 from typeforge.pydantic._frontend import (
     AdaptedAnnotation,
     adapt_annotation,
@@ -14,21 +19,22 @@ from typeforge.pydantic._frontend import (
     uses_generic_fallback,
 )
 from typeforge.pydantic._policy import PydanticEvaluationPolicy, no_match_issue
+from typeforge.pydantic._records import UnresolvedRecordAnnotation, UnsupportedRecord
 from typeforge.pydantic._type_system import RUNTIME_TYPE_SYSTEM, RuntimeType
 
 
 def compile_annotation(
     source: object, handler: GetCoreSchemaHandler
 ) -> Result[CoreSchema, SchemaIssue]:
-    return _recover_generic_no_match(
+    return _recover_generic_failure(
         Result.do(
             schema
             for adapted in adapt_annotation(source).alt(
                 lambda issue: _adaptation_issue(issue, source)
             )
             for evaluated in _evaluate_annotation(adapted, source)
-            for output in _resolved_type(evaluated, source)
-            for schema in emit_type(output, handler, source)
+            for output in _schema_output(evaluated, source)
+            for schema in emit_output(output, handler, source)
         )
     )
 
@@ -57,6 +63,21 @@ def _evaluation_issue(
     adapted: AdaptedAnnotation,
     source: object,
 ) -> SchemaIssue:
+    if isinstance(outcome, UnsupportedRecord):
+        return UnsupportedRecordIssue(
+            "unsupported_record",
+            "evaluation",
+            source,
+            outcome.message,
+            uses_generic_fallback=has_parameters(outcome.annotation),
+            subject=outcome.subject,
+        )
+
+    if isinstance(outcome, UnresolvedRecordAnnotation):
+        return UnresolvedAnnotationIssue(
+            "unresolved_annotation", "evaluation", source, outcome.message, outcome.name
+        )
+
     if isinstance(outcome, s.SemanticIssue):
         return SchemaIssue(str(outcome.code), "evaluation", source, outcome.message)
 
@@ -83,11 +104,14 @@ def _evaluation_issue(
     )
 
 
-def _resolved_type(
+def _schema_output(
     value: s.EvaluationValue[RuntimeType], source: object
-) -> Result[RuntimeType, SchemaIssue]:
+) -> Result[RuntimeType | s.RecordShape[RuntimeType], SchemaIssue]:
     if isinstance(value, s.ResolvedType):
         return Success(value.value)
+
+    if isinstance(value, s.RecordShape):
+        return Success(value)
 
     return Failure(
         SchemaIssue(
@@ -99,13 +123,16 @@ def _resolved_type(
     )
 
 
-def _recover_generic_no_match(
+def _recover_generic_failure(
     result: Result[CoreSchema, SchemaIssue],
 ) -> Result[CoreSchema, SchemaIssue]:
     if isinstance(result, Failure):
         issue = result.failure()
         # Keep an uninhabited generic origin available for later specialization.
-        if isinstance(issue, MapNoMatchIssue) and issue.uses_generic_fallback:
-            return Success(emit_no_match(issue))
+        if (
+            isinstance(issue, MapNoMatchIssue | UnsupportedRecordIssue)
+            and issue.uses_generic_fallback
+        ):
+            return Success(emit_generic_failure(issue))
 
     return result

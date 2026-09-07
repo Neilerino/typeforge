@@ -20,10 +20,9 @@ def test_nested_adaptation_preserves_authored_origins_and_opaque_metadata() -> N
     adapted = adapt_annotation(source).unwrap()
 
     assert adapted.origins[id(adapted.expression)] is source
-    assert isinstance(adapted.expression, s.ParameterizedTypeTemplate)
-    expression, metadata_expression = adapted.expression.arguments
-    assert isinstance(metadata_expression, s.TypeReference)
-    assert metadata_expression.value.annotation is metadata
+    assert isinstance(adapted.expression, s.AnnotatedExpression)
+    assert adapted.expression.metadata[0].annotation is metadata
+    expression = adapted.expression.value
     assert isinstance(expression, s.MapExpression)
     assert adapted.origins[id(expression)] is outer
     assert adapted.origins[id(expression.subject)] is int

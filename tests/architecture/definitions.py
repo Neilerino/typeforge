@@ -47,6 +47,7 @@ TYPE_FORGE = ArchModule(
                 ArchFile(name="_frontend"),
                 ArchFile(name="_policy"),
                 ArchFile(name="_type_system"),
+                ArchFile(name="_records"),
                 ArchFile(name="_emission"),
                 ArchFile(name="_errors"),
             ],

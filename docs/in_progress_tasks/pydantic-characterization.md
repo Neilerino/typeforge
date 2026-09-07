@@ -1,6 +1,6 @@
 # Pydantic Redesign: Runtime Contracts
 
-Status: Slices 1–3 complete; private aliases and structural expressions implemented, public cutover pending
+Status: Slices 1–4 complete; private resolved types and records implemented, public cutover pending
 
 Owning task: [Pydantic integration redesign](pydantic-integration-redesign.md)
 
@@ -16,7 +16,7 @@ specified below for their owning implementation slices.
 Slice 2 implements C1, C2, C3, and C8 through the private replacement hook in
 `typeforge.pydantic._annotation`; its tests are in `test_replacement.py` and
 `test_policy.py`. The public C1 tracer remains a strict xfail until slice 6.
-Records (C4) and runtime Input remain pending.
+Slice 4 implements records (C4); runtime Input remains pending.
 The new lifecycle coverage includes partial inheritance, both specialization
 orders, rebuilt JSON Schemas in both modes, and JSON validation/serialization.
 It also ensures a TypeVar used only in an unreachable output cannot postpone a
@@ -33,6 +33,19 @@ recursive aliases, and reject Typeforge alias cycles and unknown variadic arity.
 Unbound variadic aliases require specialization or a finite default; explicit empty
 packs remain distinct. C9's value-time pattern rejection will be enforced by the
 slice 5 Input planner; the private hook still rejects Input in all forms today.
+
+Slice 4 covers R18 and C4 through `test_records.py`: record reflection and field
+transformation, generic TypedDict arguments and inheritance, generic model
+origins/bounds/defaults/partial specialization, Python and JSON validation,
+serialization, field error locations, field modifiers, qualified references and
+rebuilds in both schema modes. Invalid unparametrized record use reports
+`typeforge_unsupported_record`; concrete invalid operands fail construction.
+Invalid output fields, duplicates, and unsupported leaf schemas retain distinct
+typed failures, while unexpected hook failures preserve exception identity.
+Record annotations run once without leaking into child fields, including when
+a Map selects an annotated record. Shared annotation tests retain opaque metadata
+ordering and inner failure propagation. Resolved record transformations use no
+legacy calls and add no Python validation callback.
 
 `test_frontend.py` covers the per-call annotation adapter: nested authored origins,
 opaque metadata, isolation across successful and failed builds, and original
