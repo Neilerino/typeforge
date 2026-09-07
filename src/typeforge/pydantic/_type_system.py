@@ -2,7 +2,17 @@
 
 from dataclasses import dataclass
 from operator import getitem
-from typing import Any, Literal, Never, Protocol, Union, cast, get_args, get_origin
+from typing import (
+    Any,
+    Literal,
+    Never,
+    Protocol,
+    Self,
+    Union,
+    cast,
+    get_args,
+    get_origin,
+)
 
 from returns.result import Failure, Result, Success
 
@@ -13,6 +23,7 @@ from typeforge.semantics import (
     SemanticIssue,
 )
 from typeforge.utils.error_handling import safe_result
+from typeforge.utils.iteration import tmap
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,9 +37,25 @@ class RuntimeType:
     value: object
     annotation: object
 
+    @classmethod
+    def of(cls, *args: tuple[object, object]) -> Self:
+        value, annotation = args
+        return cls(value=value, annotation=annotation)
+
 
 def concrete_type(value: object) -> RuntimeType:
     return RuntimeType(value, value)
+
+
+def _arguments(value: RuntimeType) -> tuple[RuntimeType, ...]:
+    effective: tuple[object, ...] = get_args(value.value)
+    authored: tuple[object, ...] = get_args(value.annotation)
+    if get_origin(value.value) == get_origin(value.annotation) and len(
+        effective
+    ) == len(authored):
+        return tmap(RuntimeType.of, zip(effective, authored, strict=True))
+
+    return tmap(concrete_type, effective)
 
 
 class _Subscriptable(Protocol):
@@ -117,7 +144,7 @@ class RuntimeTypeSystem:
         if get_origin(value.value) is not Union:
             return Success((value,))
 
-        return Success(tuple(concrete_type(member) for member in get_args(value.value)))
+        return Success(_arguments(value))
 
     def union(
         self, members: tuple[RuntimeType, ...]
@@ -144,7 +171,7 @@ class RuntimeTypeSystem:
         return Success(
             ParameterizedTypeShape(
                 concrete_type(origin),
-                tuple(concrete_type(argument) for argument in get_args(value.value)),
+                _arguments(value),
             )
         )
 

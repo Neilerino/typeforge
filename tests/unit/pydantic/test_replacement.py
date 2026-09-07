@@ -259,14 +259,19 @@ def test_supported_path_does_not_call_legacy_parser_evaluator_or_emitter(
     adapter = TypeAdapter[object](Schema[Map[int, Case[int, list[int]]]])
     assert adapter.validate_python(["3"]) == [3]
 
+    from typeforge import Value
 
-def test_later_slice_operators_and_aliases_fail_explicitly() -> None:
+    type Selected[T] = Map[T, Case[list[Value], tuple[Value, ...]]]
+    structural = TypeAdapter[object](Schema[Selected[list[int]]])
+    assert structural.validate_python(["3"]) == (3,)
+    assert "function-" not in repr(structural.core_schema)
+
+
+def test_later_slice_operators_fail_explicitly() -> None:
     from typeforge import MapFields, Value
     from typeforge.pydantic import Input
 
-    type Selected[T] = Map[T, Case[int, str]]
     for expression in (
-        Selected[int],
         Map[Input, Case[int, str]],
         MapFields[int, Value],
     ):

@@ -1,6 +1,6 @@
 # Pydantic Integration Redesign
 
-Status: In progress — slices 1–2 complete; next: aliases and structural expressions (slice 3)
+Status: In progress — slices 1–3 complete; next: TypedDict records and MapFields (slice 4)
 
 Priority: Next implementation scope
 
@@ -498,9 +498,9 @@ selection depends on generic fallbacks. A parameter used only in an unreachable
 output does not defer an unrelated concrete failure.
 
 Architecture tests protect the new module responsibilities and compiler/runtime
-separation. Alias expansion, dependent generic defaults, structural templates,
-records, and Input remain later-slice work and fail explicitly on the private
-path where unsupported. There is no fallback to the legacy evaluator.
+separation. Slice 3 extends this seam for alias expansion, dependent alias defaults,
+and structural templates. Records and Input remain later-slice work and fail
+explicitly on the private path. There is no fallback to the legacy evaluator.
 
 Implemented scope:
 
@@ -523,6 +523,37 @@ failure contracts, generic construction/rebuild behavior, and the
 no-per-validation-callback guarantee for fully resolved transformations.
 
 ### 3. Complete runtime aliases and structural expressions
+
+Status: Complete through the private hook. The public hook remains on the legacy
+implementation until slice 6.
+
+The frontend binds alias arguments in isolated child adapters before lowering
+patterns and templates. This includes aliased Case/Default entries, forwarded
+variadic arguments, explicit empty packs, finite tuple Unpack, and dependent
+defaults. Ordinary alias outputs retain their alias identity and receive bound
+arguments; ordinary recursive aliases continue to delegate to Pydantic.
+Unbound variadic aliases need specialization or a finite default. Unbounded tuple
+Unpack fails explicitly rather than inventing a finite list of captured positions.
+
+Shared semantics handles repeated captures, failed-case isolation, nested Maps,
+and output templates containing unions and Literals. Runtime inspection preserves
+paired effective types and authored annotations through union distribution and
+structural capture, including model-bound TypeVar serialization. No-match recovery
+uses bound operands and the captured subject rather than unresolved parameter names
+in an alias body, so a concrete unmatched alias fails during schema construction.
+
+Unresolved lazy alias names cross the adaptation boundary as typed issues; the
+annotation hook translates these to PydanticUndefinedAnnotation so Pydantic can
+finish model_rebuild after names become available. Typeforge alias cycles remain
+explicit failures. Literal values and Annotated metadata stay opaque.
+
+`test_aliases_and_structures.py` covers the private lifecycle and structural
+contracts. Existing replacement tests also prohibit calls to the legacy pipeline
+and Python validation callbacks for resolved structural transformations. Runtime
+Input pattern admissibility (C9) remains with the slice 5 planner; Input itself
+is still explicitly unsupported on the private path.
+
+Implemented scope:
 
 Extend the same pipeline for PEP 695 aliases, generic and variadic binding,
 Unpack, structural patterns, repeated captures, nested Maps and output templates,
@@ -596,8 +627,9 @@ dependencies actually change.
 
 ## Immediate next action
 
-Implement slice 3 using the [contract handoff](pydantic-characterization.md).
-Extend the existing private frontend and TypeSystem for aliases, generic/variadic
-binding, structural patterns, and output templates. Keep matching and captures
-in shared semantics, preserve fallback and annotation provenance through those
-operations, and retain the public strict xfail until the slice 6 cutover.
+Implement slice 4 using the [contract handoff](pydantic-characterization.md).
+Extend the existing private frontend and TypeSystem for TypedDict records and
+MapFields, with shared semantic field transformations and synthesized Pydantic
+schemas. Preserve field metadata, requiredness, readonly information, authored
+errors, and deterministic references. Include generic MapFields fields specialized
+with a TypedDict. Retain the public strict xfail until the slice 6 cutover.

@@ -1,6 +1,6 @@
 # Pydantic Redesign: Runtime Contracts
 
-Status: Slices 1–2 complete; private resolved pipeline implemented, public cutover pending
+Status: Slices 1–3 complete; private aliases and structural expressions implemented, public cutover pending
 
 Owning task: [Pydantic integration redesign](pydantic-integration-redesign.md)
 
@@ -16,11 +16,23 @@ specified below for their owning implementation slices.
 Slice 2 implements C1, C2, C3, and C8 through the private replacement hook in
 `typeforge.pydantic._annotation`; its tests are in `test_replacement.py` and
 `test_policy.py`. The public C1 tracer remains a strict xfail until slice 6.
-Records (C4), aliases, structural captures, and runtime Input are still pending.
+Records (C4) and runtime Input remain pending.
 The new lifecycle coverage includes partial inheritance, both specialization
 orders, rebuilt JSON Schemas in both modes, and JSON validation/serialization.
 It also ensures a TypeVar used only in an unreachable output cannot postpone a
 concrete no-match error. Unexpected schema-hook exceptions retain their identity.
+
+Slice 3 implements aliases and structural expressions through that same private
+hook. `test_aliases_and_structures.py` covers R3, R5, R6, R8, R9, the alias portion
+of C2, and C5: captures, nested outputs and fixed union patterns, aliased patterns
+and Case/Default entries, finite variadic binding and defaults, independent generic
+specializations, partial inheritance, and delayed-name model_rebuild. Model-bound
+serialization survives union distribution followed by capture. Tests distinguish
+generic no-match from concrete alias failures, retain opaque metadata and ordinary
+recursive aliases, and reject Typeforge alias cycles and unknown variadic arity.
+Unbound variadic aliases require specialization or a finite default; explicit empty
+packs remain distinct. C9's value-time pattern rejection will be enforced by the
+slice 5 Input planner; the private hook still rejects Input in all forms today.
 
 `test_frontend.py` covers the per-call annotation adapter: nested authored origins,
 opaque metadata, isolation across successful and failed builds, and original

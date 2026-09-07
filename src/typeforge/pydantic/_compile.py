@@ -11,6 +11,7 @@ from typeforge.pydantic._frontend import (
     AdaptedAnnotation,
     adapt_annotation,
     has_parameters,
+    uses_generic_fallback,
 )
 from typeforge.pydantic._policy import PydanticEvaluationPolicy, no_match_issue
 from typeforge.pydantic._type_system import RUNTIME_TYPE_SYSTEM, RuntimeType
@@ -37,6 +38,7 @@ def _adaptation_issue(
 ) -> SchemaIssue:
     if isinstance(issue, SchemaIssue):
         return issue
+
     return SchemaIssue(str(issue.code), "parsing", source, issue.message)
 
 
@@ -67,8 +69,12 @@ def _evaluation_issue(
     return no_match_issue(
         authored,
         subject,
-        uses_generic_fallback=any(
-            has_parameters(adapted.origins[id(operand)])
+        uses_generic_fallback=(
+            isinstance(outcome.subject, s.ResolvedType)
+            and has_parameters(outcome.subject.value.annotation)
+        )
+        or any(
+            uses_generic_fallback(operand)
             for operand in (
                 outcome.expression.subject,
                 *(case.test for case in outcome.expression.cases),

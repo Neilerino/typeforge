@@ -18,6 +18,11 @@ class SchemaIssue(Exception):
 
 
 @dataclass(frozen=True, slots=True)
+class UnresolvedAnnotationIssue(SchemaIssue):
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
 class MapNoMatchIssue(SchemaIssue):
     uses_generic_fallback: bool
     subject: object

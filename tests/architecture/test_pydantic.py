@@ -59,7 +59,7 @@ def test_replacement_dependencies_keep_policy_and_emission_separate(
             *shared,
         )
         .where_layer(file("_annotation"))
-        .may_only_depend_on_layers(file("_compile"))
+        .may_only_depend_on_layers(file("_compile"), file("_errors"))
     )
 
     assert_passes(rule)

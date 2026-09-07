@@ -6,8 +6,13 @@ from typing import Annotated
 from pydantic_core import CoreSchema
 from returns.result import Failure
 
-from pydantic import GetCoreSchemaHandler, PydanticSchemaGenerationError
+from pydantic import (
+    GetCoreSchemaHandler,
+    PydanticSchemaGenerationError,
+    PydanticUndefinedAnnotation,
+)
 from typeforge.pydantic._compile import compile_annotation
+from typeforge.pydantic._errors import UnresolvedAnnotationIssue
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +23,9 @@ class _SchemaMetadata:
         result = compile_annotation(source_type, handler)
         if isinstance(result, Failure):
             issue = result.failure()
+            if isinstance(issue, UnresolvedAnnotationIssue):
+                raise PydanticUndefinedAnnotation(issue.name, issue.message) from issue
+
             raise PydanticSchemaGenerationError(issue.render()) from issue
 
         return result.unwrap()
