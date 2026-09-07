@@ -24,7 +24,6 @@ from typeforge import (
     Equal,
     Field,
     Key,
-    Map,
     MapFields,
     Not,
     OptionalField,
@@ -33,6 +32,7 @@ from typeforge import (
 )
 from typeforge import Any as AnyCondition
 from typeforge import semantics as s
+from typeforge._markers import Map
 from typeforge.pydantic._errors import SchemaIssue, UnresolvedAnnotationIssue
 from typeforge.pydantic._markers import Input
 from typeforge.pydantic._type_system import (

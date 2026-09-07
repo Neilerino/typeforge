@@ -5,6 +5,7 @@ from returns.result import Failure
 
 from typeforge import Case, Default, Equal, Map
 from typeforge import semantics as s
+from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic._errors import SchemaIssue
 from typeforge.pydantic._frontend import adapt_annotation
 from typeforge.pydantic._type_system import RUNTIME_TYPE_SYSTEM
@@ -35,7 +36,7 @@ def test_failed_and_repeated_adaptations_do_not_share_origins() -> None:
     source = Map[int, Case[int, str]]
     first = adapt_annotation(source).unwrap()
     origins = dict(first.origins)
-    invalid = Map[int, Default[str], Case[int, bytes]]
+    invalid = CanonicalMap[int, Default[str], Case[int, bytes]]
 
     failed = adapt_annotation(invalid)
     assert isinstance(failed, Failure)

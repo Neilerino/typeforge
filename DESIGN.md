@@ -22,6 +22,15 @@ Finite specialization must remain explicit. Typeforge should provide a documente
 
 ## Unified type mapping
 
+The public runtime `Map` constructor normalizes subscription slices into the
+canonical Map/Case/Default aliases in `_markers` before Python discovers or
+substitutes generic parameters. `_map` owns construction; it does not evaluate
+relationships or expand authored aliases. Frontends recognize canonical marker
+identity rather than the public constructor. The typing-only public export retains
+the conservative object alias; raw slices still require checker projection.
+Legacy branches remain for repository migration and are removed at the authoring
+cutover tracked in `docs/in_progress_tasks/map-slice-syntax.md`.
+
 `Map` is Typeforge's central input/output type machine. Its ordered `Case`
 branches accept either exact or structural type patterns or boolean predicates;
 the first matching pattern or true predicate selects the output. `Default`

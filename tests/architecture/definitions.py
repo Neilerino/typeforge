@@ -84,5 +84,5 @@ TYPE_FORGE = ArchModule(
         ArchModule(name="proxy"),
         ArchModule(name="utils", files=[ArchFile(name="error_handling")]),
     ],
-    files=[ArchFile(name="cli")],
+    files=[ArchFile(name="cli"), ArchFile(name="_markers"), ArchFile(name="_map")],
 )

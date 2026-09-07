@@ -82,6 +82,31 @@ result = collect(1, "two", True)
 
 Map input types to output types:
 
+Runtime slice construction is available through the public `Map` import:
+
+```python
+from typing import TypeVar
+from typeforge import Map
+
+T = TypeVar("T")
+expression = Map[int, int: list[T], ...: bytes]
+specialized = expression[str]
+```
+
+The constructor preserves parameters inside selectors and outputs before Python
+performs substitution. `None` and empty colon endpoints both denote the None
+type; use `Literal["text"]` for string selectors. A fallback must be last, and
+non-None slice steps are invalid. Construction does not evaluate relationships;
+`Schema[specialized]` uses the existing Pydantic integration.
+
+The syntax migration is in progress: compiler normalization, predicate aliases,
+and inline checker projection still have work remaining. Raw slice annotations
+are not promised to work in ordinary type checkers. Existing Case/Default
+examples below remain valid during the repository migration and will be removed
+at the coordinated cutover. See the
+[migration checklist](docs/in_progress_tasks/map-slice-syntax.md) and
+[union limitations](docs/in_progress_tasks/map-slice-union-findings.md).
+
 ```python
 from typeforge import Case, Default, Map
 

@@ -8,6 +8,7 @@ from returns.result import Failure
 
 from pydantic import GetCoreSchemaHandler
 from typeforge import Case, Default, Equal, Key, Map
+from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic._compile import compile_annotation
 
 
@@ -19,7 +20,11 @@ class ForbiddenHandler(GetCoreSchemaHandler):
 @pytest.mark.parametrize(
     ("expression", "phase", "code"),
     [
-        (Map[int, Default[str], Case[int, bytes]], "parsing", "invalid_marker"),
+        (
+            CanonicalMap[int, Default[str], Case[int, bytes]],
+            "parsing",
+            "invalid_marker",
+        ),
         (Map[int, Case[Equal[Key, Key], str]], "evaluation", "unbound_key"),
         (Map[Any, Case[int, str]], "evaluation", "map_no_match"),
         (Equal[int, int], "evaluation", "expected_type"),

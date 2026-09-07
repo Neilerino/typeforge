@@ -26,7 +26,7 @@ from typeforge import (
     OptionalField,
     Value,
 )
-from typeforge import Map as CanonicalMap
+from typeforge._markers import Map as CanonicalMap
 from typeforge._slice_map_prototype import Map
 from typeforge.pydantic import Input, Schema
 from typeforge.pydantic._frontend import adapt_annotation

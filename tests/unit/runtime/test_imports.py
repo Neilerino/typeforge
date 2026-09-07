@@ -34,6 +34,34 @@ def test_importing_typeforge_does_not_import_pydantic() -> None:
     assert completed.returncode == 0, completed.stderr
 
 
+def test_slice_construction_needs_no_optional_dependencies_or_consumers() -> None:
+    source = Path(__file__).parents[3] / "src"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            "-c",
+            textwrap.dedent("""
+            import sys
+            from typing import TypeVar
+            from typeforge import Map
+            T = TypeVar("T")
+            annotation = Map[int, int: list[T]]
+            assert annotation.__parameters__ == (T,)
+            assert not any(name.startswith((
+                'pydantic', 'typeforge.pydantic', 'typeforge.compiler',
+                'typeforge.semantics', 'returns',
+            )) for name in sys.modules)
+        """),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTHONPATH": str(source)},
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
 def test_importing_pydantic_integration_without_extra_has_focused_error() -> None:
     source = Path(__file__).parents[3] / "src"
     completed = subprocess.run(

@@ -14,6 +14,7 @@ from typeforge import (
     MapFields,
     Value,
 )
+from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic import Input, Schema
 
 
@@ -64,7 +65,7 @@ def test_malformed_map_reports_operator_and_phase() -> None:
     with pytest.raises(
         PydanticSchemaGenerationError, match=r"parsing.*invalid_marker.*Map entries"
     ):
-        TypeAdapter(Schema[Map[int, str]])
+        TypeAdapter(Schema[CanonicalMap[int, str]])
 
 
 def test_callable_only_relationship_is_rejected() -> None:

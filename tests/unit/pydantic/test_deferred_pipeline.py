@@ -28,6 +28,7 @@ from typeforge import (
     Value,
 )
 from typeforge import Any as AnyCondition
+from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic import Input, Schema
 
 
@@ -214,7 +215,7 @@ def test_generic_alias_tests_use_existing_binding_inside_unions() -> None:
 
 
 def test_empty_deferred_map_is_an_uninhabited_validator() -> None:
-    adapter = TypeAdapter(Schema[Map[Input]])
+    adapter = TypeAdapter(Schema[CanonicalMap[Input]])
     with pytest.raises(ValidationError, match="typeforge_map_no_match"):
         adapter.validate_python("anything")
 
