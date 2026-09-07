@@ -1,10 +1,10 @@
 """Pydantic schemas for resolved types and uninhabited generic fallback fields."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Annotated, Never
 
 from pydantic_core import CoreSchema, PydanticCustomError, core_schema
-from returns.result import safe
 
 from pydantic import GetCoreSchemaHandler, PydanticSchemaGenerationError
 from typeforge import semantics as s
@@ -14,12 +14,13 @@ from typeforge.pydantic._errors import (
     UnsupportedRecordIssue,
 )
 from typeforge.pydantic._type_system import RuntimeType
+from typeforge.utils.error_handling import safe_result
 
 
-@safe(exceptions=(SchemaIssue,))
+@safe_result(errors=(SchemaIssue,))
 def emit_output(
     value: RuntimeType | s.RecordShape[RuntimeType],
-    handler: GetCoreSchemaHandler,
+    handler: Callable[[object], CoreSchema],
     expression: object,
 ) -> CoreSchema:
     if isinstance(value, RuntimeType) and value.value is Never:

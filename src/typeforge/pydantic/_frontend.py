@@ -248,6 +248,9 @@ class _AnnotationAdapter:
         if origin is Value:
             return s.ValueReference()
 
+        if origin is Input:
+            return s.InputReference()
+
         if any(origin is marker for marker in _MARKERS):
             raise SchemaIssue(
                 code="unsupported_relationship",
@@ -293,25 +296,54 @@ class _AnnotationAdapter:
         if not arguments:
             raise invalid(value, "Map requires a subject")
 
+        subject = self.adapt(arguments[0])
         cases: list[s.CaseExpression[RuntimeType]] = []
         default: s.Expression[RuntimeType] | None = None
         for entry in arguments[1:]:
             if default is not None:
                 raise invalid(value, "Map entries cannot follow Default")
 
-            adapted = self._map_entry(entry, expression=value)
+            adapted = self._map_entry(
+                entry, expression=value, raw_input=isinstance(subject, s.InputReference)
+            )
             if isinstance(adapted, s.CaseExpression):
                 cases.append(adapted)
             else:
                 default = adapted
 
-        subject = self.adapt(arguments[0])
         if isinstance(subject, s.KeyReference | s.FieldName):
             cases = [
                 replace(case, test=self._name_expression(case.test)) for case in cases
             ]
 
         return s.MapExpression(subject, tuple(cases), default)
+
+    def _input_test(self, test: s.Expression[RuntimeType]) -> s.Expression[RuntimeType]:
+        """Expose aliases in raw tests using the same argument-binding owner."""
+        match test:
+            case s.TypeReference(value=value):
+                origin = get_origin(value.value) or value.value
+                if isinstance(origin, TypeAliasType):
+                    child = self._alias_adapter(
+                        value.annotation, origin, get_args(value.value)
+                    )
+                    return child._input_test(child.adapt(_alias_value(origin)))
+
+                if origin is Union or origin is Annotated:
+                    return self._input_test(self.adapt(value.value))
+
+            case s.AnnotatedExpression(value=value):
+                return self._input_test(value)
+
+            case s.UnionExpression(members=members):
+                return replace(
+                    test, members=tuple(self._input_test(item) for item in members)
+                )
+
+            case _:
+                pass
+
+        return test
 
     def _field(
         self, value: object, origin: object, arguments: tuple[object, ...]
@@ -381,19 +413,26 @@ class _AnnotationAdapter:
                 return expression
 
     def _map_entry(
-        self, value: object, *, expression: object
+        self, value: object, *, expression: object, raw_input: bool
     ) -> s.CaseExpression[RuntimeType] | s.Expression[RuntimeType]:
         origin = get_origin(value) or value
         parts: tuple[object, ...] = get_args(value)
         if origin is Case and len(parts) == 2:
-            return s.CaseExpression(self._case_test(parts[0]), self.adapt(parts[1]))
+            test = (
+                self._input_test(self.adapt(parts[0]))
+                if raw_input
+                else self._case_test(parts[0])
+            )
+            return s.CaseExpression(test, self.adapt(parts[1]))
 
         if origin is Default and len(parts) == 1:
             return self.adapt(parts[0])
 
         if isinstance(origin, TypeAliasType) and origin not in _MARKERS:
             child = self._alias_adapter(value, origin, parts)
-            return child._map_entry(_alias_value(origin), expression=expression)
+            return child._map_entry(
+                _alias_value(origin), expression=expression, raw_input=raw_input
+            )
 
         raise invalid(
             expression,
@@ -445,6 +484,8 @@ class _AnnotationAdapter:
             case _:
                 # Predicates and contextual expressions remain evaluator inputs.
                 return None
+
+        return None
 
     def _binary_predicate(
         self, value: object, origin: object, arguments: tuple[object, ...]

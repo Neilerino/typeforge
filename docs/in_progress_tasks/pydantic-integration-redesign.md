@@ -1,6 +1,6 @@
 # Pydantic Integration Redesign
 
-Status: In progress — slices 1–4 complete; next: deferred Input selection and emission (slice 5)
+Status: In progress — slices 1–5 complete; next: public hook cutover and legacy removal (slice 6)
 
 Priority: Next implementation scope
 
@@ -56,9 +56,12 @@ Maps and ordinary types now run through shared semantics on this private path.
 The public hook remains on the existing implementation until slice 6; it is the
 identified consumer that requires retaining `_schema.py` during migration.
 
-DeferredMap already preserves ordered cases, default, context, and possible
-output. That does not settle how a runtime consumer resumes selection from raw
-input. Define that seam before implementing deferred validation.
+DeferredMap preserves ordered cases, default, context, and authored expression
+identity. Compiler evaluation computes its possible-output bound. Runtime
+evaluation uses the optional DeferredTypes adapter to retain the plan as a backend
+type, including inside containers and fields, without eagerly computing a bound.
+Evaluator.select_deferred_map resumes selection through the same ordering owner
+as static Maps and returns MapSelection before any output validator runs.
 
 ## Responsibility boundaries
 
@@ -619,6 +622,43 @@ failures. Ordinary leaf schemas still delegate to Pydantic.
 
 ### 5. Integrate deferred Input selection and emission
 
+Status: Complete through the private hook. Public cutover remains slice 6.
+
+Shared Evaluator.select_deferred_map returns the chosen case/default, output
+expression, and bound context, or the original no-match evidence. Static evaluation and runtime
+resumption use the same selection loop. Predicates and unions of tests retain
+shared short-circuit evaluation; InputObserver supplies only raw leaf observations.
+The optional DeferredTypes adapter preserves plans as runtime types through
+templates, annotations, and record fields. Compiler consumers retain their
+existing possible-output bounds and speculative evaluation.
+
+The runtime frontend reuses alias binding when exposing Input tests. `_observation`
+reflects supported test facts and matches exact raw types and type-and-value
+Literals. `_policy` classifies those facts without reflection or validation.
+Parameterized runtime patterns fail construction even under aliases, unions,
+and annotations. Reached predicate failures propagate with their semantic code;
+unvisited operands remain unvisited.
+
+`_deferred` builds schemas for the shared plans and validates only the selected
+output. It retains static field/capture bindings, nested raw-input positions, and
+generic fallbacks without inferring model arguments from values. Pydantic branch
+indices are removed from validation error locations; returned and serialized
+values carry no dispatch wrapper. Serialization selects by output-type observation,
+with the existing limit for indistinguishable outputs. Deferred JSON Schema is
+`{}` in both modes, including an empty Input Map whose validator always rejects.
+
+Outcome translation and resolved-output checking now live in `_evaluation`, shared
+by compilation and deferred emission. `_compile` retains its Result.do flow;
+`_emission` continues to own resolved type and record schemas. Architecture checks
+protect these dependencies and prohibit a compiler/runtime dependency or cycle.
+
+`test_deferred_pipeline.py`, `test_deferred_selection.py`, and policy contracts
+cover R12–R17 and corrections C6, C7, and C9 through the replacement path,
+including legacy-call exclusion, generic specialization/rebuilds, field/capture
+contexts, nested errors, output serializers, and unexpected validator failures.
+
+Implemented scope:
+
 Implement the runtime observation/selection seam agreed in slice 1 and any needed
 shared semantic extension at its owning interface. Consume DeferredMap directly;
 retain semantic case ordering and context, then build the private validation
@@ -662,10 +702,10 @@ dependencies actually change.
 
 ## Immediate next action
 
-Implement slice 5 using the [contract handoff](pydantic-characterization.md).
-Add raw Input observation and selection, consume shared DeferredMap outcomes,
-and emit validation of only the selected output. Preserve first-match ordering,
-type-and-value Literal matching, unsupported runtime pattern rejection, nested
-cases, serialization, and failures without swallowing predicate errors. Include
-generic fields mixing static parameters with Input; never infer an omitted type
-argument from the raw value. Retain the public strict xfail until slice 6.
+Implement slice 6 using the [contract handoff](pydantic-characterization.md).
+Switch the public Schema hook, migrate private replacement contracts to that
+interface, and remove the legacy parser, expression model, evaluator, RuntimeMapPlan,
+and emitter. Remove the public generic no-default strict xfail after proving it
+passes. Update public documentation for corrected diagnostics, Literal matching,
+unsupported runtime patterns, and the serialization limit for indistinguishable
+outputs. Run the full contract suite and repository checks before closing the task.

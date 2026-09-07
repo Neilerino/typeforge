@@ -265,13 +265,3 @@ def test_supported_path_does_not_call_legacy_parser_evaluator_or_emitter(
     structural = TypeAdapter[object](Schema[Selected[list[int]]])
     assert structural.validate_python(["3"]) == (3,)
     assert "function-" not in repr(structural.core_schema)
-
-
-def test_later_slice_operators_fail_explicitly() -> None:
-    from typeforge.pydantic import Input
-
-    for expression in (Map[Input, Case[int, str]],):
-        with pytest.raises(
-            PydanticSchemaGenerationError, match="unsupported_relationship"
-        ):
-            TypeAdapter[object](Schema[expression])

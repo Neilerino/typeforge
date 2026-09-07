@@ -6,11 +6,31 @@ from returns.result import Result
 
 from typeforge.semantics.domain.exceptions import SemanticIssue
 from typeforge.semantics.domain.models import (
+    DeferredMap,
+    EvaluationContext,
+    Expression,
     MapNoMatch,
     NoMatchDecision,
     ParameterizedTypeShape,
     RecordShape,
+    TypePattern,
 )
+
+
+class DeferredTypes[T](Protocol):
+    """Represent a deferred plan as a backend type, preserving later execution."""
+
+    def defer(
+        self, plan: DeferredMap[T]
+    ) -> Result[T, SemanticIssue | MapNoMatch[T]]: ...
+
+
+class InputObserver[T](Protocol):
+    """Observe a non-predicate case on demand; raw values stay in the adapter."""
+
+    def matches(
+        self, test: Expression[T] | TypePattern[T], context: EvaluationContext[T]
+    ) -> Result[bool, SemanticIssue]: ...
 
 
 class EvaluationPolicy[T](Protocol):

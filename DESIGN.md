@@ -50,6 +50,20 @@ context, while field bindings, captures, and speculative paths use derived child
 evaluators. Parent and sibling evaluations remain independent, including after
 failures and during reentrant evaluation.
 
+Runtime consumers can compose the evaluator with `DeferredTypes` to represent a
+deferred Map as a backend type. This preserves execution plans through ordinary
+type construction, annotations, and fields. Such plans do not require a static
+output bound; compiler evaluation continues to compute that bound when no
+deferred type adapter is supplied. Backend adapters consume shared plans rather
+than introducing another expression evaluator.
+
+`Evaluator.select_deferred_map` resumes a deferred plan with a backend input type
+and an `InputObserver`. The observer owns raw leaf observations; shared semantics owns
+predicate evaluation, short-circuit composition, case order, and defaults. The
+result retains the selected expression, case/default identity, and bound context
+before any output validation. Raw values and validators stay outside shared
+semantic data. A validation failure cannot resume case selection.
+
 Expression families use separate named `singledispatchmethod` handlers on the
 evaluator. A small typed recursive entry point preserves the backend type
 parameter across the dispatch descriptor; individual operators remain local

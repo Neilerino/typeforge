@@ -50,6 +50,27 @@ def test_replacement_dependencies_keep_policy_and_emission_separate(
         )
         .where_layer(file("_emission"))
         .may_only_depend_on_layers(file("_errors"), file("_type_system"), *shared)
+        .where_layer(file("_observation"))
+        .may_only_depend_on_layers(file("_policy"), file("_type_system"), *shared)
+        .where_layer(file("_evaluation"))
+        .may_only_depend_on_layers(
+            file("_errors"),
+            file("_frontend"),
+            file("_policy"),
+            file("_records"),
+            file("_type_system"),
+            *shared,
+        )
+        .where_layer(file("_deferred"))
+        .may_only_depend_on_layers(
+            file("_frontend"),
+            file("_evaluation"),
+            file("_emission"),
+            file("_observation"),
+            file("_policy"),
+            file("_type_system"),
+            *shared,
+        )
         .where_layer(file("_compile"))
         .may_only_depend_on_layers(
             file("_frontend"),
@@ -57,7 +78,8 @@ def test_replacement_dependencies_keep_policy_and_emission_separate(
             file("_type_system"),
             file("_emission"),
             file("_errors"),
-            file("_records"),
+            file("_evaluation"),
+            file("_deferred"),
             TYPE_FORGE.interface.name,
             *shared,
         )

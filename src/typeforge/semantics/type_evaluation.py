@@ -181,7 +181,7 @@ def indeterminate_type[T](
         if isinstance(output, IndeterminateType):
             alternatives.extend(output.alternatives)
         elif isinstance(output, DeferredMap):
-            alternatives.append(output.possible_output)
+            alternatives.append(expect_possible_type(output, message))
         else:
             alternatives.append(expect_type_value(output, message))
 
@@ -210,7 +210,7 @@ def union_type[T](
     outputs: Iterable[EvaluationValue[T]], type_system: TypeSystem[T], message: str
 ) -> TypeValue[T]:
     members = tuple(
-        output.possible_output
+        expect_possible_type(output, message)
         if isinstance(output, DeferredMap)
         else expect_type_value(output, message)
         for output in outputs

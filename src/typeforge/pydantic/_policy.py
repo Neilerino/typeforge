@@ -1,7 +1,42 @@
 """Integration rules kept separate from reflection and schema emission."""
 
-from typeforge.pydantic._errors import MapNoMatchIssue
+from enum import StrEnum
+
+from typeforge.pydantic._errors import MapNoMatchIssue, SchemaIssue
 from typeforge.semantics import EvaluationMode, MapNoMatch, NoMatchDecision
+
+
+class InputTestKind(StrEnum):
+    """Value-time test facts supplied by a frontend, without executing a test."""
+
+    TYPE = "type"
+    PREDICATE = "predicate"
+    INPUT = "input"
+    UNBOUND_VALUE = "unbound_value"
+    PARAMETERIZED = "parameterized"
+    UNSUPPORTED = "unsupported"
+
+
+def input_test_issue(kind: InputTestKind, expression: object) -> SchemaIssue | None:
+    match kind:
+        case InputTestKind.TYPE | InputTestKind.PREDICATE | InputTestKind.INPUT:
+            return None
+
+        case InputTestKind.UNBOUND_VALUE:
+            return SchemaIssue(
+                "unbound_value",
+                "planning",
+                expression,
+                "Value requires a field or capture binding",
+            )
+
+        case InputTestKind.PARAMETERIZED:
+            message = "Input does not support parameterized runtime patterns"
+
+        case InputTestKind.UNSUPPORTED:
+            message = "unsupported Input case test"
+
+    return SchemaIssue("unsupported_runtime_pattern", "planning", expression, message)
 
 
 class PydanticEvaluationPolicy[T]:

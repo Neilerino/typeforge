@@ -1,6 +1,6 @@
 # Pydantic Redesign: Runtime Contracts
 
-Status: Slices 1–4 complete; private resolved types and records implemented, public cutover pending
+Status: Slices 1–5 complete; private replacement implemented, public cutover pending
 
 Owning task: [Pydantic integration redesign](pydantic-integration-redesign.md)
 
@@ -16,7 +16,7 @@ specified below for their owning implementation slices.
 Slice 2 implements C1, C2, C3, and C8 through the private replacement hook in
 `typeforge.pydantic._annotation`; its tests are in `test_replacement.py` and
 `test_policy.py`. The public C1 tracer remains a strict xfail until slice 6.
-Slice 4 implements records (C4); runtime Input remains pending.
+Slice 4 implements records (C4); slice 5 implements runtime Input (C6, C7, C9).
 The new lifecycle coverage includes partial inheritance, both specialization
 orders, rebuilt JSON Schemas in both modes, and JSON validation/serialization.
 It also ensures a TypeVar used only in an unreachable output cannot postpone a
@@ -31,8 +31,8 @@ serialization survives union distribution followed by capture. Tests distinguish
 generic no-match from concrete alias failures, retain opaque metadata and ordinary
 recursive aliases, and reject Typeforge alias cycles and unknown variadic arity.
 Unbound variadic aliases require specialization or a finite default; explicit empty
-packs remain distinct. C9's value-time pattern rejection will be enforced by the
-slice 5 Input planner; the private hook still rejects Input in all forms today.
+packs remain distinct. Slice 5 enforces C9's value-time pattern rejection through
+those same alias bindings.
 
 Slice 4 covers R18 and C4 through `test_records.py`: record reflection and field
 transformation, generic TypedDict arguments and inheritance, generic model
@@ -46,6 +46,23 @@ Record annotations run once without leaking into child fields, including when
 a Map selects an annotated record. Shared annotation tests retain opaque metadata
 ordering and inner failure propagation. Resolved record transformations use no
 legacy calls and add no Python validation callback.
+
+Slice 5 covers R12–R17 and C6, C7, C9 through `test_deferred_pipeline.py`.
+Deferred Input works at roots, in nested outputs, in container items, and in
+transformed fields with their original static bindings. Generic fallback remains
+independent of raw values. Tests cover first-match selection, no retry after an
+output failure, reached predicate failures, unvisited operands, type-and-value
+Literals, rejection of hidden parameterized patterns, Python/JSON validation,
+unambiguous serializers, nested error locations/context, model references,
+rebuilds, unexpected validator exception identity, and exclusion of legacy calls.
+
+`tests/unit/semantics/test_deferred_selection.py` verifies shared resumption:
+selected output identity before evaluation, preserved field/capture contexts,
+input binding without parent mutation, on-demand observations, predicate
+short-circuiting, failure identity, and default versus no-match evidence.
+DeferredTypes preserves plans during runtime type composition while compiler
+evaluation continues to compute possible-output bounds. Policy tests classify
+frontend-supplied Input facts independently of reflection and schema emission.
 
 `test_frontend.py` covers the per-call annotation adapter: nested authored origins,
 opaque metadata, isolation across successful and failed builds, and original
@@ -194,9 +211,10 @@ Only visited tests are evaluated. A reached modeled test failure propagates as
 an error; it is not a mismatch. Shared selection returns branch identity before
 emission invokes the selected output validator. Validation failure never resumes
 selection at a later branch. Nested deferred results retain their own context.
-Concrete API names and private plan data should be chosen when slice 5 implements
-this seam, extending slice 2's evaluator and typed selection outcomes rather than
-creating another ordering loop or adding callback parameters throughout traversal.
+The implemented seam is Evaluator.select_deferred_map with InputObserver,
+returning MapSelection or a typed failure. DeferredTypes retains DeferredMap as a backend type during
+composition. Both static Maps and runtime resumption use the evaluator's single
+selection loop; there is no callback passed through recursive traversal.
 
 No-match uses `typeforge_map_no_match`. Other reached predicate failures use
 their modeled code with a `typeforge_` prefix at validation (for example,

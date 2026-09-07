@@ -42,6 +42,7 @@ from typeforge.semantics.domain.models import (
     MapExpression,
     MapFieldsExpression,
     MapNoMatch,
+    MapSelection,
     NoMatchDecision,
     NotExpression,
     OptionalFieldExpression,
@@ -66,7 +67,12 @@ from typeforge.semantics.domain.models import (
     type_ref,
 )
 from typeforge.semantics.evaluation import Evaluator, evaluate
-from typeforge.semantics.protocols import EvaluationPolicy, TypeSystem
+from typeforge.semantics.protocols import (
+    DeferredTypes,
+    EvaluationPolicy,
+    InputObserver,
+    TypeSystem,
+)
 
 __all__ = (
     "AllExpression",
@@ -77,6 +83,7 @@ __all__ = (
     "CaseExpression",
     "Condition",
     "DeferredMap",
+    "DeferredTypes",
     "DropExpression",
     "DroppedField",
     "DuplicateFieldSemanticError",
@@ -97,11 +104,13 @@ __all__ = (
     "FieldName",
     "IndeterminateCondition",
     "IndeterminateType",
+    "InputObserver",
     "InputReference",
     "KeyReference",
     "MapExpression",
     "MapFieldsExpression",
     "MapNoMatch",
+    "MapSelection",
     "NoMatchDecision",
     "NoMatchSemanticError",
     "NotExpression",

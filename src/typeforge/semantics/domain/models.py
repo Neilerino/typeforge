@@ -1,6 +1,6 @@
 """Backend-neutral data shared by semantic adapters."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TypeIs
 
@@ -280,7 +280,22 @@ class DeferredMap[T]:
     cases: tuple[CaseExpression[T], ...]
     default: Expression[T] | None
     context: EvaluationContext[T]
-    possible_output: ResolvedType[T]
+    possible_output: ResolvedType[T] | None = None
+    expression: MapExpression[T] | None = field(default=None, compare=False)
+
+
+@dataclass(frozen=True, slots=True)
+class MapSelection[T]:
+    """Selected authored output and bindings, before output evaluation.
+
+    A missing case index identifies Default. Static selection may be indeterminate;
+    its caller explores the selected output and reachable remainder separately.
+    """
+
+    output: Expression[T]
+    context: EvaluationContext[T]
+    case_index: int | None
+    condition: Condition = True
 
 
 @dataclass(frozen=True, slots=True)

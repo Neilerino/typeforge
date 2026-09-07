@@ -46,6 +46,7 @@ from typeforge.semantics.domain.models import (
     MapExpression,
     MapFieldsExpression,
     MapNoMatch,
+    MapSelection,
     NoMatchDecision,
     NotExpression,
     OptionalFieldExpression,
@@ -55,6 +56,7 @@ from typeforge.semantics.domain.models import (
     RecordField,
     RecordShape,
     ResolvedType,
+    TypePattern,
     TypeReference,
     TypeValue,
     TypeValueReference,
@@ -65,7 +67,12 @@ from typeforge.semantics.domain.models import (
     is_pattern_expr,
 )
 from typeforge.semantics.map_matching import map_values_are_equal, match_type_pattern
-from typeforge.semantics.protocols import EvaluationPolicy, TypeSystem
+from typeforge.semantics.protocols import (
+    DeferredTypes,
+    EvaluationPolicy,
+    InputObserver,
+    TypeSystem,
+)
 from typeforge.semantics.type_evaluation import (
     assignable_types,
     build_type,
@@ -121,10 +128,12 @@ class Evaluator[T]:
         *,
         policy: EvaluationPolicy[T] | None = None,
         context: EvaluationContext[T] | None = None,
+        deferred_types: DeferredTypes[T] | None = None,
     ) -> None:
         self.type_system = type_system
         self._policy: EvaluationPolicy[T] = policy or _DefaultPolicy()
         self._context: EvaluationContext[T] = context or EvaluationContext()
+        self._deferred_types = deferred_types
 
     @property
     def context(self) -> EvaluationContext[T]:
@@ -132,7 +141,44 @@ class Evaluator[T]:
 
     def with_context(self, context: EvaluationContext[T]) -> Evaluator[T]:
         """Bind a child context while sharing this evaluator's adapter and policy."""
-        return Evaluator(self.type_system, policy=self._policy, context=context)
+        return Evaluator(
+            self.type_system,
+            policy=self._policy,
+            context=context,
+            deferred_types=self._deferred_types,
+        )
+
+    def select_deferred_map(
+        self, plan: DeferredMap[T], input_type: T, observer: InputObserver[T]
+    ) -> Result[MapSelection[T], SemanticIssue | MapNoMatch[T]]:
+        """Resume a deferred Map, stopping before its selected output is evaluated.
+
+        Restore the plan's saved bindings and bind the observed input type.
+        Return no-match evidence directly, without applying output acceptance policy.
+        """
+        errors: tuple[type[SemanticIssue | MapNoMatch[T]], ...] = (
+            SemanticIssue,
+            MapNoMatch,
+        )
+        run: Callable[
+            [DeferredMap[T], T, InputObserver[T]],
+            Result[MapSelection[T], SemanticIssue | MapNoMatch[T]],
+        ] = safe_result(errors=errors)(self._select_deferred_map)
+        return run(plan, input_type, observer)
+
+    def _select_deferred_map(
+        self, plan: DeferredMap[T], input_type: T, observer: InputObserver[T]
+    ) -> MapSelection[T]:
+        subject = ResolvedType(input_type)
+        evaluator = self.with_context(replace(plan.context, input_type=subject))
+        expression = plan.expression or MapExpression(
+            InputReference(), plan.cases, plan.default
+        )
+        selection = evaluator._select_map_member(subject, expression, observer=observer)
+        if isinstance(selection, MapNoMatch):
+            return Failure(selection).unwrap()
+
+        return selection
 
     def evaluate(
         self, expression: Expression[T]
@@ -220,7 +266,9 @@ class Evaluator[T]:
             # uncertainty keeps its provenance for later predicates.
             arguments.append(
                 expect_type_value(
-                    value.possible_output if isinstance(value, DeferredMap) else value,
+                    expect_possible_type(value, "deferred argument requires a bound")
+                    if isinstance(value, DeferredMap)
+                    else value,
                     "parameterized type arguments must evaluate to types",
                 )
             )
@@ -237,7 +285,9 @@ class Evaluator[T]:
             return replace(value, metadata=(*value.metadata, *expression.metadata))
 
         annotated = expect_type_value(
-            value.possible_output if isinstance(value, DeferredMap) else value,
+            expect_possible_type(value, "deferred annotation requires a bound")
+            if isinstance(value, DeferredMap)
+            else value,
             "annotations require a type or a record",
         )
         return build_type(
@@ -411,7 +461,13 @@ class Evaluator[T]:
     def _defer_map(
         self,
         expression: MapExpression[T],
-    ) -> DeferredMap[T]:
+    ) -> DeferredMap[T] | ResolvedType[T]:
+        plan = DeferredMap(
+            expression.cases, expression.default, self.context, expression=expression
+        )
+        if self._deferred_types is not None:
+            return ResolvedType(self._deferred_types.defer(plan).unwrap())
+
         speculative = self.with_context(
             replace(self.context, mode=EvaluationMode.SPECULATIVE)
         )
@@ -429,10 +485,8 @@ class Evaluator[T]:
             )
             output_types = (*output_types, default_type.value)
 
-        return DeferredMap(
-            cases=expression.cases,
-            default=expression.default,
-            context=self.context,
+        return replace(
+            plan,
             possible_output=ResolvedType(self.type_system.union(output_types).unwrap()),
         )
 
@@ -443,9 +497,43 @@ class Evaluator[T]:
         *,
         start_case: int = 0,
     ) -> EvaluationValue[T]:
+        selection = self._select_map_member(subject, expression, start_case=start_case)
+        if isinstance(selection, MapNoMatch):
+            return self._no_match(selection)
+
+        if selection.condition is True:
+            return self.with_context(selection.context)._evaluate(selection.output)
+
+        assert isinstance(selection.condition, IndeterminateCondition)
+        assert selection.case_index is not None
+        speculative = self.with_context(
+            replace(self.context, mode=EvaluationMode.SPECULATIVE)
+        )
+        selected = self.with_context(
+            replace(selection.context, mode=EvaluationMode.SPECULATIVE)
+        )._evaluate(selection.output)
+        expect_possible_type(
+            selected, "indeterminate Map outputs must evaluate to types"
+        )
+        remaining = speculative._evaluate_map_member(
+            subject, expression, start_case=selection.case_index + 1
+        )
+        return indeterminate_type((selected, remaining), self.type_system)
+
+    def _select_map_member(
+        self,
+        subject: EvaluationValue[T],
+        expression: MapExpression[T],
+        *,
+        start_case: int = 0,
+        observer: InputObserver[T] | None = None,
+    ) -> MapSelection[T] | MapNoMatch[T]:
         for index, case in enumerate(expression.cases[start_case:], start=start_case):
             output_context = self.context
-            if is_bool_expr(case.test):
+            if observer is not None:
+                matched = self._observe_test(case.test, observer)
+
+            elif is_bool_expr(case.test):
                 matched = expect_condition(self._evaluate(case.test))
 
             elif is_pattern_expr(case.test):
@@ -465,28 +553,28 @@ class Evaluator[T]:
                 test = self._evaluate(case.test)
                 matched = map_values_are_equal(subject, test, self.type_system)
 
-            if matched is True:
-                return self.with_context(output_context)._evaluate(case.output)
-
-            if isinstance(matched, IndeterminateCondition):
-                speculative = self.with_context(
-                    replace(self.context, mode=EvaluationMode.SPECULATIVE)
-                )
-                output_context = replace(
-                    output_context, mode=EvaluationMode.SPECULATIVE
-                )
-                selected = self.with_context(output_context)._evaluate(case.output)
-                expect_possible_type(
-                    selected, "indeterminate Map outputs must evaluate to types"
-                )
-                remaining = speculative._evaluate_map_member(
-                    subject,
-                    expression,
-                    start_case=index + 1,
-                )
-                return indeterminate_type((selected, remaining), self.type_system)
+            if matched is True or isinstance(matched, IndeterminateCondition):
+                return MapSelection(case.output, output_context, index, matched)
 
         if expression.default is not None:
-            return self._evaluate(expression.default)
+            return MapSelection(expression.default, self.context, None)
 
-        return self._no_match(MapNoMatch(expression, subject, self.context))
+        return MapNoMatch(expression, subject, self.context)
+
+    def _observe_test(
+        self, test: Expression[T] | TypePattern[T], observer: InputObserver[T]
+    ) -> Condition:
+        if is_bool_expr(test):
+            return expect_condition(self._evaluate(test))
+
+        match test:
+            case UnionExpression(members=members):
+                return disjunction(
+                    self._observe_test(member, observer) for member in members
+                )
+
+            case AnnotatedExpression(value=value):
+                return self._observe_test(value, observer)
+
+            case _:
+                return observer.matches(test, self.context).unwrap()

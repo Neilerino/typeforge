@@ -25,7 +25,13 @@ def expect_possible_type[T](
     message: str,
 ) -> ResolvedType[T]:
     """Obtain a static output bound without treating deferred selection as resolved."""
-    if isinstance(value, DeferredMap | IndeterminateType):
+    if isinstance(value, DeferredMap):
+        if value.possible_output is None:
+            raise ExpectedTypeSemanticError("deferred Map has no static output bound")
+
+        return value.possible_output
+
+    if isinstance(value, IndeterminateType):
         return value.possible_output
 
     if isinstance(value, UnresolvedType):

@@ -4,8 +4,10 @@ from returns.result import Failure
 from tests.unit.semantics.test_migration_spec import NameTypeSystem
 from typeforge import semantics as s
 from typeforge.pydantic._policy import (
+    InputTestKind,
     PydanticEvaluationPolicy,
     generic_fallback,
+    input_test_issue,
     no_match_issue,
 )
 
@@ -56,6 +58,7 @@ def test_policy_accepts_speculative_no_match_but_rejects_the_selected_path() -> 
 
     deferred = evaluator.evaluate(expression).unwrap()
     assert isinstance(deferred, s.DeferredMap)
+    assert deferred.possible_output is not None
     assert deferred.possible_output.value == "Never"
 
     result = evaluator.with_context(
@@ -77,3 +80,28 @@ def test_speculative_policy_does_not_suppress_unrelated_semantic_failures() -> N
 
     assert isinstance(result, Failure)
     assert isinstance(result.failure(), s.UnboundKeySemanticError)
+
+
+@pytest.mark.parametrize(
+    ("kind", "code"),
+    [
+        (InputTestKind.TYPE, None),
+        (InputTestKind.INPUT, None),
+        (InputTestKind.PREDICATE, None),
+        (InputTestKind.PARAMETERIZED, "unsupported_runtime_pattern"),
+        (InputTestKind.UNBOUND_VALUE, "unbound_value"),
+        (InputTestKind.UNSUPPORTED, "unsupported_runtime_pattern"),
+    ],
+)
+def test_input_admissibility_uses_frontend_facts_without_observing_a_value(
+    kind: InputTestKind,
+    code: str | None,
+) -> None:
+    expression = object()
+    issue = input_test_issue(kind, expression)
+    if code is None:
+        assert issue is None
+    else:
+        assert issue is not None
+        assert issue.code == code
+        assert issue.expression is expression
