@@ -1,5 +1,5 @@
 import ast
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from returns.result import Failure, Result, Success
@@ -738,7 +738,24 @@ def _parse_annotation(
         )
         argument_values: list[SourceTypeExpression] = []
         for slice_node in slice_nodes:
-            argument = _parse_annotation(path, source, slice_node, bindings)
+            argument = (
+                _parse_map_slice(
+                    path,
+                    source,
+                    slice_node,
+                    bindings,
+                    argument_values[0],
+                    after_default=any(
+                        isinstance(previous, MarkerTypeExpression)
+                        and previous.marker is MarkerKind.DEFAULT
+                        for previous in argument_values[1:]
+                    ),
+                )
+                if _marker_kind(constructor) is MarkerKind.MAP
+                and isinstance(slice_node, ast.Slice)
+                and argument_values
+                else _parse_annotation(path, source, slice_node, bindings)
+            )
             if argument is not None:
                 argument_values.append(argument)
 
@@ -767,6 +784,90 @@ def _parse_annotation(
         )
 
     return RawTypeExpression(source=rendered, span=span)
+
+
+def _parse_map_slice(
+    path: Path,
+    source: str,
+    node: ast.Slice,
+    bindings: _ImportBindings,
+    subject: SourceTypeExpression,
+    *,
+    after_default: bool,
+) -> SourceTypeExpression:
+    """THROWAWAY: lower slice syntax directly to existing source marker data."""
+    rendered = ast.get_source_segment(source, node) or ast.unparse(node)
+    span = _span(path, node)
+    if (
+        after_default
+        or node.lower is None
+        or node.upper is None
+        or node.step is not None
+        or any(
+            isinstance(endpoint, ast.Constant) and endpoint.value is None
+            for endpoint in (node.lower, node.upper)
+        )
+    ):
+        return RawTypeExpression(rendered, span)
+
+    output = _parse_annotation(path, source, node.upper, bindings)
+    assert output is not None
+    if isinstance(node.lower, ast.Constant) and node.lower.value is Ellipsis:
+        return MarkerTypeExpression(rendered, span, MarkerKind.DEFAULT, (output,))
+
+    selector = _parse_annotation(path, source, node.lower, bindings)
+    assert selector is not None
+    return MarkerTypeExpression(
+        rendered,
+        span,
+        MarkerKind.CASE,
+        (_bind_map_selector(selector, subject), output),
+    )
+
+
+def _bind_map_selector(
+    selector: SourceTypeExpression, subject: SourceTypeExpression
+) -> SourceTypeExpression:
+    if isinstance(selector, MarkerTypeExpression):
+        if selector.marker in {MarkerKind.EQUAL, MarkerKind.ASSIGNABLE}:
+            if len(selector.arguments) == 1:
+                return replace(
+                    selector,
+                    arguments=(subject, _map_literal(selector.arguments[0])),
+                )
+
+        elif selector.marker in {MarkerKind.ALL, MarkerKind.ANY, MarkerKind.NOT}:
+            return replace(
+                selector,
+                arguments=tuple(
+                    _bind_map_selector(argument, subject)
+                    for argument in selector.arguments
+                ),
+            )
+
+    return _map_literal(selector)
+
+
+def _map_literal(expression: SourceTypeExpression) -> SourceTypeExpression:
+    if not isinstance(expression, RawTypeExpression):
+        return expression
+
+    try:
+        value = ast.literal_eval(expression.source)
+    except ValueError, SyntaxError:
+        return expression
+
+    if not isinstance(value, str | bytes | bool | int):
+        return expression
+
+    return AppliedTypeExpression(
+        expression.source,
+        expression.span,
+        NameTypeExpression(
+            "Literal", expression.span, ("Literal",), ("typing", "Literal")
+        ),
+        (expression,),
+    )
 
 
 def _annotated_value(node: ast.expr, bindings: _ImportBindings) -> ast.expr | None:
@@ -840,6 +941,7 @@ def _marker_kind(expression: SourceTypeExpression) -> MarkerKind | None:
     if qualified_name[:-1] not in {
         ("typeforge",),
         ("typeforge", "_markers"),
+        ("typeforge", "_slice_map_prototype"),
     }:
         return None
 
