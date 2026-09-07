@@ -1,4 +1,4 @@
-"""Expand authored schema aliases before assigning semantic roles."""
+"""Expand authored aliases before assigning schema and predicate roles."""
 
 from collections.abc import Callable
 from dataclasses import replace
@@ -9,6 +9,8 @@ from returns.result import safe
 from typeforge.compiler.adaptation._models import AdaptationError
 from typeforge.compiler.source import (
     AppliedTypeExpression,
+    MarkerKind,
+    MarkerNormalizationError,
     MarkerTypeExpression,
     NameTypeExpression,
     RawTypeExpression,
@@ -19,6 +21,7 @@ from typeforge.compiler.source import (
     TypeAliasDeclaration,
     TypeParameterKind,
     UnionTypeExpression,
+    bind_map_selector,
 )
 
 
@@ -28,8 +31,13 @@ def expand_schema_aliases(
     aliases: tuple[TypeAliasDeclaration, ...],
     *,
     declaration: str,
+    predicates_only: bool = False,
 ) -> SourceTypeExpression:
-    """Require the snapshot's alias context; keep source text and spans authored."""
+    """Expand with authored origins; preserve ordinary aliases outside Schema.
+
+    Callable and record paths request predicate-only expansion so their existing
+    alias and specialization policies remain in control of ordinary types.
+    """
 
     def expand(
         item: SourceTypeExpression, stack: tuple[tuple[str, ...], ...] = ()
@@ -42,7 +50,14 @@ def expand_schema_aliases(
             case NameTypeExpression(name=name):
                 arguments = ()
             case _:
-                return _rewrite_children(item, lambda child: expand(child, stack))
+                return _bind_map_selectors(
+                    _rewrite_children(item, lambda child: expand(child, stack))
+                )
+
+        if predicates_only and not _is_predicate_reference(item, aliases):
+            return _bind_map_selectors(
+                _rewrite_children(item, lambda child: expand(child, stack))
+            )
 
         alias = next((alias for alias in aliases if alias.qualified_name == name), None)
         if alias is None:
@@ -83,7 +98,67 @@ def expand_schema_aliases(
         )
         return expand(_substitute(alias.value, bindings), (*stack, name))
 
-    return expand(expression)
+    try:
+        return expand(expression)
+    except MarkerNormalizationError as error:
+        raise AdaptationError(declaration, error.source, error.message) from error
+
+
+def _bind_map_selectors(item: SourceTypeExpression) -> SourceTypeExpression:
+    """Bind Case selectors, leaving other entries for the existing validator."""
+    if (
+        not isinstance(item, MarkerTypeExpression)
+        or item.marker is not MarkerKind.MAP
+        or not item.arguments
+    ):
+        return item
+
+    subject, *entries = item.arguments
+    arguments: list[SourceTypeExpression] = [subject]
+    for entry in entries:
+        match entry:
+            case MarkerTypeExpression(
+                marker=MarkerKind.CASE, arguments=(selector, output)
+            ):
+                bound_selector = bind_map_selector(selector, subject)
+                entry = replace(entry, arguments=(bound_selector, output))
+            case _:
+                pass
+
+        arguments.append(entry)
+
+    return replace(item, arguments=tuple(arguments))
+
+
+def _is_predicate_reference(
+    expression: SourceTypeExpression,
+    aliases: tuple[TypeAliasDeclaration, ...],
+    seen: tuple[tuple[str, ...], ...] = (),
+) -> bool:
+    match expression:
+        case MarkerTypeExpression(marker=marker):
+            return marker in {
+                MarkerKind.EQUAL,
+                MarkerKind.ASSIGNABLE,
+                MarkerKind.ALL,
+                MarkerKind.ANY,
+                MarkerKind.NOT,
+            }
+        case (
+            NameTypeExpression(name=name)
+            | AppliedTypeExpression(constructor=NameTypeExpression(name=name))
+        ):
+            if name in seen:
+                return False
+
+            alias = next(
+                (alias for alias in aliases if alias.qualified_name == name), None
+            )
+            return alias is not None and _is_predicate_reference(
+                alias.value, aliases, (*seen, name)
+            )
+        case _:
+            return False
 
 
 def _substitute(

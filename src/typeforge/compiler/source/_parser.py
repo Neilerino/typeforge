@@ -1,9 +1,13 @@
 import ast
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 
 from returns.result import Failure, Result, Success
 
+from typeforge.compiler.source._markers import (
+    MarkerNormalizationError,
+    bind_map_selector,
+)
 from typeforge.compiler.source._model import (
     AppliedTypeExpression,
     ClassDeclaration,
@@ -841,61 +845,18 @@ def _parse_map_slice(
         path, source, node.lower, bindings
     ) or RawTypeExpression("None", span)
 
+    try:
+        bound_selector = bind_map_selector(selector, subject)
+    except MarkerNormalizationError as error:
+        raise _AnnotationSyntaxError(
+            error.message, error.span or selector.span
+        ) from error
+
     return MarkerTypeExpression(
         rendered,
         span,
         MarkerKind.CASE,
-        (_bind_map_selector(selector, subject), output),
-    )
-
-
-def _bind_map_selector(
-    selector: SourceTypeExpression, subject: SourceTypeExpression
-) -> SourceTypeExpression:
-    if isinstance(selector, MarkerTypeExpression):
-        if selector.marker in {MarkerKind.EQUAL, MarkerKind.ASSIGNABLE}:
-            if len(selector.arguments) == 1:
-                return replace(
-                    selector,
-                    arguments=(subject, _map_literal(selector.arguments[0])),
-                )
-
-        elif selector.marker in {MarkerKind.ALL, MarkerKind.ANY, MarkerKind.NOT}:
-            return replace(
-                selector,
-                arguments=tuple(
-                    _bind_map_selector(argument, subject)
-                    for argument in selector.arguments
-                ),
-            )
-
-    return _map_literal(selector)
-
-
-def _map_literal(expression: SourceTypeExpression) -> SourceTypeExpression:
-    if not isinstance(expression, RawTypeExpression):
-        return expression
-
-    try:
-        value = ast.literal_eval(expression.source)
-    except ValueError, SyntaxError:
-        return expression
-
-    if isinstance(value, str):
-        raise _AnnotationSyntaxError(
-            'Map string selectors require Literal["text"]', expression.span
-        )
-
-    if not isinstance(value, bytes | bool | int):
-        return expression
-
-    return AppliedTypeExpression(
-        expression.source,
-        expression.span,
-        NameTypeExpression(
-            "Literal", expression.span, ("Literal",), ("typing", "Literal")
-        ),
-        (expression,),
+        (bound_selector, output),
     )
 
 

@@ -1,11 +1,16 @@
 """Validated, role-aware representations of Typeforge marker expressions."""
 
-from dataclasses import dataclass
+import ast
+from dataclasses import dataclass, replace
 
 from typeforge.compiler.source._model import (
+    AppliedTypeExpression,
     MarkerKind,
     MarkerTypeExpression,
+    NameTypeExpression,
+    RawTypeExpression,
     SchemaTypeExpression,
+    SourceSpan,
     SourceTypeExpression,
 )
 
@@ -46,6 +51,7 @@ MARKER_SIGNATURES = {
 class MarkerNormalizationError(Exception):
     source: str
     message: str
+    span: SourceSpan | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,3 +311,55 @@ def _validate_predicate_role(expression: SourceTypeExpression) -> None:
             expression.source,
             f"{expression.marker.value} is not a predicate",
         )
+
+
+def bind_map_selector(
+    selector: SourceTypeExpression, subject: SourceTypeExpression
+) -> SourceTypeExpression:
+    if isinstance(selector, MarkerTypeExpression):
+        if selector.marker in {MarkerKind.EQUAL, MarkerKind.ASSIGNABLE}:
+            if len(selector.arguments) == 1:
+                return replace(
+                    selector,
+                    arguments=(subject, _map_literal(selector.arguments[0])),
+                )
+
+        elif selector.marker in {MarkerKind.ALL, MarkerKind.ANY, MarkerKind.NOT}:
+            return replace(
+                selector,
+                arguments=tuple(
+                    bind_map_selector(argument, subject)
+                    for argument in selector.arguments
+                ),
+            )
+
+    return _map_literal(selector)
+
+
+def _map_literal(expression: SourceTypeExpression) -> SourceTypeExpression:
+    if not isinstance(expression, RawTypeExpression):
+        return expression
+
+    try:
+        value = ast.literal_eval(expression.source)
+    except ValueError, SyntaxError:
+        return expression
+
+    if isinstance(value, str):
+        raise MarkerNormalizationError(
+            expression.source,
+            'Map string selectors require Literal["text"]',
+            expression.span,
+        )
+
+    if not isinstance(value, bytes | bool | int):
+        return expression
+
+    return AppliedTypeExpression(
+        expression.source,
+        expression.span,
+        NameTypeExpression(
+            "Literal", expression.span, ("Literal",), ("typing", "Literal")
+        ),
+        (expression,),
+    )

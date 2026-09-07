@@ -105,11 +105,29 @@ including deferred Input bounds and unresolved static type identity.
 The compiler's source schema adapter expands authored aliases before shared
 lowering, keeping callable relationship IR separate. It requires the source
 snapshot's alias context and preserves omitted defaults and authored cycles.
+The same expansion owner resolves predicate aliases for callable adaptation and
+record materialization while preserving ordinary type aliases on those paths.
+After expansion, each Map binds unary selector predicates to its own subject via
+the source selector normalizer, before binary arity validation. Predicate alias
+declarations remain unbound templates with a bool fallback in emitted interfaces.
 Static type emission is shared with record materialization; schema origins follow
 normalization without merging independent boundary roots. Production declaration
 adaptation and reusable Schema roots both use this adapter. Callable Map
 relationships retain their overload path; record aliases retain their existing
 materialization stage, and Each/Collect retain finite specialization.
+
+Record alias traversal belongs to `RecordAliasRewriter`, configured once with
+derived records and a rewrite observer. Its declaration and type operations reuse
+the shared stub-IR tree rewriter; recursive declaration methods retain their
+configuration without forwarding observer arguments. Adaptation owns authored
+origin tracking and supplies the observer when constructing the rewriter.
+
+The runtime frontend carries an explicit selector subject through predicate
+aliases, compound conditions, and Annotated wrappers. Nested Maps establish a
+new subject; output types and explicit predicate operands receive no implicit
+subject. Alias type parameters retain their existing identity-based bindings.
+Literal normalization is shared with construction. Neither frontend stores
+implicit predicates in shared semantic data or changes union matching policies.
 
 ## Library and project output
 

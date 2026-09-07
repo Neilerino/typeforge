@@ -2,7 +2,7 @@
 
 Status: Authoring contract settled — slice 01 complete. Slice 02's union
 investigation is complete with explicit follow-up gates; production
-public runtime construction and source normalization are complete through slice 04. Remaining integration
+public construction, source normalization, and predicate binding are complete through slice 05. Remaining integration
 and cross-consumer union semantics are not complete.
 
 Task: [Map slice syntax migration, slice 01](map-slice-syntax.md#01--settle-the-authoring-and-migration-contract).
@@ -10,8 +10,8 @@ Evidence: [Feasibility POC](../ideas/map-slice-poc.md), `08d940a`.
 
 This document specifies the target public behavior. Slice 03 implements runtime
 construction through the public export, and slice 04 implements source
-normalization. Remaining aliases and consumer integration are assigned to
-slices 05–11. Union decisions remain
+normalization. Slice 05 implements predicate aliases at both frontend seams.
+Remaining consumer integration is assigned to slices 06–11. Union decisions remain
 subject to slice 02's explicit gates.
 
 ## Outcome and success evidence
@@ -295,6 +295,17 @@ retain their spans. Invalid slice syntax produces a SourceSyntaxError result
 with the authored location. Existing marker normalization continues to validate
 general arity and entry roles, and alias expansion retains its current owner.
 This does not alter the unresolved union semantics in G1–G6.
+
+Slice 05 resolves unary and compound predicate aliases before final validation.
+Generic predicate targets, chained aliases, explicit operands, nested subjects,
+field Key/Value, captures, and Input reuse existing representations. The source
+expansion owner supplies predicate normalization to callable and record paths
+without expanding their ordinary type aliases. Runtime adaptation propagates the
+consuming subject through predicate aliases and retains ordinary alias opacity.
+Union-bearing predicate aliases have inline-parity evidence in each frontend;
+G1/G3 still prohibit claiming portable union-selector or ordinary union-alias
+semantics. Generic examples bind type arguments, not higher-order unbound
+predicate parameters; unsupported alias forms retain existing frontend errors.
 
 Malformed construction must fail through an appropriate annotation-construction
 exception; compiler entry points retain their typed failure results. Pydantic

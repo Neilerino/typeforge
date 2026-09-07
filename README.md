@@ -104,8 +104,23 @@ The compiler normalizes these branches into its existing Case/Default data,
 preserving authored locations. Qualified and renamed imports work. Invalid steps,
 branches following a fallback, and bare string selectors receive located errors.
 
-The syntax migration is in progress: predicate aliases and inline checker
-projection still have work remaining. Raw slice annotations
+Reusable unary predicate aliases bind to the subject of the consuming Map in
+both compiler and Pydantic frontends:
+
+```python
+from typeforge import Assignable, Map
+
+type Numeric = Assignable[int]
+type Encoded[T] = Map[T, Numeric: str, ...: bytes]
+```
+
+Generic predicate aliases such as `type Is[T] = Equal[T]` and compounds using
+`All`, `Any`, and `Not` follow the same rule. Nested Maps bind their own subjects;
+explicit binary operands stay explicit. A unary predicate used outside a selector
+fails as unbound. Existing union restrictions still apply.
+
+The syntax migration is in progress: inline checker
+projection still has work remaining. Raw slice annotations
 are not promised to work in ordinary type checkers. Existing Case/Default
 examples below remain valid during the repository migration and will be removed
 at the coordinated cutover. See the

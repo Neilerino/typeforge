@@ -10,6 +10,7 @@ from typeforge.compiler.adaptation._models import (
 )
 from typeforge.compiler.adaptation._records import materialize_records
 from typeforge.compiler.adaptation._schema import adapt_schema_expression
+from typeforge.compiler.adaptation._schema_aliases import expand_schema_aliases
 from typeforge.compiler.record_materialization import (
     RecordMaterializationError,
     is_map_fields_alias,
@@ -29,6 +30,7 @@ from typeforge.compiler.source import (
     KeyMarker,
     MapFieldsMarker,
     MapMarker,
+    MarkerKind,
     MarkerNormalizationError,
     MarkerTypeExpression,
     NameTypeExpression,
@@ -45,6 +47,7 @@ from typeforge.compiler.source import (
     StarredTypeExpression,
     UnionTypeExpression,
     ValueMarker,
+    bind_map_selector,
     contains_marker,
     is_enriched,
     normalize_marker,
@@ -311,7 +314,14 @@ def _collect_semantic_relationship_aliases(
 ) -> tuple[SemanticRelationshipAlias, ...]:
     semantic: list[SemanticRelationshipAlias] = []
     for alias in aliases:
-        value = schema_inner_expression(alias.value)
+        value = schema_inner_expression(
+            expand_schema_aliases(
+                alias.value,
+                schema_aliases,
+                declaration=alias.name,
+                predicates_only=True,
+            ).unwrap()
+        )
         if not isinstance(value, MarkerTypeExpression):
             continue
 
@@ -494,6 +504,29 @@ def _adapt_alias_fallback(
     *,
     schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> StubTypeExpression:
+    expression = expand_schema_aliases(
+        expression, schema_aliases, declaration=declaration, predicates_only=True
+    ).unwrap()
+    if isinstance(expression, MarkerTypeExpression) and expression.marker in {
+        MarkerKind.EQUAL,
+        MarkerKind.ASSIGNABLE,
+        MarkerKind.ALL,
+        MarkerKind.ANY,
+        MarkerKind.NOT,
+    }:
+        # Declaring an unbound predicate is valid; validate its eventual binary
+        # shape without assigning a consuming Map subject to the authored alias.
+        try:
+            normalized = bind_map_selector(
+                expression,
+                NameTypeExpression("object", expression.span, ("object",), None),
+            )
+        except MarkerNormalizationError as error:
+            raise AdaptationError(declaration, error.source, error.message) from error
+
+        assert isinstance(normalized, MarkerTypeExpression)
+        expression = normalized
+
     if not isinstance(expression, MarkerTypeExpression):
         return _adapt_type_expression(
             expression,
@@ -676,6 +709,18 @@ def _(
     *,
     schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> StubTypeExpression:
+    expanded = expand_schema_aliases(
+        expression, schema_aliases, declaration=declaration, predicates_only=True
+    ).unwrap()
+    if isinstance(expanded, MarkerTypeExpression):
+        return _adapt_type_expression(
+            expanded,
+            declaration,
+            type_parameters,
+            origins=origins,
+            schema_aliases=schema_aliases,
+        )
+
     if expression.source in type_parameters:
         return TypeVariable(expression.source)
 
@@ -743,6 +788,18 @@ def _(
     *,
     schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> StubTypeExpression:
+    expanded = expand_schema_aliases(
+        expression, schema_aliases, declaration=declaration, predicates_only=True
+    ).unwrap()
+    if isinstance(expanded, MarkerTypeExpression):
+        return _adapt_type_expression(
+            expanded,
+            declaration,
+            type_parameters,
+            origins=origins,
+            schema_aliases=schema_aliases,
+        )
+
     return TypeApplication(
         _adapt_type_expression(
             expression.constructor,
@@ -770,6 +827,11 @@ def _(
     *,
     schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> StubTypeExpression:
+    expanded = expand_schema_aliases(
+        expression, schema_aliases, declaration=declaration, predicates_only=True
+    ).unwrap()
+    assert isinstance(expanded, MarkerTypeExpression)
+    expression = expanded
     marker = _normalize_marker(declaration, expression)
     match marker:
         case ValueMarker():

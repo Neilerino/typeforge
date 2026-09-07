@@ -263,8 +263,10 @@ def test_none_type_is_an_unambiguous_runtime_alternative() -> None:
     assert adapter.validate_python("x") == "x"
 
 
-def test_predicate_alias_is_not_yet_bound_by_the_construction_facade() -> None:
+def test_predicate_alias_is_bound_by_the_frontend_after_construction() -> None:
     type Numeric = Assignable[int]
 
-    with pytest.raises(PydanticSchemaGenerationError, match="two operands"):
-        TypeAdapter(Schema[Map[int, Numeric:str, ...:bytes]])
+    assert (
+        TypeAdapter(Schema[Map[int, Numeric:str, ...:bytes]]).validate_python("x")
+        == "x"
+    )

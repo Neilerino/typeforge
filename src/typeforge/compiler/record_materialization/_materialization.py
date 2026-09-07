@@ -1,7 +1,6 @@
 """TypedDict discovery and structural record-transform materialization."""
 
 from dataclasses import replace
-from typing import assert_never
 
 from returns.result import Failure, safe
 
@@ -38,18 +37,14 @@ from typeforge.compiler.source import (
 from typeforge.compiler.stub_ir import (
     ClassDeclaration,
     ClassField,
-    Declaration,
     FunctionDeclaration,
     Import,
     OverloadDeclaration,
     StubModule,
     StubTypeExpression,
-    TypeAliasDeclaration,
     TypeApplication,
     TypeName,
     TypeRewriteObserver,
-    VariableDeclaration,
-    rewrite_type,
     substitute_type,
 )
 from typeforge.semantics import (
@@ -143,65 +138,6 @@ def materialize_record_transforms(
     )
 
 
-def replace_record_aliases_in_declaration(
-    declaration: Declaration,
-    derived: tuple[DerivedRecord, ...],
-    on_rewrite: TypeRewriteObserver | None = None,
-) -> Declaration:
-    match declaration:
-        case FunctionDeclaration():
-            return replace_record_aliases_in_function(
-                declaration, derived, on_rewrite=on_rewrite
-            )
-        case OverloadDeclaration():
-            return replace_record_aliases_in_overload(
-                declaration, derived, on_rewrite=on_rewrite
-            )
-        case TypeAliasDeclaration():
-            return replace(
-                declaration,
-                value=replace_record_aliases(
-                    declaration.value, derived, on_rewrite=on_rewrite
-                ),
-            )
-        case VariableDeclaration():
-            return replace(
-                declaration,
-                annotation=replace_record_aliases(
-                    declaration.annotation, derived, on_rewrite=on_rewrite
-                ),
-            )
-        case ClassDeclaration():
-            return replace(
-                declaration,
-                bases=tuple(
-                    replace_record_aliases(base, derived, on_rewrite=on_rewrite)
-                    for base in declaration.bases
-                ),
-                fields=tuple(
-                    replace(
-                        field,
-                        annotation=replace_record_aliases(
-                            field.annotation, derived, on_rewrite=on_rewrite
-                        ),
-                    )
-                    for field in declaration.fields
-                ),
-                methods=tuple(
-                    replace_record_aliases_in_function(
-                        method, derived, on_rewrite=on_rewrite
-                    )
-                    if isinstance(method, FunctionDeclaration)
-                    else replace_record_aliases_in_overload(
-                        method, derived, on_rewrite=on_rewrite
-                    )
-                    for method in declaration.methods
-                ),
-            )
-        case _ as unreachable:
-            assert_never(unreachable)
-
-
 def typed_dict_declaration(shape: RecordShape[StaticType]) -> ClassDeclaration:
     if shape.family is not RecordFamily.TYPED_DICT:
         raise ValueError(f"cannot emit {shape.family.value} record as a TypedDict")
@@ -232,67 +168,6 @@ def _typed_dict_field_type(field: RecordField[StaticType]) -> StubTypeExpression
         )
 
     return annotation
-
-
-def replace_record_aliases_in_function(
-    declaration: FunctionDeclaration,
-    derived: tuple[DerivedRecord, ...],
-    on_rewrite: TypeRewriteObserver | None = None,
-) -> FunctionDeclaration:
-    return replace(
-        declaration,
-        parameters=tuple(
-            replace(
-                parameter,
-                annotation=replace_record_aliases(
-                    parameter.annotation, derived, on_rewrite=on_rewrite
-                ),
-            )
-            for parameter in declaration.parameters
-        ),
-        return_type=replace_record_aliases(
-            declaration.return_type, derived, on_rewrite=on_rewrite
-        ),
-    )
-
-
-def replace_record_aliases_in_overload(
-    declaration: OverloadDeclaration,
-    derived: tuple[DerivedRecord, ...],
-    on_rewrite: TypeRewriteObserver | None = None,
-) -> OverloadDeclaration:
-    return replace(
-        declaration,
-        signatures=tuple(
-            replace_record_aliases_in_function(
-                signature, derived, on_rewrite=on_rewrite
-            )
-            for signature in declaration.signatures
-        ),
-        fallback=replace_record_aliases_in_function(
-            declaration.fallback, derived, on_rewrite=on_rewrite
-        ),
-    )
-
-
-def replace_record_aliases(
-    expression: StubTypeExpression,
-    derived: tuple[DerivedRecord, ...],
-    on_rewrite: TypeRewriteObserver | None = None,
-) -> StubTypeExpression:
-    replacements = {
-        (item.alias, item.input_name): TypeName(item.shape.name or "object")
-        for item in derived
-    }
-
-    def replace_alias(current: StubTypeExpression) -> StubTypeExpression | None:
-        match current:
-            case TypeApplication(TypeName(alias), (TypeName(input_name),)):
-                return replacements.get((alias, input_name))
-            case _:
-                return None
-
-    return rewrite_type(expression, replace_alias, on_rewrite=on_rewrite)
 
 
 def build_record_shapes(

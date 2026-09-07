@@ -94,7 +94,7 @@ def test_nested_adaptation_failures_preserve_the_original_error(
     source.write_text(
         "from typeforge import Case, Default, Equal, Map\n"
         "def choose[T](value: T) -> "
-        "Map[T, Case[Equal[T], str], Default[bytes]]: ...\n",
+        "Map[T, Case[Equal[T, int, str], str], Default[bytes]]: ...\n",
         encoding="utf-8",
     )
 
@@ -104,7 +104,7 @@ def test_nested_adaptation_failures_preserve_the_original_error(
     error = generated.failure()
     assert isinstance(error, AdaptationError)
     assert error.declaration == "choose"
-    assert error.expression == "Equal[T]"
+    assert error.expression == "Equal[T, int, str]"
     assert error.message == "Equal requires two type arguments"
 
 

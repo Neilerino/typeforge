@@ -1,10 +1,10 @@
 # Map slice syntax migration
 
 Status: In progress — feasibility POC, authoring contract, union investigation,
-public runtime construction, and source normalization complete. Remaining
+public runtime construction, source normalization, and predicate alias binding complete. Remaining
 integration and union gates remain open.
 
-Next slice: 05 — predicate binding through aliases and nested scopes. Confirmed contract:
+Next slice: 06 — inline annotations for checker overlays. Confirmed contract:
 None and empty endpoints are equivalent; old authoring is removed at cutover;
 string selectors require Literal until tooling supports bare strings.
 
@@ -60,7 +60,7 @@ Annotation normalization must not add work to ordinary application call paths.
 - [x] **02 — De-risk union behavior across both frontends and consumers.**
 - [x] **03 — Implement production runtime marker construction.**
 - [x] **04 — Normalize source slices into existing compiler data.**
-- [ ] **05 — Bind predicates through aliases and nested scopes.**
+- [x] **05 — Bind predicates through aliases and nested scopes.**
 - [ ] **06 — Project inline annotations for checker overlays.**
 - [ ] **07 — Complete callable and published-stub integration.**
 - [ ] **08 — Complete Pydantic integration and runtime dispatch.**
@@ -327,7 +327,39 @@ Verify binding before/after expansion does not alter branch reachability,
 distribution, or capture meaning.
 Resolve slice 02 gates G1/G3 before claiming portable union predicate/alias behavior.
 
-Evidence/commit: pending.
+Completed: both frontends bind unary predicate aliases at the consuming Map.
+Source alias expansion reuses the selector normalizer before arity validation;
+callable and record adaptation selectively expand predicate aliases while their
+ordinary type-alias policies remain unchanged. Runtime adaptation carries the
+selector subject through aliases and compound conditions. Alias declarations
+remain reusable and unbound; explicit binary operands and output positions do
+not inherit a selector subject. Existing semantic expressions and evaluators are
+unchanged.
+
+Evidence: [16 compiler cases](../../tests/unit/compiler/adaptation/test_source_predicate_aliases.py)
+and [17 runtime cases](../../tests/unit/pydantic/test_predicate_aliases.py) cover
+generic type arguments, chained and compound aliases, nested and sibling Maps,
+same-named type parameters, explicit operands, Key/Value, structural captures,
+Input selection without retry, malformed uses, cycles, authored origins, metadata,
+and compiler isolation. Initial runtime and compiler alias tracers failed before
+implementation; the record tracer also exposed and verified its missing seam.
+Obsolete POC failure assertions now verify success. Existing failure-propagation
+tests use three-operand predicates because unary selectors are now valid.
+
+Union de-risking is bounded: aliased Assignable predicates with union operands
+match inline predicates for concrete and union subjects in each frontend; source
+outputs also contain unions. The existing 85-case union matrix still passes.
+This establishes binding parity, not cross-consumer union equivalence. Ordinary
+union-alias opacity, selector distribution, and G1/G3 remain assigned to 07/08.
+Generic predicate examples accept type arguments; higher-order unbound predicate
+parameters are outside this slice's supported examples. Existing frontend limits
+for unsupported generic and recursive aliases remain explicit.
+
+Validation passed: focused checks across compiler, Pydantic, construction, and
+union evidence; full `make check` (pytest, Ruff lint/format, block spacing, mypy,
+Pyright), and diff whitespace checks. README, DESIGN, and the contract were
+updated. No expected-failure markers remain for this slice.
+Commit: pending; implementation is in the working tree.
 
 ### 06 — Project inline annotations for checker overlays
 

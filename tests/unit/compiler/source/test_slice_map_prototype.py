@@ -252,15 +252,14 @@ def test_unbounded_structural_callable_has_the_same_existing_emission_limit(
         assert "unlowered type expression: MapValueType" in str(result.failure())
 
 
-def test_unary_predicate_alias_requires_normalization_after_alias_expansion() -> None:
+def test_unary_predicate_alias_normalizes_after_alias_expansion() -> None:
     source = """\
 from typeforge import Map, Assignable
 type Numeric = Assignable[int]
 def f[T](x: T) -> Map[T, Numeric: str, ...: bytes]: ...
 """
     result = compile_source(source, Path("example.py"), maximum_arity=2)
-    assert isinstance(result, Failure)
-    assert "Assignable requires two type arguments" in str(result.failure())
+    result.unwrap()
 
 
 def test_compilation_never_imports_or_executes_authored_code(tmp_path: Path) -> None:

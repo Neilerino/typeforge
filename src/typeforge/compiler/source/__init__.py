@@ -24,6 +24,7 @@ from typeforge.compiler.source._markers import (
     OptionalFieldMarker,
     ReadonlyFieldMarker,
     ValueMarker,
+    bind_map_selector,
     normalize_marker,
     schema_inner_expression,
 )
@@ -118,6 +119,7 @@ __all__ = [
     "TypedDictField",
     "UnionTypeExpression",
     "ValueMarker",
+    "bind_map_selector",
     "contains_marker",
     "enriched_functions",
     "is_enriched",

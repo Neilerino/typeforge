@@ -91,7 +91,7 @@ def test_public_surface_failure_precedes_compiler_failures(tmp_path: Path) -> No
     source = dedent("""\
         from typeforge import Case, Equal, Map
 
-        def choose[T](value: T) -> Map[T, Case[Equal[T], str]]: ...
+        def choose[T](value: T) -> Map[T, Case[Equal[T, int, str], str]]: ...
 
         while ready():
             serve()

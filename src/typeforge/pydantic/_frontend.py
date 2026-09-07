@@ -32,6 +32,7 @@ from typeforge import (
 )
 from typeforge import Any as AnyCondition
 from typeforge import semantics as s
+from typeforge._map import normalize_selector_literal
 from typeforge._markers import Map
 from typeforge.pydantic._errors import SchemaIssue, UnresolvedAnnotationIssue
 from typeforge.pydantic._markers import Input
@@ -205,12 +206,19 @@ class _AnnotationAdapter:
         self.bindings: AnnotationBindingMap = bindings or {}
         self.aliases: tuple[TypeAliasType, ...] = aliases or ()
 
-    def adapt(self, value: object) -> s.Expression[RuntimeType]:
-        expression = self._lower(value)
+    def adapt(
+        self,
+        value: object,
+        *,
+        selector_subject: s.Expression[RuntimeType] | None = None,
+    ) -> s.Expression[RuntimeType]:
+        expression = self._lower(value, selector_subject=selector_subject)
         self.origins[id(expression)] = value
         return expression
 
-    def _lower(self, value: object) -> s.Expression[RuntimeType]:
+    def _lower(
+        self, value: object, *, selector_subject: s.Expression[RuntimeType] | None
+    ) -> s.Expression[RuntimeType]:
         origin = get_origin(value) or value
         arguments: tuple[object, ...] = get_args(value)
         if isinstance(value, TypeVar | TypeVarTuple):
@@ -234,13 +242,13 @@ class _AnnotationAdapter:
             return s.DropExpression()
 
         if origin is Equal or origin is Assignable:
-            return self._binary_predicate(value, origin, arguments)
+            return self._binary_predicate(value, origin, arguments, selector_subject)
 
         if origin is All or origin is AnyCondition:
-            return self._conditions(origin, arguments)
+            return self._conditions(origin, arguments, selector_subject)
 
         if origin is Not:
-            return self._not(value, arguments)
+            return self._not(value, arguments, selector_subject)
 
         if origin is Key:
             return s.KeyReference()
@@ -260,7 +268,7 @@ class _AnnotationAdapter:
             )
 
         if origin is Annotated:
-            return self._annotated(arguments)
+            return self._annotated(arguments, selector_subject)
 
         if origin is Union:
             return self._union(arguments)
@@ -269,7 +277,7 @@ class _AnnotationAdapter:
             return s.TypeReference(concrete_type(value))
 
         if isinstance(origin, TypeAliasType):
-            return self._alias(value, origin, arguments)
+            return self._alias(value, origin, arguments, selector_subject)
 
         return self._ordinary_type(value, origin, arguments)
 
@@ -301,9 +309,7 @@ class _AnnotationAdapter:
             if default is not None:
                 raise invalid(value, "Map entries cannot follow Default")
 
-            adapted = self._map_entry(
-                entry, expression=value, raw_input=isinstance(subject, s.InputReference)
-            )
+            adapted = self._map_entry(entry, expression=value, subject=subject)
             if isinstance(adapted, s.CaseExpression):
                 cases.append(adapted)
             else:
@@ -411,15 +417,15 @@ class _AnnotationAdapter:
                 return expression
 
     def _map_entry(
-        self, value: object, *, expression: object, raw_input: bool
+        self, value: object, *, expression: object, subject: s.Expression[RuntimeType]
     ) -> s.CaseExpression[RuntimeType] | s.Expression[RuntimeType]:
         origin = get_origin(value) or value
         parts: tuple[object, ...] = get_args(value)
         if origin is Case and len(parts) == 2:
             test = (
-                self._input_test(self.adapt(parts[0]))
-                if raw_input
-                else self._case_test(parts[0])
+                self._input_test(self.adapt(parts[0], selector_subject=subject))
+                if isinstance(subject, s.InputReference)
+                else self._case_test(parts[0], subject)
             )
             return s.CaseExpression(test, self.adapt(parts[1]))
 
@@ -429,7 +435,7 @@ class _AnnotationAdapter:
         if isinstance(origin, TypeAliasType) and origin not in _MARKERS:
             child = self._alias_adapter(value, origin, parts)
             return child._map_entry(
-                _alias_value(origin), expression=expression, raw_input=raw_input
+                _alias_value(origin), expression=expression, subject=subject
             )
 
         raise invalid(
@@ -439,9 +445,9 @@ class _AnnotationAdapter:
         )
 
     def _case_test(
-        self, value: object
+        self, value: object, subject: s.Expression[RuntimeType]
     ) -> s.Expression[RuntimeType] | s.TypePattern[RuntimeType]:
-        expression = self.adapt(value)
+        expression = self.adapt(value, selector_subject=subject)
         result = self._pattern(expression) or expression
 
         self.origins[id(result)] = value
@@ -486,12 +492,27 @@ class _AnnotationAdapter:
         return None
 
     def _binary_predicate(
-        self, value: object, origin: object, arguments: tuple[object, ...]
+        self,
+        value: object,
+        origin: object,
+        arguments: tuple[object, ...],
+        selector_subject: s.Expression[RuntimeType] | None,
     ) -> s.EqualExpression[RuntimeType] | s.AssignableExpression[RuntimeType]:
-        if len(arguments) != 2:
+        if len(arguments) == 1:
+            if selector_subject is None:
+                raise invalid(value, "Unary predicate requires a Map selector subject")
+
+            try:
+                target = normalize_selector_literal(arguments[0])
+            except TypeError as error:
+                raise invalid(value, str(error)) from error
+
+            left, right = selector_subject, self.adapt(target)
+        elif len(arguments) == 2:
+            left, right = (self.adapt(arg) for arg in arguments)
+        else:
             raise invalid(value, "Binary predicates require two operands")
 
-        left, right = (self.adapt(arg) for arg in arguments)
         if isinstance(left, s.KeyReference | s.FieldName) or isinstance(
             right, s.KeyReference | s.FieldName
         ):
@@ -504,9 +525,14 @@ class _AnnotationAdapter:
         )
 
     def _conditions(
-        self, origin: object, arguments: tuple[object, ...]
+        self,
+        origin: object,
+        arguments: tuple[object, ...],
+        selector_subject: s.Expression[RuntimeType] | None,
     ) -> s.AllExpression[RuntimeType] | s.AnyExpression[RuntimeType]:
-        conditions = tuple(self.adapt(arg) for arg in arguments)
+        conditions = tuple(
+            self.adapt(arg, selector_subject=selector_subject) for arg in arguments
+        )
         return (
             s.AllExpression(conditions)
             if origin is All
@@ -514,19 +540,26 @@ class _AnnotationAdapter:
         )
 
     def _not(
-        self, value: object, arguments: tuple[object, ...]
+        self,
+        value: object,
+        arguments: tuple[object, ...],
+        selector_subject: s.Expression[RuntimeType] | None,
     ) -> s.NotExpression[RuntimeType]:
         if len(arguments) != 1:
             raise invalid(value, "Not requires one condition")
 
-        return s.NotExpression(self.adapt(arguments[0]))
+        return s.NotExpression(
+            self.adapt(arguments[0], selector_subject=selector_subject)
+        )
 
     def _annotated(
-        self, arguments: tuple[object, ...]
+        self,
+        arguments: tuple[object, ...],
+        selector_subject: s.Expression[RuntimeType] | None,
     ) -> s.AnnotatedExpression[RuntimeType]:
         return s.AnnotatedExpression(
             concrete_type(Annotated),
-            self.adapt(arguments[0]),
+            self.adapt(arguments[0], selector_subject=selector_subject),
             tuple(concrete_type(metadata) for metadata in arguments[1:]),
         )
 
@@ -534,13 +567,17 @@ class _AnnotationAdapter:
         return s.UnionExpression(tuple(self.adapt(arg) for arg in arguments))
 
     def _alias(
-        self, value: object, alias: TypeAliasType, arguments: tuple[object, ...]
+        self,
+        value: object,
+        alias: TypeAliasType,
+        arguments: tuple[object, ...],
+        selector_subject: s.Expression[RuntimeType] | None,
     ) -> s.Expression[RuntimeType]:
         if not _contains_operator(value):
             return self._ordinary_type(value, alias, arguments)
 
         child = self._alias_adapter(value, alias, arguments)
-        return child.adapt(_alias_value(alias))
+        return child.adapt(_alias_value(alias), selector_subject=selector_subject)
 
     def _alias_adapter(
         self, value: object, alias: TypeAliasType, arguments: tuple[object, ...]

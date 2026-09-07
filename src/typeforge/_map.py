@@ -57,7 +57,7 @@ def _bind_selector(selector: object, subject: object) -> object:
     origin = get_origin(selector)
     arguments: tuple[object, ...] = get_args(selector)
     if origin in (Equal, Assignable) and len(arguments) == 1:
-        return _apply(origin, (subject, _literal_selector(arguments[0])))
+        return _apply(origin, (subject, normalize_selector_literal(arguments[0])))
 
     if origin in (All, AnyCondition, Not):
         return _apply(
@@ -65,10 +65,10 @@ def _bind_selector(selector: object, subject: object) -> object:
         )
 
     # Alias expansion and binding through aliases belong to the frontend (slice 05).
-    return _literal_selector(selector)
+    return normalize_selector_literal(selector)
 
 
-def _literal_selector(value: object) -> object:
+def normalize_selector_literal(value: object) -> object:
     if value is None:
         return NoneType
 

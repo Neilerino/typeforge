@@ -2,16 +2,19 @@
 
 from dataclasses import replace
 
+from typeforge.compiler.adaptation._schema_aliases import expand_schema_aliases
 from typeforge.compiler.record_materialization import (
+    RecordAliasRewriter,
+    RecordMaterialization,
     materialize_record_transforms,
-    replace_record_aliases,
-    replace_record_aliases_in_declaration,
 )
 from typeforge.compiler.source import SourceModule, SourceSpan
+from typeforge.compiler.source import TypeAliasDeclaration as SourceTypeAlias
 from typeforge.compiler.stub_ir import (
     ClassDeclaration,
     Declaration,
     FunctionDeclaration,
+    GeneratedElement,
     GeneratedElementOrigin,
     StubModule,
     StubTypeExpression,
@@ -19,30 +22,61 @@ from typeforge.compiler.stub_ir import (
     merge_imports,
     walk_module,
 )
-from typeforge.utils.error_handling import ok
 
 
 def materialize_records(source: SourceModule, module: StubModule) -> StubModule:
-    expression_origins = list(module.origins)
+    source = _expand_predicate_aliases(source)
+    origins = _RecordOrigins(module.origins)
 
-    def record_rewrite(
-        original: StubTypeExpression, replacement: StubTypeExpression
-    ) -> None:
-        if original is not replacement:
-            expression_origins.extend(
-                replace(item, generated=replacement)
-                for item in tuple(expression_origins)
-                if item.generated is original
-            )
+    records = materialize_record_transforms(
+        source, module, on_rewrite=origins.record_rewrite
+    ).unwrap()
 
-    records = ok(
-        materialize_record_transforms(source, module, on_rewrite=record_rewrite)
-    )
     if not records.declarations:
         return module
 
+    rewriter = RecordAliasRewriter(records.derived, on_rewrite=origins.record_rewrite)
+    declarations, declaration_origins = _rewrite_declarations(
+        source, module, records, rewriter
+    )
+    reusable_elements = _rewrite_reusable_elements(source, module, rewriter)
+    materialized = replace(
+        module,
+        declarations=(*records.declarations, *declarations),
+        reusable_elements=reusable_elements,
+        imports=merge_imports((*module.imports, *records.imports)),
+    )
+    additional_origins = (
+        *declaration_origins,
+        *_record_origins(source, records),
+    )
+    current_origins = origins.for_module(materialized, additional_origins)
+    return replace(materialized, origins=current_origins)
+
+
+def _expand_predicate_aliases(source: SourceModule) -> SourceModule:
+    aliases: list[SourceTypeAlias] = []
+    for alias in source.aliases:
+        value = expand_schema_aliases(
+            alias.value,
+            source.aliases,
+            declaration=alias.name,
+            predicates_only=True,
+        ).unwrap()
+        aliases.append(replace(alias, value=value))
+
+    return replace(source, aliases=tuple(aliases))
+
+
+def _rewrite_declarations(
+    source: SourceModule,
+    module: StubModule,
+    records: RecordMaterialization,
+    rewriter: RecordAliasRewriter,
+) -> tuple[tuple[Declaration, ...], tuple[GeneratedElementOrigin[SourceSpan], ...]]:
+    """Apply record replacements without confusing module and scoped functions."""
     replacements = dict(records.replacements)
-    declarations: list[Declaration] = list(records.declarations)
+    declarations: list[Declaration] = []
     origins: list[GeneratedElementOrigin[SourceSpan]] = []
     functions = {
         item.name: item for item in source.functions if len(item.qualified_name) == 1
@@ -58,99 +92,146 @@ def materialize_records(source: SourceModule, module: StubModule) -> StubModule:
         if origin.origin in scoped_spans
     }
     for declaration in module.declarations:
-        replacement = replace_record_aliases_in_declaration(
-            replacements.get(declaration.name, declaration)
-            if isinstance(declaration, FunctionDeclaration)
+        replacement = declaration
+        if (
+            isinstance(declaration, FunctionDeclaration)
             and id(declaration) not in scoped_functions
-            else declaration,
-            records.derived,
-            on_rewrite=record_rewrite,
-        )
-        declarations.append(replacement)
-        existing_origins = tuple(
-            item for item in module.origins if item.generated is declaration
-        )
-        origins.extend(
-            GeneratedElementOrigin(item.origin, replacement)
-            for item in existing_origins
-        )
-        if isinstance(declaration, ClassDeclaration) and isinstance(
-            replacement, ClassDeclaration
         ):
-            for original_method, replacement_method in zip(
-                declaration.methods, replacement.methods, strict=True
-            ):
-                origins.extend(
-                    GeneratedElementOrigin(item.origin, replacement_method)
-                    for item in module.origins
-                    if item.generated is original_method
-                )
+            replacement = replacements.get(declaration.name, declaration)
+
+        replacement = rewriter.rewrite_declaration(replacement)
+        declarations.append(replacement)
+        rewritten_origins = _rewritten_declaration_origins(
+            module.origins, declaration, replacement
+        )
+        origins.extend(rewritten_origins)
 
         if (
             isinstance(declaration, FunctionDeclaration)
             and declaration.name in replacements
-            and not existing_origins
+            and not rewritten_origins
         ):
             origins.append(
                 GeneratedElementOrigin(functions[declaration.name].span, replacement)
             )
 
+    return tuple(declarations), tuple(origins)
+
+
+def _rewritten_declaration_origins(
+    origins: tuple[GeneratedElementOrigin[SourceSpan], ...],
+    original: Declaration,
+    replacement: Declaration,
+) -> tuple[GeneratedElementOrigin[SourceSpan], ...]:
+    rewritten = tuple(
+        replace(item, generated=replacement)
+        for item in origins
+        if item.generated is original
+    )
+    if isinstance(original, ClassDeclaration) and isinstance(
+        replacement, ClassDeclaration
+    ):
+        for original_method, replacement_method in zip(
+            original.methods, replacement.methods, strict=True
+        ):
+            method_origins = tuple(
+                replace(item, generated=replacement_method)
+                for item in origins
+                if item.generated is original_method
+            )
+            rewritten += method_origins
+
+    return rewritten
+
+
+def _record_origins(
+    source: SourceModule, records: RecordMaterialization
+) -> tuple[GeneratedElementOrigin[SourceSpan], ...]:
+    """Associate each derived record with both its transform and input record."""
     source_record_count = len(source.typed_dicts)
-    origins.extend(
+    source_declarations = records.declarations[:source_record_count]
+    derived_declarations = records.declarations[source_record_count:]
+    origins = [
         GeneratedElementOrigin(authored.span, generated)
         for authored, generated in zip(
-            source.typed_dicts,
-            records.declarations[:source_record_count],
-            strict=True,
+            source.typed_dicts, source_declarations, strict=True
         )
-    )
+    ]
     aliases = {item.name: item for item in source.aliases}
     source_records = {item.name: item for item in source.typed_dicts}
-    origins.extend(
-        GeneratedElementOrigin(authored.span, generated)
-        for derived, generated in zip(
-            records.derived,
-            records.declarations[source_record_count:],
-            strict=True,
-        )
-        for authored in (aliases[derived.alias], source_records[derived.input_name])
-    )
+    for derived, generated in zip(records.derived, derived_declarations, strict=True):
+        alias = aliases[derived.alias]
+        input_record = source_records[derived.input_name]
+        origins.append(GeneratedElementOrigin(alias.span, generated))
+        origins.append(GeneratedElementOrigin(input_record.span, generated))
+
+    return tuple(origins)
+
+
+def _rewrite_reusable_elements(
+    source: SourceModule,
+    module: StubModule,
+    rewriter: RecordAliasRewriter,
+) -> tuple[GeneratedElement, ...]:
+    """Rewrite expression roots while retaining authored aliases and contracts."""
     alias_spans = {alias.span for alias in source.aliases}
     alias_roots = {
         id(origin.generated)
         for origin in module.origins
         if origin.origin in alias_spans
     }
-    reusable_elements = tuple(
-        element
-        if is_declaration(element) or id(element) in alias_roots
-        else replace_record_aliases(element, records.derived, on_rewrite=record_rewrite)
-        for element in module.reusable_elements
-    )
-    materialized = replace(
-        module,
-        declarations=tuple(declarations),
-        reusable_elements=reusable_elements,
-        imports=merge_imports((*module.imports, *records.imports)),
-    )
-    declaration_order: dict[int, int] = {}
-    for element in walk_module(materialized):
-        declaration_order.setdefault(id(element), len(declaration_order))
+    rewritten: list[GeneratedElement] = []
+    for element in module.reusable_elements:
+        if is_declaration(element) or id(element) in alias_roots:
+            rewritten.append(element)
+        else:
+            replacement = rewriter.rewrite_type(element)
+            rewritten.append(replacement)
 
-    return replace(
-        materialized,
-        origins=tuple(
-            sorted(
-                {
-                    (item.origin, id(item.generated)): item
-                    for item in (*origins, *expression_origins)
-                    if id(item.generated) in declaration_order
-                }.values(),
-                key=lambda item: (
-                    item.origin.start.line,
-                    item.origin.start.column,
-                    declaration_order[id(item.generated)],
-                ),
-            )
-        ),
-    )
+    return tuple(rewritten)
+
+
+class _RecordOrigins:
+    """Track expression rewrites during one record-materialization operation."""
+
+    def __init__(self, origins: tuple[GeneratedElementOrigin[SourceSpan], ...]) -> None:
+        self._origins = list(origins)
+
+    def record_rewrite(
+        self, original: StubTypeExpression, replacement: StubTypeExpression
+    ) -> None:
+        if original is replacement:
+            return
+
+        rewritten = tuple(
+            replace(item, generated=replacement)
+            for item in self._origins
+            if item.generated is original
+        )
+        self._origins.extend(rewritten)
+
+    def for_module(
+        self,
+        module: StubModule,
+        additional_origins: tuple[GeneratedElementOrigin[SourceSpan], ...],
+    ) -> tuple[GeneratedElementOrigin[SourceSpan], ...]:
+        """Retain reachable origins, deduplicated and ordered deterministically."""
+        declaration_order: dict[int, int] = {}
+        for element in walk_module(module):
+            declaration_order.setdefault(id(element), len(declaration_order))
+
+        origins = (*additional_origins, *self._origins)
+        unique_origins = {
+            (item.origin, id(item.generated)): item
+            for item in origins
+            if id(item.generated) in declaration_order
+        }
+        ordered_origins = sorted(
+            unique_origins.values(),
+            key=lambda item: (
+                item.origin.start.line,
+                item.origin.start.column,
+                declaration_order[id(item.generated)],
+            ),
+        )
+        return tuple(ordered_origins)
