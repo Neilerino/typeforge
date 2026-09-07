@@ -5,7 +5,7 @@ from dataclasses import replace
 from functools import singledispatch
 from typing import NamedTuple, Protocol
 
-from typeforge.semantics.domain.assertions import expect_condition, expect_type
+from typeforge.semantics.domain.assertions import expect_condition, expect_possible_type
 from typeforge.semantics.domain.exceptions import UnsupportedExpressionSemanticError
 from typeforge.semantics.domain.models import (
     CaptureValuePattern,
@@ -81,7 +81,7 @@ def evaluate_map[T](
         return outputs[0]
 
     output_types = tuple(
-        expect_type(
+        expect_possible_type(
             output,
             "Map outputs for a union subject must evaluate to types",
         ).value
@@ -98,14 +98,14 @@ def _defer_map[T](
     fn: _ExpressionEvaluator[T],
 ) -> DeferredMap[T]:
     output_types = tuple(
-        expect_type(
+        expect_possible_type(
             fn(case.output, type_system, context),
             "deferred Map outputs must evaluate to types",
         ).value
         for case in expression.cases
     )
     if expression.default is not None:
-        default_type = expect_type(
+        default_type = expect_possible_type(
             fn(expression.default, type_system, context),
             "deferred Map outputs must evaluate to types",
         )

@@ -84,7 +84,13 @@ class NameTypeSystem:
         return Success(tuple(value.split(" | ")))
 
     def union(self, members: tuple[str, ...]) -> Result[str, SemanticIssue]:
-        return Success(" | ".join(dict.fromkeys(members)) or "Never")
+        flattened = (
+            candidate
+            for member in members
+            for candidate in member.split(" | ")
+            if candidate != "Never"
+        )
+        return Success(" | ".join(dict.fromkeys(flattened)) or "Never")
 
     def record(self, value: str) -> Result[RecordShape[str], SemanticIssue]:
         shape = self._records.get(value)
@@ -705,6 +711,30 @@ def test_deferred_map_normalizes_duplicate_possible_outputs() -> None:
     )
 
 
+def test_deferred_map_composes_a_nested_deferred_case_output() -> None:
+    nested = MapExpression(
+        InputReference(),
+        (CaseExpression(TypeReference("int"), TypeReference("str")),),
+        TypeReference("float"),
+    )
+    cases = (CaseExpression(TypeReference("int"), nested),)
+    default = TypeReference("bytes")
+    context = EvaluationContext(value=ResolvedType("UUID"))
+
+    result = evaluate(
+        MapExpression(InputReference(), cases, default), NameTypeSystem(), context
+    )
+
+    assert result == Success(
+        DeferredMap(
+            cases=cases,
+            default=default,
+            context=context,
+            possible_output=ResolvedType("str | float | bytes"),
+        )
+    )
+
+
 def test_deferred_map_preserves_union_adapter_failures() -> None:
     """Possible output construction preserves the adapter's modeled failure."""
     issue = SemanticAdapterError("union is unavailable")
@@ -720,6 +750,59 @@ def test_deferred_map_preserves_union_adapter_failures() -> None:
 
     assert isinstance(result, Failure)
     assert result.failure() is issue
+
+
+def test_deferred_map_composes_a_nested_deferred_default() -> None:
+    default = MapExpression(
+        InputReference(),
+        (CaseExpression(TypeReference("int"), TypeReference("str")),),
+        TypeReference("float"),
+    )
+    expression = MapExpression(
+        InputReference(),
+        (CaseExpression(TypeReference("bytes"), TypeReference("bytes")),),
+        default,
+    )
+
+    result = evaluate(expression, NameTypeSystem()).unwrap()
+
+    assert isinstance(result, DeferredMap)
+    assert result.default is default
+    assert result.possible_output == ResolvedType("bytes | str | float")
+
+
+def test_union_subject_composes_deferred_and_resolved_outputs() -> None:
+    nested = MapExpression(
+        InputReference(),
+        (CaseExpression(TypeReference("int"), TypeReference("str")),),
+        TypeReference("float"),
+    )
+    expression = MapExpression(
+        TypeReference("int | bytes"),
+        (CaseExpression(TypeReference("int"), nested),),
+        TypeReference("bytes"),
+    )
+
+    assert evaluate(expression, NameTypeSystem()) == Success(
+        ResolvedType("str | float | bytes")
+    )
+
+
+def test_union_expression_composes_deferred_and_resolved_outputs() -> None:
+    expression = UnionExpression(
+        (
+            MapExpression(
+                InputReference(),
+                (CaseExpression(TypeReference("int"), TypeReference("str")),),
+                TypeReference("float"),
+            ),
+            TypeReference("bytes"),
+        )
+    )
+
+    assert evaluate(expression, NameTypeSystem()) == Success(
+        ResolvedType("str | float | bytes")
+    )
 
 
 def test_deferred_map_preserves_and_uses_its_evaluation_context() -> None:
@@ -738,6 +821,145 @@ def test_deferred_map_preserves_and_uses_its_evaluation_context() -> None:
             possible_output=ResolvedType("int"),
         )
     )
+
+
+def test_nested_possible_outputs_are_normalized_once_per_map() -> None:
+    union_inputs: list[tuple[str, ...]] = []
+
+    class RecordingTypeSystem(NameTypeSystem):
+        def union(self, members: tuple[str, ...]) -> Result[str, SemanticIssue]:
+            union_inputs.append(members)
+            return super().union(members)
+
+    nested = MapExpression(
+        InputReference(),
+        (CaseExpression(TypeReference("int"), TypeReference("str")),),
+        TypeReference("float"),
+    )
+    expression = MapExpression(
+        InputReference(),
+        (CaseExpression(TypeReference("int"), nested),),
+        TypeReference("str"),
+    )
+
+    result = evaluate(expression, RecordingTypeSystem()).unwrap()
+
+    assert isinstance(result, DeferredMap)
+    assert result.possible_output == ResolvedType("str | float")
+    assert union_inputs == [("str", "float"), ("str | float", "str")]
+
+
+@pytest.mark.parametrize("default", (None, TypeReference("Never")))
+def test_nested_deferred_no_match_contributes_no_possible_type(
+    default: TypeReference[str] | None,
+) -> None:
+    nested = MapExpression[str](InputReference(), (), default)
+    expression = MapExpression(
+        InputReference(),
+        (CaseExpression(TypeReference("int"), nested),),
+        TypeReference("bytes"),
+    )
+
+    result = evaluate(expression, NameTypeSystem()).unwrap()
+
+    assert isinstance(result, DeferredMap)
+    assert result.possible_output == ResolvedType("bytes")
+
+
+@pytest.mark.parametrize(
+    ("expression", "message"),
+    (
+        pytest.param(
+            MapExpression(
+                InputReference(),
+                (CaseExpression(TypeReference("int"), TypeReference("str")),),
+                FieldName("invalid"),
+            ),
+            "deferred Map outputs must evaluate to types",
+            id="deferred-default",
+        ),
+        pytest.param(
+            MapExpression(
+                TypeReference("int | str"),
+                (CaseExpression(TypeReference("int"), FieldName("invalid")),),
+                TypeReference("bytes"),
+            ),
+            "Map outputs for a union subject must evaluate to types",
+            id="union-subject",
+        ),
+        pytest.param(
+            UnionExpression((TypeReference("int"), FieldName("invalid"))),
+            "union members must evaluate to types",
+            id="union-expression",
+        ),
+    ),
+)
+def test_possible_output_aggregation_preserves_non_type_failures(
+    expression: Expression[str], message: str
+) -> None:
+    assert evaluate(expression, NameTypeSystem()) == Failure(
+        ExpectedTypeSemanticError(message)
+    )
+
+
+def test_nested_deferred_adapter_failure_short_circuits_later_outputs() -> None:
+    issue = SemanticAdapterError("cannot normalize nested outputs")
+    nested = MapExpression(
+        InputReference(),
+        (CaseExpression(TypeReference("int"), TypeReference("str")),),
+    )
+    expression = MapExpression(
+        InputReference(),
+        (CaseExpression(TypeReference("int"), nested),),
+        KeyReference(),
+    )
+
+    result = evaluate(
+        expression,
+        FailureInjectionTypeSystemProxy(NameTypeSystem(), "union", issue),
+    )
+
+    assert isinstance(result, Failure)
+    assert result.failure() is issue
+
+
+def test_nested_deferred_non_type_failure_short_circuits_later_outputs() -> None:
+    nested = MapExpression(
+        InputReference(),
+        (CaseExpression(TypeReference("int"), FieldName("invalid")),),
+    )
+    expression = MapExpression(
+        InputReference(),
+        (CaseExpression(TypeReference("int"), nested),),
+        KeyReference(),
+    )
+
+    assert evaluate(expression, NameTypeSystem()) == Failure(
+        ExpectedTypeSemanticError("deferred Map outputs must evaluate to types")
+    )
+
+
+def test_nested_deferred_unexpected_adapter_failure_propagates() -> None:
+    error = RuntimeError("broken adapter")
+
+    class BrokenTypeSystem(NameTypeSystem):
+        def union(self, members: tuple[str, ...]) -> Result[str, SemanticIssue]:
+            raise error
+
+    nested = MapExpression(
+        InputReference(),
+        (CaseExpression(TypeReference("int"), TypeReference("str")),),
+    )
+    expression = MapExpression(
+        InputReference(),
+        (CaseExpression(TypeReference("int"), nested),),
+        KeyReference(),
+    )
+
+    with pytest.raises(RuntimeError) as caught:
+        evaluate(expression, BrokenTypeSystem())
+
+    assert caught.value is error
 
 
 def test_deferred_map_rejects_an_output_that_needs_future_input() -> None:

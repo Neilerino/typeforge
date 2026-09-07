@@ -7,11 +7,23 @@ from typeforge.semantics.domain.exceptions import (
     ExpectedTypeSemanticError,
 )
 from typeforge.semantics.domain.models import (
+    DeferredMap,
     EvaluationValue,
     FieldName,
     RecordField,
     ResolvedType,
 )
+
+
+def expect_possible_type[T](
+    value: EvaluationValue[T],
+    message: str,
+) -> ResolvedType[T]:
+    """Obtain a static output bound without treating deferred selection as resolved."""
+    if isinstance(value, DeferredMap):
+        return value.possible_output
+
+    return expect_type(value, message)
 
 
 def expect_type[T](

@@ -181,6 +181,37 @@ class ResolvedType[T]:
 
 
 @dataclass(frozen=True, slots=True)
+class TypeSymbol:
+    """An authored type parameter identified within its declaring scope."""
+
+    scope: tuple[str, ...]
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class UnresolvedType[T]:
+    """A backend type with symbolic or partially unresolved structural provenance."""
+
+    value: T
+    provenance: TypeSymbol | ParameterizedTypeShape[TypeValue[T]]
+
+
+@dataclass(frozen=True, slots=True)
+class IndeterminateType[T]:
+    """Possible alternatives of a static selection, not a definite union type.
+
+    Equal alternative summaries do not establish identity between selections.
+    Selection and normalization policy belongs to semantic evaluation.
+    """
+
+    possible_output: ResolvedType[T]
+    alternatives: tuple[TypeValue[T], ...]
+
+
+type TypeValue[T] = ResolvedType[T] | UnresolvedType[T] | IndeterminateType[T]
+
+
+@dataclass(frozen=True, slots=True)
 class DroppedField:
     pass
 

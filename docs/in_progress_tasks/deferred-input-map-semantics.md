@@ -1,6 +1,6 @@
 # Deferred Map Semantics and Compiler Cutover
 
-Status: In progress
+Status: In progress — slices 1, 3, and 4 complete; slice 2 remains next
 Depends on: Parameterized type pattern semantics
 Related design: `docs/ideas/pydantic-integration-redesign.md`
 
@@ -20,6 +20,13 @@ changes to review safely.
 This task is reopened to finish the semantic prerequisites in reviewable slices
 before attempting the compiler cutover again.
 
+The compiler refactor through `7314f36` isolated the legacy schema evaluator,
+moved shared lowering into `compiler.semantic_adapter`, and made overlays consume
+`CompilationPlan`. Slice 1 now characterizes that production baseline in the
+[behavior matrix](deferred-input-map-characterization.md), with green retained
+contracts and separately recorded corrections. No production semantics changed
+in slice 1.
+
 ## Current state
 
 ### Complete
@@ -34,13 +41,25 @@ before attempting the compiler cutover again.
 - Compiler semantic lowering distinguishes concrete parameterized types,
   parameterized patterns, parameterized templates, and `InputReference`.
 - The five compiler adapter and semantic-lowering contracts in
-  `tests/unit/compiler/test_type_system.py` and
-  `tests/unit/compiler/test_semantic_lowering.py` pass without xfails.
+  `tests/unit/compiler/semantic_adapter/test_type_system.py` and
+  `tests/unit/compiler/semantic_adapter/test_semantic_lowering.py` pass without
+  xfails.
+- Slice 1's retained production contracts are covered by
+  `tests/unit/compiler/pipeline/test_schema_map_characterization.py`. The
+  characterization matrix assigns each intended correction to its later owning
+  interface and slice.
+- Slice 3 composes possible output types for nested deferred Maps, union-subject
+  outputs, and explicit union expressions through one shared operation.
+- Slice 4's public data model retains scoped type symbols, partial parameterized
+  structure, and indeterminate alternatives. Evaluation of those values remains
+  slice 5 work.
 
 ### Not cut over
 
-Schema-boundary resolution still runs through compiler lowering IR in
-`src/typeforge/compiler/_pipeline_adaptation.py`. That path still owns:
+Schema-boundary resolution still runs through compiler stub IR.
+`src/typeforge/compiler/adaptation/_source_to_ir.py` expands callable `MapType`
+aliases and invokes `adaptation/_legacy_schema.py` at a `SchemaType` boundary.
+The legacy evaluator still owns:
 
 - recursive `resolve_schema_type()` traversal across applications, unions, tuples,
   field transforms, and nested schema boundaries;
@@ -53,6 +72,17 @@ Schema-boundary resolution still runs through compiler lowering IR in
 
 The duplicate path remains intentionally until the prerequisites below are
 complete and the production pipeline can move in one small change.
+
+Shared lowering and the compiler `TypeSystem` now live in
+`src/typeforge/compiler/semantic_adapter/`. Record materialization already uses
+them; its `_static_type_expression()` is an existing owner of StaticType-to-stub
+conversion to consider when unifying emission in slice 7.
+
+Overlay projection consumes the compiler's `CompilationPlan`, including authored
+origins and reusable schema roots, rather than calling schema evaluation helpers.
+Preserving distinct boundary roots and origins is part of the cutover contract.
+Published stubs still use their existing selected source scope; opaque published
+record annotations and overlay resolution must retain their intentional difference.
 
 ## Existing deferred `Input` contract
 
@@ -193,10 +223,13 @@ helper or module shapes in advance:
 
 - newly added source-expression variants are handled exhaustively by alias
   expansion and substitution;
-- `StaticType` has one conversion policy for emitted `TypeExpression`, including
+- `StaticType` has one conversion policy for emitted `StubTypeExpression`, including
   context-sensitive `Never` spelling;
 - expected `SemanticLoweringError | SemanticIssue` failures are converted once
-  at a deliberate compiler result boundary.
+  at a deliberate compiler result boundary;
+- schema adaptation preserves authored origins and independent reusable roots
+  consumed by `CompilationPlan` projection, including nested Schema and aliases
+  whose resolved outputs are equal.
 
 Choose concrete helpers only when the implementation identifies two real
 callers. Keep them private supporting adapters rather than new compiler concepts.
@@ -208,6 +241,12 @@ Work test-first from the named interface; avoid combining later slices into the
 current one.
 
 ### 1. Characterize the production compiler behavior
+
+Complete on the post-refactor baseline. See the
+[characterization matrix](deferred-input-map-characterization.md) for retained
+test IDs, observed correction cases, their owning interfaces, and existing
+compiler-plan compatibility contracts. The requirements below define this slice's
+scope and remain the checklist for future discoveries.
 
 Add focused `generate_module()` contracts for compiler behavior discovered
 during the experiment. Cover:
@@ -244,6 +283,10 @@ Completion criterion: every surfaced case is classified, all retained-behavior
 characterization tests are green, and each intended correction names the later
 slice and interface that will own its strict contract.
 
+Next: slice 2. Preserve the already-green union-template and Literal schema
+outputs while making their roles explicit in shared lowering. Include correction
+C13 (Literal type output inside a transformed field) at the lowering interface.
+
 ### 2. Complete output-role composition
 
 Extend shared output templates only as far as required to compose through
@@ -264,14 +307,27 @@ their field-name or schema-type role without opaque `NamedType("Value")` leaves.
 
 ### 3. Compose possible output types
 
-Add one shared semantic operation that obtains a possible type from either:
+Complete. `expect_possible_type()` in shared semantic assertions obtains a
+possible type from either:
 
 - `ResolvedType`; or
 - `DeferredMap.possible_output`.
 
-Use it when aggregating deferred outputs, union-subject outputs, and any later
-indeterminate outputs. Preserve existing modeled failure messages for genuinely
-non-type outputs.
+Deferred case/default outputs, union-subject outputs, and explicit union
+expressions use that operation. It consumes the nested `possible_output` without
+re-evaluating cases. Backend union normalization remains behind `TypeSystem`.
+Definite-type checks for predicates, fields, and parameterized templates remain
+separate; extracting a bound does not resume a deferred selection.
+
+Contracts at `evaluate()` in `tests/unit/semantics/test_migration_spec.py` cover
+nested case/default outputs, duplicate normalization, omitted/explicit-Never
+defaults, original non-type messages, modeled failure identity and
+short-circuiting, and propagation of unexpected adapter exceptions. The name-only
+test adapter now honors union flattening and Never elimination for nested bounds.
+The strict correcting contracts were removed from xfail in this slice.
+
+When slice 5 introduces indeterminate evaluation, extend the same operation for
+its possible output bound while retaining provenance in semantic comparisons.
 
 Completion criterion: nested deferred Maps contribute their normalized possible
 output once, and adapter failures or non-type outputs retain their established
@@ -279,11 +335,36 @@ output once, and adapter failures or non-type outputs retain their established
 
 ### 4. Model unresolved static type identity
 
-Make a focused domain decision before implementation. The shared model must
-represent an authored type whose backend representation exists but whose
-concrete identity is unresolved. It must remain distinct from `InputReference`.
+Complete at the model interface. The decision is to use a scoped `TypeSymbol` for
+authored parameter identity, independent of the backend's spelling. `UnresolvedType` retains its
+backend value and provenance: either that symbol or an existing
+`ParameterizedTypeShape` whose origin and arguments are semantic `TypeValue`s.
+Thus `tuple[int, list[T]]` can retain a resolved first argument and the exact
+unresolved position within its second argument without teaching `TypeSystem`
+about uncertainty.
 
-The model must retain:
+An `IndeterminateType` retains a possible output bound and its alternative
+`TypeValue`s. It is distinct from both a resolved union and a type symbol:
+identical alternative lists do not establish that two selections have the same
+identity. Nested structures can retain these values rather than replacing them
+with their union bound. Ordered selection and normalization of alternatives
+belong to slice 5.
+
+These are model-only additions in slice 4. Do not add them to `Expression`,
+`EvaluationValue`, or evaluation contexts until slice 5 defines how evaluation
+consumes and propagates them. Model contracts use the package's public data
+interface; existing architecture rules enforce independence from compiler data
+and control flow. See [domain terminology](../../CONTEXT.md).
+
+`tests/unit/semantics/test_unresolved_types.py` covers scope identity, nested
+resolved/unresolved positions, alternative provenance, backend `None`, and
+immutability. Both static checkers also validate that model test file directly.
+The existing semantics architecture suite proves that the model imports no
+compiler types or compiler control data. The strict model contracts pass without
+xfails. Focused semantics/architecture checks and full `make check` pass for
+slices 3 and 4.
+
+The model retains:
 
 - symbolic identity, so the same unresolved parameter compares equal to itself;
 - resolution state per parameterized argument;
@@ -355,6 +436,11 @@ failures once into authored `AdaptationError` diagnostics. Use one tested
 `StaticType` emission policy, including both bare `Never` and qualified
 `tf_typing.Never` contexts.
 
+Account for the current adaptation contract: generated replacements must retain
+authored origins and reusable schema-boundary identity. Reuse the source facts
+already supplied to compilation; do not introduce reparsing or evaluation in
+overlay projection. The matrix lists the existing contracts to preserve.
+
 Completion criterion: adapter-level direct, aliased, structural, deferred,
 generic, nested-type, and record-reference contracts pass; failure tests cover
 the authored-diagnostic conversion boundary; emission tests cover both `Never`
@@ -364,11 +450,12 @@ callable Map overload and verification tests remain unchanged.
 
 ### 8. Cut over and delete the duplicate path
 
-Route every compiler schema boundary through the tested schema adapter. Update
-the overlay only as a downstream caller where deletion changes the compiler
-interface it consumes. Activate the compiler end-to-end correction contracts
-assigned here by the characterization matrix. Then delete from
-`_pipeline_adaptation.py`:
+Route every currently evaluated compiler schema boundary through the tested
+schema adapter, preserving publication's selected source scope. The overlay
+already consumes `CompilationPlan`; update it only as a downstream caller if the
+compiler interface it consumes changes. Activate the compiler end-to-end
+correction contracts assigned here by the characterization matrix. Then delete from
+`src/typeforge/compiler/adaptation/_legacy_schema.py`:
 
 - `resolve_schema_type()` and `_resolve_schema_map_member()`;
 - `_match_schema_pattern()`;
@@ -382,16 +469,16 @@ Do not retain the previous path as fallback behavior.
 
 Completion criterion:
 
-- all compiler schema boundaries use the adapter;
-- the overlay no longer calls deleted compiler helpers and its existing
-  compatibility tests remain green;
+- all currently evaluated compiler schema boundaries use the adapter;
+- overlay projection still consumes the compiler plan, with authored origins,
+  independent reusable schema roots, and its existing compatibility tests green;
 - the public generated-stub contract remains green, including
   `Case[list[Value], set[Value]] -> set[int]`;
 - all compiler end-to-end correction contracts pass without xfails;
 - callable Map lowering and implementation verification remain green;
 - no second structural matcher, predicate evaluator, union normalizer, or
   possible-output calculation exists in the compiler;
-- `grep` finds no deleted helper definitions or callers;
+- `rg` finds no deleted helper definitions or callers;
 - `make check` passes;
 - the final cutover diff is predominantly wiring and deletion because semantic
   prerequisites landed in earlier commits.

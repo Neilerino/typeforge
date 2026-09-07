@@ -9,6 +9,7 @@ from typeforge.semantics.domain.assertions import (
     expect_condition,
     expect_field,
     expect_field_name,
+    expect_possible_type,
     expect_type,
 )
 from typeforge.semantics.domain.exceptions import (
@@ -231,7 +232,7 @@ def _[T](
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
     members = tuple(
-        expect_type(
+        expect_possible_type(
             _evaluate(member, type_system, context),
             "union members must evaluate to types",
         ).value
