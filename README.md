@@ -222,6 +222,13 @@ expressions add no Typeforge Python calls during validation. Expressions
 using `typeforge.pydantic.Input` intentionally dispatch on each raw input value
 before letting the selected Pydantic schema validate it.
 
+For generated typing interfaces, a schema Map over runtime `Input` emits its
+possible output types. An unresolved generic parameter keeps its identity:
+`Map[T, Case[int, str], Default[bytes]]` emits `str | bytes`, while
+`Map[T, Case[Equal[T, T], str], Default[bytes]]` emits only `str`. Earlier definite
+matches still stop selection. Nested schema aliases expand before evaluation;
+alias cycles report the authored cycle path.
+
 ## Setup
 
 **Note:** This package isn't published on PyPI (it's not ready yet). There's already a project on PyPI called `typeforge`. It is NOT this one. I might need to pick a new name before I release this

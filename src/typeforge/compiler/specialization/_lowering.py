@@ -34,7 +34,6 @@ from typeforge.compiler.stub_ir import (
     ParameterKind,
     Predicate,
     RuntimeInputType,
-    SchemaType,
     StubModule,
     StubTypeExpression,
     TypeAliasDeclaration,
@@ -1020,9 +1019,7 @@ def _collect_variable_names(expression: StubTypeExpression) -> tuple[str, ...]:
         elif isinstance(current, UnionExpression):
             for member in current.members:
                 visit(member)
-        elif isinstance(
-            current, HomogeneousTuple | EachType | CollectType | SchemaType
-        ):
+        elif isinstance(current, HomogeneousTuple | EachType | CollectType):
             visit(current.item)
 
     visit(expression)
@@ -1053,7 +1050,7 @@ def _substitute_expression(
 
     if isinstance(
         expression,
-        TypeApplication | FixedTuple | HomogeneousTuple | SchemaType | UnionExpression,
+        TypeApplication | FixedTuple | HomogeneousTuple | UnionExpression,
     ):
         return rewrite_type_children(
             expression,
@@ -1196,14 +1193,6 @@ def _erase_markers_expression(
             return FixedTuple((UnpackedType(item),))
 
         return HomogeneousTuple(item)
-
-    if isinstance(expression, SchemaType):
-        return _erase_markers(
-            expression.item,
-            type_var_tuples,
-            broad_type_var_tuples,
-            on_rewrite=on_rewrite,
-        )
 
     if isinstance(expression, RuntimeInputType | MapType):
         return TypeName("object")

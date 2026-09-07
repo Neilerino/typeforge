@@ -3,16 +3,17 @@
 from dataclasses import replace
 from functools import singledispatch
 
-from returns.result import safe
-
 from typeforge.compiler.adaptation._imports import annotation_imports
-from typeforge.compiler.adaptation._legacy_schema import resolve_schema_type
 from typeforge.compiler.adaptation._models import (
     AdaptationError,
     SemanticRelationshipAlias,
 )
 from typeforge.compiler.adaptation._records import materialize_records
-from typeforge.compiler.record_materialization import RecordMaterializationError
+from typeforge.compiler.adaptation._schema import adapt_schema_expression
+from typeforge.compiler.record_materialization import (
+    RecordMaterializationError,
+    is_map_fields_alias,
+)
 from typeforge.compiler.source import (
     AllMarker,
     AnyMarker,
@@ -83,7 +84,6 @@ from typeforge.compiler.stub_ir import (
     ParameterKind,
     Predicate,
     RuntimeInputType,
-    SchemaType,
     StubModule,
     StubTypeExpression,
     TypeAliasDeclaration,
@@ -97,6 +97,7 @@ from typeforge.compiler.stub_ir import (
     substitute_type,
     walk_module,
 )
+from typeforge.utils.error_handling import safe_result
 
 _ADAPTATION_ERRORS: tuple[type[AdaptationError | RecordMaterializationError], ...] = (
     AdaptationError,
@@ -104,13 +105,17 @@ _ADAPTATION_ERRORS: tuple[type[AdaptationError | RecordMaterializationError], ..
 )
 
 
-@safe(exceptions=_ADAPTATION_ERRORS)
+@safe_result(errors=_ADAPTATION_ERRORS)
 def adapt_source_module(
     module: SourceModule,
 ) -> StubModule:
+    # Record aliases retain their references until the materialization stage.
+    schema_aliases = tuple(
+        alias for alias in module.aliases if not is_map_fields_alias(alias)
+    )
     origins: list[GeneratedElementOrigin[SourceSpan]] = []
     semantic_aliases = _collect_semantic_relationship_aliases(
-        module.aliases, origins=origins
+        module.aliases, origins=origins, schema_aliases=schema_aliases
     )
     reusable_elements: list[GeneratedElement] = []
     declarations: list[tuple[int, Declaration]] = []
@@ -139,6 +144,7 @@ def adapt_source_module(
                     parameter.name for parameter in alias.type_parameters
                 ),
                 origins=origins,
+                schema_aliases=schema_aliases,
             ),
             type_parameters=tuple(
                 parameter.declaration for parameter in alias.type_parameters
@@ -170,7 +176,7 @@ def adapt_source_module(
 
     for source_class in module.classes:
         generated_class = expand_class_map_aliases(
-            _adapt_class(source_class, origins=origins),
+            _adapt_class(source_class, origins=origins, schema_aliases=schema_aliases),
             semantic_aliases,
             on_rewrite=record_rewrite,
         )
@@ -220,6 +226,7 @@ def adapt_source_module(
                 if len(function.qualified_name) == 2
                 else (),
                 origins=origins,
+                schema_aliases=schema_aliases,
             ),
             semantic_aliases,
             on_rewrite=record_rewrite,
@@ -244,12 +251,26 @@ def adapt_source_module(
 
     # Schema roots keep authored parameter names and their own boundary identity,
     # even when semantic aliases reuse the same output node in other declarations.
+    scopes: tuple[SourceClass | SourceFunction | SourceTypeAlias, ...] = (
+        *module.classes,
+        *module.functions,
+        *module.aliases,
+    )
     for boundary in _schema_boundaries(module):
-        expression = replace(
-            expand_map_aliases(
-                _adapt_type_expression(boundary, "Schema", ()), semantic_aliases
+        parameters = tuple(
+            dict.fromkeys(
+                parameter.name
+                for declaration in scopes
+                if declaration.span.start <= boundary.span.start <= declaration.span.end
+                for parameter in declaration.type_parameters
             )
         )
+        expression = adapt_schema_expression(
+            boundary,
+            schema_aliases,
+            declaration="Schema",
+            type_parameters=parameters,
+        ).unwrap()
         reusable_elements.append(expression)
         origins.append(GeneratedElementOrigin(boundary.span, expression))
 
@@ -285,6 +306,8 @@ def adapt_source_module(
 def _collect_semantic_relationship_aliases(
     aliases: tuple[SourceTypeAlias, ...],
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
+    *,
+    schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> tuple[SemanticRelationshipAlias, ...]:
     semantic: list[SemanticRelationshipAlias] = []
     for alias in aliases:
@@ -309,7 +332,11 @@ def _collect_semantic_relationship_aliases(
 
         parameter = alias.type_parameters[0].name
         relationship = _adapt_type_expression(
-            value, alias.name, (parameter,), origins=origins
+            value,
+            alias.name,
+            (parameter,),
+            origins=origins,
+            schema_aliases=schema_aliases,
         )
         if not isinstance(relationship, MapType):
             raise AssertionError("relationship adaptation produced a plain type")
@@ -391,11 +418,6 @@ def _expand_map_aliases(
     on_rewrite: TypeRewriteObserver | None = None,
 ) -> StubTypeExpression:
     match expression:
-        case SchemaType(item):
-            return resolve_schema_type(
-                expand_map_aliases(item, aliases, on_rewrite=on_rewrite),
-                on_rewrite=on_rewrite,
-            )
         case TypeApplication(TypeName(name), (argument,)):
             alias = next((item for item in aliases if item.name == name), None)
             if alias is not None:
@@ -418,25 +440,37 @@ def _expand_map_aliases(
 def _adapt_class(
     source_class: SourceClass,
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
+    *,
+    schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> ClassDeclaration:
     parameter_names = tuple(
         parameter.name for parameter in source_class.type_parameters
     )
     bases = _adapt_type_expressions(
-        source_class.bases, source_class.name, parameter_names, origins=origins
+        source_class.bases,
+        source_class.name,
+        parameter_names,
+        origins=origins,
+        schema_aliases=schema_aliases,
     )
     fields = tuple(
         ClassField(
             field.name,
             _adapt_type_expression(
-                field.annotation, source_class.name, parameter_names, origins=origins
+                field.annotation,
+                source_class.name,
+                parameter_names,
+                origins=origins,
+                schema_aliases=schema_aliases,
             ),
             "..." if field.has_default else None,
         )
         for field in source_class.fields
     )
     methods = tuple(
-        _adapt_function(method, parameter_names, origins=origins)
+        _adapt_function(
+            method, parameter_names, origins=origins, schema_aliases=schema_aliases
+        )
         for method in source_class.methods
     )
     return ClassDeclaration(
@@ -457,29 +491,47 @@ def _adapt_alias_fallback(
     expression: SourceTypeExpression,
     type_parameters: tuple[str, ...],
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
+    *,
+    schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> StubTypeExpression:
     if not isinstance(expression, MarkerTypeExpression):
         return _adapt_type_expression(
-            expression, declaration, type_parameters, origins=origins
+            expression,
+            declaration,
+            type_parameters,
+            origins=origins,
+            schema_aliases=schema_aliases,
         )
 
     marker = _normalize_marker(declaration, expression)
     match marker:
         case EachMarker(item=item):
             return _adapt_alias_fallback(
-                declaration, item, type_parameters, origins=origins
+                declaration,
+                item,
+                type_parameters,
+                origins=origins,
+                schema_aliases=schema_aliases,
             )
 
         case CollectMarker(item=item):
             return HomogeneousTuple(
                 _adapt_alias_fallback(
-                    declaration, item, type_parameters, origins=origins
+                    declaration,
+                    item,
+                    type_parameters,
+                    origins=origins,
+                    schema_aliases=schema_aliases,
                 )
             )
 
         case MapMarker():
             return _adapt_type_expression(
-                expression, declaration, type_parameters, origins=origins
+                expression,
+                declaration,
+                type_parameters,
+                origins=origins,
+                schema_aliases=schema_aliases,
             )
 
         case MapFieldsMarker():
@@ -498,7 +550,11 @@ def _adapt_alias_fallback(
             | ReadonlyFieldMarker(value=value)
         ):
             return _adapt_alias_fallback(
-                declaration, value, type_parameters, origins=origins
+                declaration,
+                value,
+                type_parameters,
+                origins=origins,
+                schema_aliases=schema_aliases,
             )
 
         case DropMarker():
@@ -515,6 +571,8 @@ def _adapt_function(
     function: SourceFunction,
     enclosing_type_parameters: tuple[str, ...] = (),
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
+    *,
+    schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> FunctionDeclaration:
     parameter_names = tuple(parameter.name for parameter in function.type_parameters)
     visible_type_parameters = (*enclosing_type_parameters, *parameter_names)
@@ -530,6 +588,7 @@ def _adapt_function(
                 function.name,
                 visible_type_parameters,
                 origins=origins,
+                schema_aliases=schema_aliases,
             )
 
         parameters.append(
@@ -544,7 +603,11 @@ def _adapt_function(
     return_type: StubTypeExpression = TypeName("Any")
     if function.returns is not None:
         return_type = _adapt_type_expression(
-            function.returns, function.name, visible_type_parameters, origins=origins
+            function.returns,
+            function.name,
+            visible_type_parameters,
+            origins=origins,
+            schema_aliases=schema_aliases,
         )
 
     return FunctionDeclaration(
@@ -563,6 +626,8 @@ def _adapt_type_expression(
     declaration: str,
     type_parameters: tuple[str, ...],
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
+    *,
+    schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> StubTypeExpression:
     raise AdaptationError(
         declaration,
@@ -577,23 +642,17 @@ def _(
     declaration: str,
     type_parameters: tuple[str, ...],
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
+    *,
+    schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> StubTypeExpression:
-    if len(expression.arguments) != 1:
-        raise AdaptationError(
-            declaration,
-            expression.source,
-            "Schema requires one type argument",
-        )
-
-    generated = SchemaType(
-        _adapt_type_expression(
-            expression.arguments[0], declaration, type_parameters, origins=origins
-        )
-    )
-    if origins is not None:
-        origins.append(GeneratedElementOrigin(expression.span, generated))
-
-    return generated
+    return adapt_schema_expression(
+        expression,
+        schema_aliases,
+        declaration=declaration,
+        type_parameters=type_parameters,
+        preserve_type_variables=True,
+        origins=origins,
+    ).unwrap()
 
 
 @_adapt_type_expression.register
@@ -602,6 +661,8 @@ def _(
     declaration: str,
     type_parameters: tuple[str, ...],
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
+    *,
+    schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> StubTypeExpression:
     return RuntimeInputType()
 
@@ -612,6 +673,8 @@ def _(
     declaration: str,
     type_parameters: tuple[str, ...],
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
+    *,
+    schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> StubTypeExpression:
     if expression.source in type_parameters:
         return TypeVariable(expression.source)
@@ -625,6 +688,8 @@ def _(
     declaration: str,
     type_parameters: tuple[str, ...],
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
+    *,
+    schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> StubTypeExpression:
     return TypeName(expression.source)
 
@@ -635,10 +700,16 @@ def _(
     declaration: str,
     type_parameters: tuple[str, ...],
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
+    *,
+    schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> StubTypeExpression:
     return UnionExpression(
         _adapt_type_expressions(
-            expression.members, declaration, type_parameters, origins=origins
+            expression.members,
+            declaration,
+            type_parameters,
+            origins=origins,
+            schema_aliases=schema_aliases,
         )
     )
 
@@ -649,10 +720,16 @@ def _(
     declaration: str,
     type_parameters: tuple[str, ...],
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
+    *,
+    schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> StubTypeExpression:
     return UnpackedType(
         _adapt_type_expression(
-            expression.item, declaration, type_parameters, origins=origins
+            expression.item,
+            declaration,
+            type_parameters,
+            origins=origins,
+            schema_aliases=schema_aliases,
         )
     )
 
@@ -663,13 +740,23 @@ def _(
     declaration: str,
     type_parameters: tuple[str, ...],
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
+    *,
+    schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> StubTypeExpression:
     return TypeApplication(
         _adapt_type_expression(
-            expression.constructor, declaration, type_parameters, origins=origins
+            expression.constructor,
+            declaration,
+            type_parameters,
+            origins=origins,
+            schema_aliases=schema_aliases,
         ),
         _adapt_type_expressions(
-            expression.arguments, declaration, type_parameters, origins=origins
+            expression.arguments,
+            declaration,
+            type_parameters,
+            origins=origins,
+            schema_aliases=schema_aliases,
         ),
     )
 
@@ -680,6 +767,8 @@ def _(
     declaration: str,
     type_parameters: tuple[str, ...],
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
+    *,
+    schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> StubTypeExpression:
     marker = _normalize_marker(declaration, expression)
     match marker:
@@ -689,10 +778,18 @@ def _(
             cases = tuple(
                 MapCase(
                     _adapt_map_test(
-                        entry.test, declaration, type_parameters, origins=origins
+                        entry.test,
+                        declaration,
+                        type_parameters,
+                        origins=origins,
+                        schema_aliases=schema_aliases,
                     ),
                     _adapt_type_expression(
-                        entry.output, declaration, type_parameters, origins=origins
+                        entry.output,
+                        declaration,
+                        type_parameters,
+                        origins=origins,
+                        schema_aliases=schema_aliases,
                     ),
                 )
                 for entry in entries
@@ -706,12 +803,20 @@ def _(
                 TypeName("Never")
                 if default_entry is None
                 else _adapt_type_expression(
-                    default_entry.output, declaration, type_parameters, origins=origins
+                    default_entry.output,
+                    declaration,
+                    type_parameters,
+                    origins=origins,
+                    schema_aliases=schema_aliases,
                 )
             )
             return MapType(
                 _adapt_type_expression(
-                    subject, declaration, type_parameters, origins=origins
+                    subject,
+                    declaration,
+                    type_parameters,
+                    origins=origins,
+                    schema_aliases=schema_aliases,
                 ),
                 cases,
                 default,
@@ -719,13 +824,21 @@ def _(
         case EachMarker(item=item):
             return EachType(
                 _adapt_type_expression(
-                    item, declaration, type_parameters, origins=origins
+                    item,
+                    declaration,
+                    type_parameters,
+                    origins=origins,
+                    schema_aliases=schema_aliases,
                 )
             )
         case CollectMarker(item=item):
             return CollectType(
                 _adapt_type_expression(
-                    item, declaration, type_parameters, origins=origins
+                    item,
+                    declaration,
+                    type_parameters,
+                    origins=origins,
+                    schema_aliases=schema_aliases,
                 )
             )
         case _:
@@ -736,20 +849,13 @@ def _(
             )
 
 
-@safe(exceptions=(AdaptationError,))
-def adapt_predicate(
-    declaration: str,
-    expression: SourceTypeExpression,
-    type_parameters: tuple[str, ...],
-) -> Predicate:
-    return _adapt_predicate(expression, declaration, type_parameters)
-
-
 def _adapt_map_test(
     expression: SourceTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
+    *,
+    schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> StubTypeExpression | Predicate:
     if isinstance(expression, MarkerTypeExpression):
         marker = _normalize_marker(declaration, expression)
@@ -758,11 +864,19 @@ def _adapt_map_test(
             EqualMarker | AssignableMarker | AllMarker | AnyMarker | NotMarker,
         ):
             return _adapt_predicate(
-                expression, declaration, type_parameters, origins=origins
+                expression,
+                declaration,
+                type_parameters,
+                origins=origins,
+                schema_aliases=schema_aliases,
             )
 
     return _adapt_type_expression(
-        expression, declaration, type_parameters, origins=origins
+        expression,
+        declaration,
+        type_parameters,
+        origins=origins,
+        schema_aliases=schema_aliases,
     )
 
 
@@ -771,6 +885,8 @@ def _adapt_predicate(
     declaration: str,
     type_parameters: tuple[str, ...],
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
+    *,
+    schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> Predicate:
     if not isinstance(expression, MarkerTypeExpression):
         raise AdaptationError(
@@ -784,26 +900,46 @@ def _adapt_predicate(
         case EqualMarker(left=left, right=right):
             return EqualPredicate(
                 _adapt_type_expression(
-                    left, declaration, type_parameters, origins=origins
+                    left,
+                    declaration,
+                    type_parameters,
+                    origins=origins,
+                    schema_aliases=schema_aliases,
                 ),
                 _adapt_type_expression(
-                    right, declaration, type_parameters, origins=origins
+                    right,
+                    declaration,
+                    type_parameters,
+                    origins=origins,
+                    schema_aliases=schema_aliases,
                 ),
             )
         case AssignableMarker(left=left, right=right):
             return AssignablePredicate(
                 _adapt_type_expression(
-                    left, declaration, type_parameters, origins=origins
+                    left,
+                    declaration,
+                    type_parameters,
+                    origins=origins,
+                    schema_aliases=schema_aliases,
                 ),
                 _adapt_type_expression(
-                    right, declaration, type_parameters, origins=origins
+                    right,
+                    declaration,
+                    type_parameters,
+                    origins=origins,
+                    schema_aliases=schema_aliases,
                 ),
             )
         case AllMarker(items=items):
             return AllPredicate(
                 tuple(
                     _adapt_predicate(
-                        item, declaration, type_parameters, origins=origins
+                        item,
+                        declaration,
+                        type_parameters,
+                        origins=origins,
+                        schema_aliases=schema_aliases,
                     )
                     for item in items
                 )
@@ -812,14 +948,24 @@ def _adapt_predicate(
             return AnyPredicate(
                 tuple(
                     _adapt_predicate(
-                        item, declaration, type_parameters, origins=origins
+                        item,
+                        declaration,
+                        type_parameters,
+                        origins=origins,
+                        schema_aliases=schema_aliases,
                     )
                     for item in items
                 )
             )
         case NotMarker(item=item):
             return NotPredicate(
-                _adapt_predicate(item, declaration, type_parameters, origins=origins)
+                _adapt_predicate(
+                    item,
+                    declaration,
+                    type_parameters,
+                    origins=origins,
+                    schema_aliases=schema_aliases,
+                )
             )
         case _:
             raise AdaptationError(
@@ -848,10 +994,16 @@ def _adapt_type_expressions(
     declaration: str,
     type_parameters: tuple[str, ...],
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
+    *,
+    schema_aliases: tuple[SourceTypeAlias, ...],
 ) -> tuple[StubTypeExpression, ...]:
     return tuple(
         _adapt_type_expression(
-            expression, declaration, type_parameters, origins=origins
+            expression,
+            declaration,
+            type_parameters,
+            origins=origins,
+            schema_aliases=schema_aliases,
         )
         for expression in expressions
     )

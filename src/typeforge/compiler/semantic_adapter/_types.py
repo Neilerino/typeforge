@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import TypeIs
+from typing import Literal, TypeIs
 
 from typeforge.semantics import RecordShape
 
@@ -26,6 +26,14 @@ class UnpackedType:
     item: StaticType
 
 
+@dataclass(frozen=True, slots=True)
+class VariadicType:
+    """A compiler arity marker awaiting finite specialization."""
+
+    kind: Literal["Each", "Collect"]
+    item: StaticType
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class UnionType:
     members: tuple[StaticType, ...]
@@ -39,6 +47,7 @@ type StaticType = (
     | NeverType
     | ParameterizedType
     | UnpackedType
+    | VariadicType
     | UnionType
     | RecordShape[StaticType]
 )
@@ -72,6 +81,7 @@ def is_static(value: object) -> TypeIs[StaticType]:
         | NeverType
         | ParameterizedType
         | UnpackedType
+        | VariadicType
         | UnionType
         | RecordShape,
     )

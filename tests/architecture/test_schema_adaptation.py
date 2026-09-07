@@ -76,7 +76,7 @@ def test_static_type_emission_has_one_traversal(
     }
 
 
-def test_new_schema_adapter_is_not_yet_a_production_dependency(
+def test_production_schema_boundaries_use_the_source_adapter(
     compiler_syntax: dict[Path, ast.Module],
 ) -> None:
     callers = {
@@ -90,4 +90,4 @@ def test_new_schema_adapter_is_not_yet_a_production_dependency(
         )
     }
 
-    assert callers == set()
+    assert callers == {TYPE_FORGE.file("compiler.adaptation._source_to_ir").path}

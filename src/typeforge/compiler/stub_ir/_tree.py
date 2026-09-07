@@ -26,7 +26,6 @@ from typeforge.compiler.stub_ir._model import (
     OverloadDeclaration,
     Predicate,
     RuntimeInputType,
-    SchemaType,
     StubModule,
     StubTypeExpression,
     TypeAliasDeclaration,
@@ -144,8 +143,6 @@ def _rewrite_type_children(
                 rewrite(record),
                 rewrite(field_transform),
             )
-        case SchemaType(item):
-            return SchemaType(rewrite(item))
         case (
             TypeName()
             | TypeVariable()
@@ -199,7 +196,6 @@ def walk_type(expression: StubTypeExpression) -> Iterator[StubTypeExpression]:
             | EachType(item)
             | CollectType(item)
             | UnpackedType(item)
-            | SchemaType(item)
         ):
             yield from walk_type(item)
         case UnionExpression(members):

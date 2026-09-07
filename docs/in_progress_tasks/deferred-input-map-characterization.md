@@ -8,7 +8,8 @@ Production code is unchanged by this slice.
 Validation: all 62 retained characterization cases and the focused existing
 compiler-plan compatibility checks pass. Full `make check` passes pytest, Ruff
 lint and format checks, Flake8 block spacing, mypy, and pyright. Every retained
-parameter ID is indexed below; C1–C13 remain documentation-only corrections.
+parameter ID is indexed below. This records the slice-1 baseline; C1–C13 now
+pass as end-to-end corrections following the completed slice-8 cutover.
 
 ## Classification and test policy
 
@@ -43,6 +44,7 @@ behavior, followed by the schema adapter and cutover in slices 7–8.
 | `literal-output`, `literal-default` | Selected case and default outputs retain `Literal["accepted"]` and `Literal["rejected"]` as typing types. | Slice 2: explicit output role |
 | `literal-case` | Equal typing literals match an exact case. | Slice 2: explicit case role |
 | `literal-predicate`, `literal-assignable` | Typing literals work as `Equal` and `Assignable` operands. | Slice 2: explicit operand role |
+| `test_parameterized_types_remain_assignable_to_object` in the correction test file | Parameterized types remain assignable to `object`, matching the legacy rule. Discovered during slice-8 deletion review; classified as retained behavior. | Compiler TypeSystem primitive assignability |
 | `union-output` | `set[Value]` inside a union becomes `set[int]`, retaining `None`. | Slice 2: output-template composition |
 | `nested-union-output` | `tuple[Value \| None]` becomes `tuple[int \| None]`. | Slice 2: recursive output role |
 | `union-subject` | Each member selects its own output, producing `str \| float`. | Shared union-subject evaluation |
@@ -239,8 +241,10 @@ remain the slice-1 baseline inventory. Slice 6 now covers C10–C12 through
 `adapt_schema_expression()`, shared emission, and authored diagnostics/origins.
 Their contracts are in `tests/unit/compiler/adaptation/test_schema_aliases.py`,
 `test_schema_adapter.py`, and the semantic adapter's `test_static_emission.py`.
-All C1–C13 end-to-end correction contracts remain assigned to slice 8;
-the compiler schema evaluator has not cut over.
+Slice 8 now covers all C1–C13 through `generate_module()` in
+`tests/unit/compiler/pipeline/test_schema_map_corrections.py`. Production schema
+boundaries use shared semantics, and the legacy evaluator has been deleted.
+The observations above remain the historical baseline, not current behavior.
 
 ## Existing integration contracts to carry forward
 
@@ -260,5 +264,5 @@ to rewrite overlay projection in slice 1.
 | [`test_compilation_plan.py::test_alias_projection_uses_current_alias_origins_and_preserves_source_mapping`](../../tests/unit/overlay/test_compilation_plan.py) | Projection continues to use current compiler origins for edits and source mapping. |
 
 The overlay consumes `CompilationPlan`; it no longer calls the legacy schema
-evaluator. The eventual cutover must preserve that interface and its provenance,
-with overlay changes only if the compiler contract actually changes.
+evaluator. The completed cutover preserves that interface and its provenance; no overlay
+projection changes were needed.

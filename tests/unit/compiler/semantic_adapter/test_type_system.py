@@ -109,13 +109,19 @@ def test_map_matches_exact_types_and_uses_default() -> None:
         (UnionType(), INT, True),
         (UnionType(INT, UnionType(STR, NEVER)), UnionType(STR, OBJECT), True),
         (UnionType(INT, UnionType(STR, BYTES)), UnionType(INT, STR), False),
-        (ParameterizedType(NamedType("list"), (INT,)), OBJECT, False),
     ),
 )
 def test_assignability_preserves_empty_and_nested_union_semantics(
     source: StaticType, target: StaticType, expected: bool
 ) -> None:
     assert COMPILER_TYPE_SYSTEM.assignable(source, target) == Success(expected)
+
+
+def test_parameterized_types_follow_the_schema_object_supertype_rule() -> None:
+    """The shared adapter retains Schema's existing list[int] -> object rule."""
+    value = ParameterizedType(NamedType("list"), (INT,))
+
+    assert COMPILER_TYPE_SYSTEM.assignable(value, OBJECT) == Success(True)
 
 
 def test_map_defaults_to_never() -> None:

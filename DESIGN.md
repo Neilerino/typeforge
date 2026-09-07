@@ -44,14 +44,17 @@ Compiler semantic lowering keeps field-name expressions distinct from typing
 types and output templates. A string Literal can name a transformed field while
 remaining an ordinary typing Literal in that field's type. Output-template roles
 compose through unions and parameterized arguments, preserving contextual Value
-bindings. Production schema cutover remains tracked by the deferred-Map roadmap.
+bindings. Production Schema boundaries evaluate through shared semantics,
+including deferred Input bounds and unresolved static type identity.
 
 The compiler's source schema adapter expands authored aliases before shared
 lowering, keeping callable relationship IR separate. It requires the source
 snapshot's alias context and preserves omitted defaults and authored cycles.
 Static type emission is shared with record materialization; schema origins follow
-normalization without merging independent boundary roots. This adapter is tested
-directly until production schema boundaries cut over.
+normalization without merging independent boundary roots. Production declaration
+adaptation and reusable Schema roots both use this adapter. Callable Map
+relationships retain their overload path; record aliases retain their existing
+materialization stage, and Each/Collect retain finite specialization.
 
 ## Library and project output
 

@@ -520,6 +520,10 @@ type.
 
 ### 3. Complete the compiler cutover
 
+Complete. The [compiler roadmap](../in_progress_tasks/deferred-input-map-semantics.md)
+delivered all eight slices, including production cutover, end-to-end corrections,
+and deletion of the legacy schema evaluator. Runtime integration remains below.
+
 - Preserve parameterized type structure during compiler semantic lowering.
 - Adapt compiler parameterized types to shared patterns and templates.
 - Consume `DeferredMap.possible_output` for static output.

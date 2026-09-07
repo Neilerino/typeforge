@@ -1,6 +1,6 @@
 # Deferred Map Semantics and Compiler Cutover
 
-Status: In progress — slices 1–7 complete; production cutover (slice 8) next
+Status: Complete — all eight compiler slices delivered
 Depends on: Parameterized type pattern semantics
 Related design: `docs/ideas/pydantic-integration-redesign.md`
 
@@ -64,24 +64,18 @@ in slice 1.
   shared evaluation, authored diagnostics, and independent schema roots. Schema
   adaptation and record materialization now share StaticType emission.
 
-### Not cut over
+### Production cutover complete
 
-Schema-boundary resolution still runs through compiler stub IR.
-`src/typeforge/compiler/adaptation/_source_to_ir.py` expands callable `MapType`
-aliases and invokes `adaptation/_legacy_schema.py` at a `SchemaType` boundary.
-The legacy evaluator still owns:
+Production Schema boundaries now call
+`compiler.adaptation.adapt_schema_expression()` with authored alias context and
+visible generic parameters. Shared semantics owns matching, predicates, captures,
+uncertainty, and possible-output calculation. The legacy schema evaluator and
+its unused `SchemaType` stub-IR wrapper have been deleted, with no fallback path.
 
-- recursive `resolve_schema_type()` traversal across applications, unions, tuples,
-  field transforms, and nested schema boundaries;
-- `_resolve_schema_map_member()` and first-match case selection;
-- `_match_schema_pattern()` and `_substitute_schema_capture()`;
-- `resolve_schema_predicate()`, `_schema_assignable()`, and unresolved-variable
-  detection;
-- `union_types_for_schema()` normalization;
-- direct output-union calculation for `RuntimeInputType`.
-
-The duplicate path remains intentionally until the prerequisites below are
-complete and the production pipeline can move in one small change.
+Callable relationship aliases still use `MapType`. Record aliases retain their
+references until the existing materialization stage. Each/Collect markers retain
+compiler arity data for finite specialization, and declaration emission preserves
+type variables while independent reusable roots keep authored names.
 
 Shared lowering, the compiler `TypeSystem`, and `static_type_expression()` live in
 `src/typeforge/compiler/semantic_adapter/`. Record materialization and the new
@@ -296,7 +290,8 @@ slice and interface that will own its strict contract.
 Slices 2 and 5 have now discharged the lowering and evaluation prerequisites
 for C13 and C1–C9 respectively. Their compiler end-to-end correction coverage
 remains assigned to slice 8. Slices 6–7 now discharge C10–C12 at the source alias
-and direct schema adapter interfaces. Next: production cutover and deletion.
+and direct schema adapter interfaces. Slice 8 now covers all corrections at
+`generate_module()` and completes production cutover and deletion.
 
 ### 2. Complete output-role composition
 
@@ -317,7 +312,8 @@ The contracts in
 `tests/unit/compiler/semantic_adapter/test_semantic_lowering.py` cover both union
 template positions, Literal case/predicate/output roles, C13's transformed field,
 and predicates over a field's Literal type inside a Map over Key. Defaults use
-the same output role as cases. No compiler schema boundary has cut over.
+the same output role as cases. Production boundaries stayed unchanged in slice 2
+and cut over in slice 8.
 
 Completion criterion: `set[Value] | None`, `tuple[Value | None]`, field renames,
 and Literal case tests, predicate operands, and outputs all lower according to
@@ -488,7 +484,8 @@ structural/aliased Maps, deferred bounds, generic identity, nested types, record
 references, diagnostics, backend failures, and origins. Static emission contracts
 cover bare and qualified Never and unpacked types. Architecture tests identify
 the sole semantic-to-AdaptationError conversion function and StaticType emission
-traversal, and enforce the temporary absence of production callers until slice 8.
+traversal. Slice 8 updates the production-boundary architecture contract to
+require the adapter caller.
 
 These adapter contracts also exposed a remaining template composition gap:
 parameterized arguments now accept nested semantic expressions and consume a
@@ -496,9 +493,9 @@ deferred argument's existing possible bound. Unresolved static arguments retain
 their provenance. Direct `evaluate()` regressions cover this composition and
 non-type argument short-circuiting.
 
-Production compiler and overlay schema boundaries still use the existing path.
-The next slice must activate the end-to-end corrections and remove that path;
-record references continue to rely on the existing materialization owner.
+Production boundaries stayed on the existing path during slice 7. Slice 8 now
+uses the adapter; record references continue to rely on the existing
+materialization owner.
 
 Add a compiler-owned adapter that performs:
 
@@ -531,22 +528,34 @@ callable Map overload and verification tests remain unchanged.
 
 ### 8. Cut over and delete the duplicate path
 
-Route every currently evaluated compiler schema boundary through the tested
-schema adapter, preserving publication's selected source scope. The overlay
-already consumes `CompilationPlan`; update it only as a downstream caller if the
-compiler interface it consumes changes. Activate the compiler end-to-end
-correction contracts assigned here by the characterization matrix. Then delete from
-`src/typeforge/compiler/adaptation/_legacy_schema.py`:
+Complete. Production declaration adaptation and reusable Schema roots now use
+`adapt_schema_expression()`. The source traversal requires its authored alias
+context; no schema evaluation round-trips through callable `MapType` IR.
+`adapt_source_module()` propagates nested modeled failures through its result
+boundary. Overlay projection continues to consume the same `CompilationPlan`,
+and publication retains its existing selected source scope.
 
-- `resolve_schema_type()` and `_resolve_schema_map_member()`;
-- `_match_schema_pattern()`;
-- `_substitute_schema_capture()`;
-- `resolve_schema_predicate()`, `_schema_assignable()`, and unresolved-variable
-  detection;
-- `union_types_for_schema()`;
-- the direct `RuntimeInputType` output-union path.
+All C1–C13 end-to-end corrections pass in
+`tests/unit/compiler/pipeline/test_schema_map_corrections.py`. The 62 retained
+characterization cases, callable overload/verification contracts, record
+materialization, authored origins, independent reusable roots, and publication
+versus overlay compatibility tests remain green.
 
-Do not retain the previous path as fallback behavior.
+Deletion review added one retained compatibility contract: parameterized types
+remain assignable to `object`. Its rule lives in the existing compiler TypeSystem
+adapter, alongside primitive assignability for named types and unions.
+An older adapter-only regression had characterized the opposite result; it now
+asserts the preserved production Schema contract at the primitive seam as well.
+
+Deleted the entire `adaptation/_legacy_schema.py` evaluator, its structural
+matcher, capture substitution, predicate evaluator, unresolved-variable checks,
+union normalization, and runtime Input output-union path. Removed the unused
+`SchemaType` IR data, exports, traversal, and specialization branches. No deleted
+helper definitions or callers remain in source or tests.
+
+Full `make check` passes pytest, Ruff lint/format, Flake8 block spacing, mypy,
+and pyright. There are no pending contracts or new xfails for this scope.
+The runtime decision below remains a separate Pydantic task.
 
 Completion criterion:
 

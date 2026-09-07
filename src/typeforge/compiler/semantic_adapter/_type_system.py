@@ -80,16 +80,14 @@ def _assignable(source: StaticType, target: StaticType) -> bool:
     match source, target:
         case NeverType(), _:
             return True
+        case _, NamedType(name="object"):
+            return True
         case UnionType(members), _:
             return all(_assignable(member, target) for member in members)
         case _, UnionType(members):
             return any(_assignable(source, member) for member in members)
         case NamedType(), NamedType():
-            return (
-                source.name == target.name
-                or target.name == "object"
-                or target.name in source.bases
-            )
+            return source.name == target.name or target.name in source.bases
         case _:
             return source == target
 

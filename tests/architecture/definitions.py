@@ -44,7 +44,11 @@ TYPE_FORGE = ArchModule(
                 ArchModule(name="source"),
                 ArchModule(
                     name="adaptation",
-                    files=[ArchFile(name="_schema"), ArchFile(name="_schema_aliases")],
+                    files=[
+                        ArchFile(name="_schema"),
+                        ArchFile(name="_schema_aliases"),
+                        ArchFile(name="_source_to_ir"),
+                    ],
                 ),
                 ArchModule(name="semantic_adapter", files=[ArchFile(name="_emission")]),
                 ArchModule(name="specialization"),

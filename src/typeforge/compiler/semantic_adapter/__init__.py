@@ -18,6 +18,7 @@ from typeforge.compiler.semantic_adapter._types import (
     StaticType,
     UnionType,
     UnpackedType,
+    VariadicType,
     is_static,
     union_of,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "StaticType",
     "UnionType",
     "UnpackedType",
+    "VariadicType",
     "is_static",
     "lower_semantic_expression",
     "static_type_expression",

@@ -1,6 +1,7 @@
-"""Direct schema adaptation; production boundaries have not cut over yet."""
+"""Adapt authored schema boundaries through shared semantic evaluation."""
 
 from dataclasses import dataclass, replace
+from typing import Literal
 
 from returns.result import Result, Success
 
@@ -15,11 +16,14 @@ from typeforge.compiler.semantic_adapter import (
     StaticType,
     UnionType,
     UnpackedType,
+    VariadicType,
     lower_semantic_expression,
     static_type_expression,
 )
 from typeforge.compiler.source import (
     AppliedTypeExpression,
+    MarkerKind,
+    MarkerTypeExpression,
     SchemaTypeExpression,
     SourceSpan,
     SourceTypeExpression,
@@ -57,6 +61,7 @@ def adapt_schema_expression(
     declaration: str,
     environment: SemanticEnvironment = (),
     type_parameters: tuple[str, ...] = (),
+    preserve_type_variables: bool = False,
     never_name: str = "Never",
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
 ) -> Result[StubTypeExpression, AdaptationError]:
@@ -77,7 +82,13 @@ def adapt_schema_expression(
     adapt_safely = safe_result(errors=_SCHEMA_ERRORS)(_adapt_schema_expression)
     staged_origins: list[GeneratedElementOrigin[SourceSpan]] = []
     result = adapt_safely(
-        expression, aliases, declaration, environment, never_name, staged_origins
+        expression,
+        aliases,
+        declaration,
+        environment,
+        never_name,
+        staged_origins,
+        type_parameters if preserve_type_variables else (),
     ).alt(lambda error: _schema_adaptation_error(error, expression, declaration))
     if isinstance(result, Success) and origins is not None:
         origins.extend(staged_origins)
@@ -108,6 +119,7 @@ def _adapt_schema_expression(
     environment: SemanticEnvironment,
     never_name: str,
     origins: list[GeneratedElementOrigin[SourceSpan]],
+    emitted_parameters: tuple[str, ...],
 ) -> StubTypeExpression:
     expanded = expand_schema_aliases(
         expression, aliases, declaration=declaration
@@ -118,6 +130,7 @@ def _adapt_schema_expression(
     generated = static_type_expression(
         value,
         never_name=never_name,
+        type_parameters=emitted_parameters,
         on_emit=lambda value, expression: emitted.append((value, expression)),
     )
     for origin in source_origins:
@@ -167,6 +180,15 @@ def _resolve_schema_source(
     origins: list[_SchemaOrigin],
 ) -> StaticType:
     match expression:
+        case MarkerTypeExpression(
+            marker=MarkerKind.EACH | MarkerKind.COLLECT, arguments=(item,)
+        ):
+            kind: Literal["Each", "Collect"] = (
+                "Each" if expression.marker is MarkerKind.EACH else "Collect"
+            )
+            return VariadicType(
+                kind, _resolve_schema_source(item, environment, origins)
+            )
         case SchemaTypeExpression(arguments=arguments):
             if len(arguments) != 1:
                 raise SemanticLoweringError("Schema requires one type argument")

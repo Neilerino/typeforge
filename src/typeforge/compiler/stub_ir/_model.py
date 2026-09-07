@@ -134,11 +134,6 @@ class MapFieldsType:
 
 
 @dataclass(frozen=True, slots=True)
-class SchemaType:
-    item: StubTypeExpression
-
-
-@dataclass(frozen=True, slots=True)
 class RuntimeInputType:
     pass
 
@@ -158,7 +153,6 @@ type StubTypeExpression = (
     | MapValueType
     | FieldType
     | MapFieldsType
-    | SchemaType
     | RuntimeInputType
 )
 
