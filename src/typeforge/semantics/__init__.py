@@ -28,6 +28,7 @@ from typeforge.semantics.domain.models import (
     DroppedField,
     EqualExpression,
     EvaluationContext,
+    EvaluationMode,
     EvaluationValue,
     ExactTypePattern,
     Expression,
@@ -39,6 +40,8 @@ from typeforge.semantics.domain.models import (
     KeyReference,
     MapExpression,
     MapFieldsExpression,
+    MapNoMatch,
+    NoMatchDecision,
     NotExpression,
     OptionalFieldExpression,
     ParameterizedTypePattern,
@@ -61,8 +64,8 @@ from typeforge.semantics.domain.models import (
     ValueReference,
     type_ref,
 )
-from typeforge.semantics.evaluation import evaluate
-from typeforge.semantics.protocols import TypeSystem
+from typeforge.semantics.evaluation import Evaluator, evaluate
+from typeforge.semantics.protocols import EvaluationPolicy, TypeSystem
 
 __all__ = (
     "AllExpression",
@@ -77,7 +80,10 @@ __all__ = (
     "DuplicateFieldSemanticError",
     "EqualExpression",
     "EvaluationContext",
+    "EvaluationMode",
+    "EvaluationPolicy",
     "EvaluationValue",
+    "Evaluator",
     "ExactTypePattern",
     "ExpectedConditionSemanticError",
     "ExpectedFieldNameSemanticError",
@@ -93,6 +99,8 @@ __all__ = (
     "KeyReference",
     "MapExpression",
     "MapFieldsExpression",
+    "MapNoMatch",
+    "NoMatchDecision",
     "NoMatchSemanticError",
     "NotExpression",
     "OptionalFieldExpression",

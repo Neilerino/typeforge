@@ -1,14 +1,17 @@
 """Shared semantic evaluation interface and private traversal."""
 
+from collections.abc import Callable, Iterator
 from dataclasses import replace
-from functools import singledispatch
+from functools import singledispatchmethod
+from typing import assert_never
 
-from returns.result import Result
+from returns.result import Failure, Result
 
 from typeforge.semantics.domain.assertions import (
     expect_condition,
     expect_field,
     expect_field_name,
+    expect_possible_type,
     expect_type,
     expect_type_value,
 )
@@ -24,20 +27,25 @@ from typeforge.semantics.domain.models import (
     AllExpression,
     AnyExpression,
     AssignableExpression,
+    Condition,
     DeferredMap,
     DropExpression,
     DroppedField,
     EqualExpression,
     EvaluationContext,
+    EvaluationMode,
     EvaluationValue,
     Expression,
     FieldExpression,
     FieldName,
     IndeterminateCondition,
+    IndeterminateType,
     InputReference,
     KeyReference,
     MapExpression,
     MapFieldsExpression,
+    MapNoMatch,
+    NoMatchDecision,
     NotExpression,
     OptionalFieldExpression,
     ParameterizedTypeShape,
@@ -49,19 +57,29 @@ from typeforge.semantics.domain.models import (
     TypeValue,
     TypeValueReference,
     UnionExpression,
+    UnresolvedType,
     ValueReference,
+    is_bool_expr,
+    is_pattern_expr,
 )
-from typeforge.semantics.map_evaluation import evaluate_map
-from typeforge.semantics.protocols import TypeSystem
+from typeforge.semantics.map_matching import map_values_are_equal, match_type_pattern
+from typeforge.semantics.protocols import EvaluationPolicy, TypeSystem
 from typeforge.semantics.type_evaluation import (
     assignable_types,
     build_type,
     conjunction,
     disjunction,
     equal_types,
+    indeterminate_type,
+    union_members,
     union_type,
 )
 from typeforge.utils.error_handling import safe_result
+
+
+class _DefaultPolicy[T]:
+    def no_match(self, outcome: MapNoMatch[T]) -> NoMatchDecision:
+        return NoMatchDecision.ACCEPT
 
 
 def evaluate[T](
@@ -69,267 +87,386 @@ def evaluate[T](
     type_system: TypeSystem[T],
     context: EvaluationContext[T] | None = None,
 ) -> Result[EvaluationValue[T], SemanticIssue]:
-    """Evaluate a normalized expression through a type-system adapter."""
-    evaluation_context = EvaluationContext[T]() if context is None else context
+    """Evaluate with the language's default policy: exhausted Maps produce Never.
 
-    eval_safely = safe_result(errors=(SemanticIssue,))(_evaluate)
-    return eval_safely(expression, type_system, evaluation_context)
+    Compiler consumers use this narrower result seam. Custom acceptance policy
+    belongs on Evaluator, whose result additionally declares rejected selections.
+    """
 
+    def default_failure(issue: SemanticIssue | MapNoMatch[T]) -> SemanticIssue:
+        # This entry point owns an always-accepting policy. Rejecting a selection
+        # here would violate that invariant, not create another compiler outcome.
+        assert isinstance(issue, SemanticIssue)
+        return issue
 
-@singledispatch
-def _evaluate[T](
-    expression: Expression[T],
-    type_system: TypeSystem[T],
-    context: EvaluationContext[T],
-) -> EvaluationValue[T]:
-    raise UnsupportedExpressionSemanticError(
-        f"unsupported expression {type(expression).__name__}"
-    )
-
-
-@_evaluate.register(TypeReference)
-def _[T](
-    expression: TypeReference[T],
-    type_system: TypeSystem[T],
-    context: EvaluationContext[T],
-) -> EvaluationValue[T]:
-    return ResolvedType(expression.value)
-
-
-@_evaluate.register(FieldName)
-def _[T](
-    expression: FieldName,
-    type_system: TypeSystem[T],
-    context: EvaluationContext[T],
-) -> EvaluationValue[T]:
-    return expression
-
-
-@_evaluate.register(TypeValueReference)
-def _[T](
-    expression: TypeValueReference[T],
-    type_system: TypeSystem[T],
-    context: EvaluationContext[T],
-) -> EvaluationValue[T]:
-    return expression.value
-
-
-@_evaluate.register(InputReference)
-def _[T](
-    expression: InputReference,
-    type_system: TypeSystem[T],
-    context: EvaluationContext[T],
-) -> EvaluationValue[T]:
-    if context.input_type is None:
-        raise UnboundInputSemanticError("Input requires value-time evaluation")
-
-    return context.input_type
-
-
-@_evaluate.register(KeyReference)
-def _[T](
-    expression: KeyReference,
-    type_system: TypeSystem[T],
-    context: EvaluationContext[T],
-) -> EvaluationValue[T]:
-    if context.key is None:
-        raise UnboundKeySemanticError("Key requires MapFields")
-
-    return FieldName(context.key)
-
-
-@_evaluate.register(ValueReference)
-def _[T](
-    expression: ValueReference,
-    type_system: TypeSystem[T],
-    context: EvaluationContext[T],
-) -> EvaluationValue[T]:
-    if context.capture is not None:
-        return context.capture
-
-    if context.value is not None:
-        return context.value
-
-    raise UnboundValueSemanticError("Value requires MapFields or a structural Map case")
-
-
-@_evaluate.register(DropExpression)
-def _[T](
-    expression: DropExpression,
-    type_system: TypeSystem[T],
-    context: EvaluationContext[T],
-) -> EvaluationValue[T]:
-    return DroppedField()
-
-
-@_evaluate.register(ParameterizedTypeTemplate)
-def _[T](
-    expression: ParameterizedTypeTemplate[T],
-    type_system: TypeSystem[T],
-    context: EvaluationContext[T],
-) -> EvaluationValue[T]:
-    arguments: list[TypeValue[T]] = []
-    for argument in expression.arguments:
-        value = _evaluate(argument, type_system, context)
-        # A deferred argument contributes its existing bound; static uncertainty
-        # keeps its provenance for later predicates.
-        arguments.append(
-            expect_type_value(
-                value.possible_output if isinstance(value, DeferredMap) else value,
-                "parameterized type arguments must evaluate to types",
-            )
-        )
-
-    shape = ParameterizedTypeShape(ResolvedType(expression.origin), tuple(arguments))
-    return build_type(shape, type_system)
-
-
-@_evaluate.register(FieldExpression | OptionalFieldExpression | ReadonlyFieldExpression)
-def _[T](
-    expression: (
-        FieldExpression[T] | OptionalFieldExpression[T] | ReadonlyFieldExpression[T]
-    ),
-    type_system: TypeSystem[T],
-    context: EvaluationContext[T],
-) -> EvaluationValue[T]:
-    name = expect_field_name(_evaluate(expression.name, type_system, context))
-    value = expect_type(
-        _evaluate(expression.value, type_system, context),
-        "field value must evaluate to a type",
-    )
-
-    return RecordField(
-        name.value,
-        value.value,
-        required=not isinstance(expression, OptionalFieldExpression),
-        readonly=isinstance(expression, ReadonlyFieldExpression),
-    )
-
-
-@_evaluate.register(MapFieldsExpression)
-def _[T](
-    expression: MapFieldsExpression[T],
-    type_system: TypeSystem[T],
-    context: EvaluationContext[T],
-) -> EvaluationValue[T]:
-    record_type = expect_type(
-        _evaluate(expression.record, type_system, context),
-    )
-    record = type_system.record(record_type.value).unwrap()
-    fields: list[RecordField[T]] = []
-    field_names: set[str] = set()
-
-    for source_field in record.fields:
-        field_context = replace(
-            context,
-            key=source_field.name,
-            value=ResolvedType(source_field.value),
-        )
-        transformed = _evaluate(expression.transform, type_system, field_context)
-        if isinstance(transformed, DroppedField):
-            continue
-
-        field = expect_field(
-            transformed,
-            "MapFields transform must evaluate to a field or Drop",
-        )
-        if field.name in field_names:
-            raise DuplicateFieldSemanticError(
-                f"multiple source fields produce {field.name!r}"
-            )
-
-        field_names.add(field.name)
-        fields.append(field)
-
-    return replace(
-        record,
-        name=(
-            record.name if expression.output_name is None else expression.output_name
-        ),
-        fields=tuple(fields),
-    )
-
-
-@_evaluate.register(UnionExpression)
-def _[T](
-    expression: UnionExpression[T],
-    type_system: TypeSystem[T],
-    context: EvaluationContext[T],
-) -> EvaluationValue[T]:
-    return union_type(
-        (_evaluate(member, type_system, context) for member in expression.members),
-        type_system,
-        "union members must evaluate to types",
-    )
-
-
-@_evaluate.register(EqualExpression)
-def _[T](
-    expression: EqualExpression[T],
-    type_system: TypeSystem[T],
-    context: EvaluationContext[T],
-) -> EvaluationValue[T]:
-    left = _evaluate(expression.left, type_system, context)
-    right = _evaluate(expression.right, type_system, context)
-
-    if isinstance(left, FieldName) and isinstance(right, FieldName):
-        return left == right
-
-    message = "Equal operands must both be types or both be field names"
-    return equal_types(
-        expect_type_value(left, message), expect_type_value(right, message), type_system
-    )
-
-
-@_evaluate.register(AssignableExpression)
-def _[T](
-    expression: AssignableExpression[T],
-    type_system: TypeSystem[T],
-    context: EvaluationContext[T],
-) -> EvaluationValue[T]:
-    source = expect_type_value(
-        _evaluate(expression.source, type_system, context),
-        "Assignable operands must both be types",
-    )
-    target = expect_type_value(
-        _evaluate(expression.target, type_system, context),
-        "Assignable operands must both be types",
-    )
-
-    return assignable_types(source, target, type_system)
-
-
-@_evaluate.register(AnyExpression | AllExpression)
-def _[T](
-    expression: AllExpression[T] | AnyExpression[T],
-    type_system: TypeSystem[T],
-    context: EvaluationContext[T],
-) -> EvaluationValue[T]:
-    conditions = (
-        expect_condition(_evaluate(condition, type_system, context))
-        for condition in expression.conditions
-    )
     return (
-        conjunction(conditions)
-        if isinstance(expression, AllExpression)
-        else disjunction(conditions)
+        Evaluator(type_system, context=context)
+        .evaluate(expression)
+        .alt(default_failure)
     )
 
 
-@_evaluate.register(NotExpression)
-def _[T](
-    expression: NotExpression[T],
-    type_system: TypeSystem[T],
-    context: EvaluationContext[T],
-) -> EvaluationValue[T]:
-    value = expect_condition(_evaluate(expression.condition, type_system, context))
-    return value if isinstance(value, IndeterminateCondition) else not value
+class Evaluator[T]:
+    """Shared traversal composed with type operations and acceptance policy.
 
+    Each evaluator binds an immutable context to shared dependencies. Derived
+    bindings and speculative paths use child evaluators, leaving parents unchanged.
+    """
 
-@_evaluate.register(MapExpression)
-def _[T](
-    expression: MapExpression[T],
-    type_system: TypeSystem[T],
-    context: EvaluationContext[T],
-) -> EvaluationValue[T]:
-    return evaluate_map(expression, type_system, context, fn=_evaluate)
+    def __init__(
+        self,
+        type_system: TypeSystem[T],
+        *,
+        policy: EvaluationPolicy[T] | None = None,
+        context: EvaluationContext[T] | None = None,
+    ) -> None:
+        self.type_system = type_system
+        self._policy: EvaluationPolicy[T] = policy or _DefaultPolicy()
+        self._context: EvaluationContext[T] = context or EvaluationContext()
+
+    @property
+    def context(self) -> EvaluationContext[T]:
+        return self._context
+
+    def with_context(self, context: EvaluationContext[T]) -> Evaluator[T]:
+        """Bind a child context while sharing this evaluator's adapter and policy."""
+        return Evaluator(self.type_system, policy=self._policy, context=context)
+
+    def evaluate(
+        self, expression: Expression[T]
+    ) -> Result[EvaluationValue[T], SemanticIssue | MapNoMatch[T]]:
+        errors: tuple[type[SemanticIssue | MapNoMatch[T]], ...] = (
+            SemanticIssue,
+            MapNoMatch,
+        )
+        run: Callable[
+            [Expression[T]],
+            Result[EvaluationValue[T], SemanticIssue | MapNoMatch[T]],
+        ] = safe_result(errors=errors)(self._evaluate)
+        return run(expression)
+
+    def _no_match(self, outcome: MapNoMatch[T]) -> ResolvedType[T]:
+        match self._policy.no_match(outcome):
+            case NoMatchDecision.REJECT:
+                return Failure(outcome).unwrap()
+            case NoMatchDecision.ACCEPT:
+                return ResolvedType(self.type_system.union(()).unwrap())
+            case _ as unreachable:
+                assert_never(unreachable)
+
+    def _evaluate(self, expression: Expression[T]) -> EvaluationValue[T]:
+        # singledispatchmethod's descriptor typing erases the class type parameter.
+        # Preserve that relationship for recursive calls and the result boundary.
+        return self._dispatch(expression)
+
+    @singledispatchmethod
+    def _dispatch(self, expression: Expression[T]) -> EvaluationValue[T]:
+        raise UnsupportedExpressionSemanticError(
+            f"unsupported expression {type(expression).__name__}"
+        )
+
+    @_dispatch.register(TypeReference)
+    def _type_reference(self, expression: TypeReference[T]) -> EvaluationValue[T]:
+        return ResolvedType(expression.value)
+
+    @_dispatch.register(FieldName)
+    def _field_name(self, expression: FieldName) -> EvaluationValue[T]:
+        return expression
+
+    @_dispatch.register(TypeValueReference)
+    def _type_value_reference(
+        self, expression: TypeValueReference[T]
+    ) -> EvaluationValue[T]:
+        return expression.value
+
+    @_dispatch.register(InputReference)
+    def _input(self, expression: InputReference) -> EvaluationValue[T]:
+        if self.context.input_type is None:
+            raise UnboundInputSemanticError("Input requires value-time evaluation")
+
+        return self.context.input_type
+
+    @_dispatch.register(KeyReference)
+    def _key(self, expression: KeyReference) -> EvaluationValue[T]:
+        if self.context.key is None:
+            raise UnboundKeySemanticError("Key requires MapFields")
+
+        return FieldName(self.context.key)
+
+    @_dispatch.register(ValueReference)
+    def _value(self, expression: ValueReference) -> EvaluationValue[T]:
+        if self.context.capture is not None:
+            return self.context.capture
+
+        if self.context.value is not None:
+            return self.context.value
+
+        raise UnboundValueSemanticError(
+            "Value requires MapFields or a structural Map case"
+        )
+
+    @_dispatch.register(DropExpression)
+    def _drop(self, expression: DropExpression) -> EvaluationValue[T]:
+        return DroppedField()
+
+    @_dispatch.register(ParameterizedTypeTemplate)
+    def _template(self, expression: ParameterizedTypeTemplate[T]) -> EvaluationValue[T]:
+        arguments: list[TypeValue[T]] = []
+        for argument in expression.arguments:
+            value = self._evaluate(argument)
+            # Deferred arguments contribute their existing bounds; static
+            # uncertainty keeps its provenance for later predicates.
+            arguments.append(
+                expect_type_value(
+                    value.possible_output if isinstance(value, DeferredMap) else value,
+                    "parameterized type arguments must evaluate to types",
+                )
+            )
+
+        shape = ParameterizedTypeShape(
+            ResolvedType(expression.origin), tuple(arguments)
+        )
+        return build_type(shape, self.type_system)
+
+    @_dispatch.register(
+        FieldExpression | OptionalFieldExpression | ReadonlyFieldExpression
+    )
+    def _field(
+        self,
+        expression: FieldExpression[T]
+        | OptionalFieldExpression[T]
+        | ReadonlyFieldExpression[T],
+    ) -> EvaluationValue[T]:
+        name = expect_field_name(self._evaluate(expression.name))
+        value = expect_type(
+            self._evaluate(expression.value),
+            "field value must evaluate to a type",
+        )
+
+        return RecordField(
+            name.value,
+            value.value,
+            required=not isinstance(expression, OptionalFieldExpression),
+            readonly=isinstance(expression, ReadonlyFieldExpression),
+        )
+
+    @_dispatch.register(MapFieldsExpression)
+    def _map_fields(self, expression: MapFieldsExpression[T]) -> EvaluationValue[T]:
+        record_type = expect_type(
+            self._evaluate(expression.record),
+        )
+        record = self.type_system.record(record_type.value).unwrap()
+        fields: list[RecordField[T]] = []
+        field_names: set[str] = set()
+
+        for source_field in record.fields:
+            field_context = replace(
+                self.context,
+                key=source_field.name,
+                value=ResolvedType(source_field.value),
+            )
+            transformed = self.with_context(field_context)._evaluate(
+                expression.transform
+            )
+            if isinstance(transformed, DroppedField):
+                continue
+
+            field = expect_field(
+                transformed,
+                "MapFields transform must evaluate to a field or Drop",
+            )
+            if field.name in field_names:
+                raise DuplicateFieldSemanticError(
+                    f"multiple source fields produce {field.name!r}"
+                )
+
+            field_names.add(field.name)
+            fields.append(field)
+
+        return replace(
+            record,
+            name=(
+                record.name
+                if expression.output_name is None
+                else expression.output_name
+            ),
+            fields=tuple(fields),
+        )
+
+    @_dispatch.register(UnionExpression)
+    def _union(self, expression: UnionExpression[T]) -> EvaluationValue[T]:
+        return union_type(
+            (self._evaluate(member) for member in expression.members),
+            self.type_system,
+            "union members must evaluate to types",
+        )
+
+    @_dispatch.register(EqualExpression)
+    def _equal(self, expression: EqualExpression[T]) -> EvaluationValue[T]:
+        left = self._evaluate(expression.left)
+        right = self._evaluate(expression.right)
+
+        if isinstance(left, FieldName) and isinstance(right, FieldName):
+            return left == right
+
+        message = "Equal operands must both be types or both be field names"
+        return equal_types(
+            expect_type_value(left, message),
+            expect_type_value(right, message),
+            self.type_system,
+        )
+
+    @_dispatch.register(AssignableExpression)
+    def _assignable(self, expression: AssignableExpression[T]) -> EvaluationValue[T]:
+        source = expect_type_value(
+            self._evaluate(expression.source),
+            "Assignable operands must both be types",
+        )
+        target = expect_type_value(
+            self._evaluate(expression.target),
+            "Assignable operands must both be types",
+        )
+
+        return assignable_types(source, target, self.type_system)
+
+    @_dispatch.register(AnyExpression | AllExpression)
+    def _conditions(
+        self,
+        expression: AnyExpression[T] | AllExpression[T],
+    ) -> EvaluationValue[T]:
+        def conditions() -> Iterator[Condition]:
+            evaluator = self
+            for condition in expression.conditions:
+                value = expect_condition(evaluator._evaluate(condition))
+                yield value
+                if isinstance(value, IndeterminateCondition):
+                    evaluator = self.with_context(
+                        replace(self.context, mode=EvaluationMode.SPECULATIVE)
+                    )
+
+        return (
+            conjunction(conditions())
+            if isinstance(expression, AllExpression)
+            else disjunction(conditions())
+        )
+
+    @_dispatch.register(NotExpression)
+    def _not(self, expression: NotExpression[T]) -> EvaluationValue[T]:
+        value = expect_condition(self._evaluate(expression.condition))
+        return value if isinstance(value, IndeterminateCondition) else not value
+
+    @_dispatch.register(MapExpression)
+    def _map(self, expression: MapExpression[T]) -> EvaluationValue[T]:
+        return self._evaluate_map(expression)
+
+    def _evaluate_map(
+        self,
+        expression: MapExpression[T],
+    ) -> EvaluationValue[T]:
+        if (
+            isinstance(expression.subject, InputReference)
+            and self.context.input_type is None
+        ):
+            return self._defer_map(expression)
+
+        subject = self._evaluate(expression.subject)
+        members: tuple[EvaluationValue[T], ...]
+        if isinstance(subject, ResolvedType | UnresolvedType):
+            members = union_members(subject, self.type_system)
+        else:
+            members = (subject,)
+
+        outputs = tuple(
+            self._evaluate_map_member(member, expression) for member in members
+        )
+        if len(outputs) == 1:
+            return outputs[0]
+
+        return union_type(
+            outputs,
+            self.type_system,
+            "Map outputs for a union subject must evaluate to types",
+        )
+
+    def _defer_map(
+        self,
+        expression: MapExpression[T],
+    ) -> DeferredMap[T]:
+        speculative = self.with_context(
+            replace(self.context, mode=EvaluationMode.SPECULATIVE)
+        )
+        output_types = tuple(
+            expect_possible_type(
+                speculative._evaluate(case.output),
+                "deferred Map outputs must evaluate to types",
+            ).value
+            for case in expression.cases
+        )
+        if expression.default is not None:
+            default_type = expect_possible_type(
+                speculative._evaluate(expression.default),
+                "deferred Map outputs must evaluate to types",
+            )
+            output_types = (*output_types, default_type.value)
+
+        return DeferredMap(
+            cases=expression.cases,
+            default=expression.default,
+            context=self.context,
+            possible_output=ResolvedType(self.type_system.union(output_types).unwrap()),
+        )
+
+    def _evaluate_map_member(
+        self,
+        subject: EvaluationValue[T],
+        expression: MapExpression[T],
+        *,
+        start_case: int = 0,
+    ) -> EvaluationValue[T]:
+        for index, case in enumerate(expression.cases[start_case:], start=start_case):
+            output_context = self.context
+            if is_bool_expr(case.test):
+                matched = expect_condition(self._evaluate(case.test))
+
+            elif is_pattern_expr(case.test):
+                if isinstance(
+                    subject, ResolvedType | UnresolvedType | IndeterminateType
+                ):
+                    matched, value_binding = match_type_pattern(
+                        case.test,
+                        subject,
+                        self.type_system,
+                    )
+                    output_context = replace(self.context, capture=value_binding)
+                else:
+                    matched = False
+
+            else:
+                test = self._evaluate(case.test)
+                matched = map_values_are_equal(subject, test, self.type_system)
+
+            if matched is True:
+                return self.with_context(output_context)._evaluate(case.output)
+
+            if isinstance(matched, IndeterminateCondition):
+                speculative = self.with_context(
+                    replace(self.context, mode=EvaluationMode.SPECULATIVE)
+                )
+                output_context = replace(
+                    output_context, mode=EvaluationMode.SPECULATIVE
+                )
+                selected = self.with_context(output_context)._evaluate(case.output)
+                expect_possible_type(
+                    selected, "indeterminate Map outputs must evaluate to types"
+                )
+                remaining = speculative._evaluate_map_member(
+                    subject,
+                    expression,
+                    start_case=index + 1,
+                )
+                return indeterminate_type((selected, remaining), self.type_system)
+
+        if expression.default is not None:
+            return self._evaluate(expression.default)
+
+        return self._no_match(MapNoMatch(expression, subject, self.context))

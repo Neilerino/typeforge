@@ -28,7 +28,7 @@ SEMANTICS = ArchModule(
     files=[
         ArchFile(name="protocols"),
         ArchFile(name="type_evaluation"),
-        ArchFile(name="map_evaluation"),
+        ArchFile(name="map_matching"),
         ArchFile(name="evaluation"),
     ],
 )
@@ -38,6 +38,19 @@ TYPE_FORGE = ArchModule(
     name="typeforge",
     sub_modules=[
         SEMANTICS,
+        ArchModule(
+            name="pydantic",
+            files=[
+                ArchFile(name="_schema"),
+                ArchFile(name="_annotation"),
+                ArchFile(name="_compile"),
+                ArchFile(name="_frontend"),
+                ArchFile(name="_policy"),
+                ArchFile(name="_type_system"),
+                ArchFile(name="_emission"),
+                ArchFile(name="_errors"),
+            ],
+        ),
         ArchModule(
             name="compiler",
             sub_modules=[

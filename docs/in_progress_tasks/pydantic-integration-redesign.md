@@ -1,6 +1,6 @@
 # Pydantic Integration Redesign
 
-Status: In progress — slice 1 complete; next: replacement pipeline (slice 2)
+Status: In progress — slices 1–2 complete; next: aliases and structural expressions (slice 3)
 
 Priority: Next implementation scope
 
@@ -43,12 +43,18 @@ contracts remain in:
 - `tests/unit/compiler/adaptation/test_schema_adapter.py`;
 - `tests/unit/semantics/`.
 
-Pydantic currently exposes its markers through `src/typeforge/pydantic/__init__.py`
+The public Pydantic path currently exposes its markers through `src/typeforge/pydantic/__init__.py`
 and implements parsing, a private expression model, evaluation, structural
 matching, record adaptation, deferred RuntimeMapPlan dispatch, and CoreSchema
 emission in `src/typeforge/pydantic/_schema.py`. It does not yet consume shared
 evaluation. Existing tests provide a behavioral oracle, not an implementation
 template for the replacement.
+
+Slice 2 adds a private replacement hook in `_annotation.py`, backed by `_compile`,
+`_frontend`, `_policy`, `_type_system`, `_emission`, and `_errors`. Direct resolved
+Maps and ordinary types now run through shared semantics on this private path.
+The public hook remains on the existing implementation until slice 6; it is the
+identified consumer that requires retaining `_schema.py` during migration.
 
 DeferredMap already preserves ordered cases, default, context, and possible
 output. That does not settle how a runtime consumer resumes selection from raw
@@ -340,8 +346,9 @@ generic transformation support is not implemented yet.
 
 - Schema returns the resolved value without a public wrapper and works through
   TypeAdapter and BaseModel fields.
-- Ordinary types and metadata delegate to Pydantic, using the handler's
-  `generate_schema` operation for ordinary resolved types.
+- Ordinary types and metadata delegate to Pydantic. Continue the root annotation's
+  handler to preserve its middleware; use `generate_schema` for independent
+  child/output types when that annotation context must not carry over.
 - Schema-time transformations resolved from explicit arguments or Pydantic's
   generic fallbacks add no Typeforge evaluation callback to individual validations.
 - Maps retain authored order, predicates, defaults, union behavior, structural
@@ -445,7 +452,57 @@ slice 6 cutover.
 
 ### 2. Establish the replacement pipeline for resolved types and Maps
 
-Next slice; not started.
+Complete through the private `_annotation.Schema` hook. Public cutover remains
+slice 6. `test_replacement.py` exercises the supported pipeline with real
+Pydantic; `test_policy.py` covers policy from adapted facts independently of
+emission. The supported path does not call the legacy parser, evaluator, or emitter.
+
+The frontend uses a private annotation adapter created for each adaptation call.
+Its recursive entry point records authored origins; a small origin router delegates
+to named handlers for type variables, Maps, predicates, metadata, unions, aliases,
+and ordinary types. `adapt_annotation` remains the single result boundary, and
+no mutable origin state is shared across schema builds.
+
+`compile_annotation` composes adaptation, evaluation, resolved-type checking, and
+emission with `Result.do`. Named functions translate stage failures and recover
+generic no-match schemas. Emission returns modeled failures as Results at its
+own boundary; compilation does not unwrap and re-wrap them. All other failures
+short-circuit the remaining stages.
+
+The frontend preserves each authored expression for diagnostics. RuntimeType
+keeps both the effective fallback used by semantics and the annotation delegated
+to Pydantic, preserving model-bound TypeVar serialization. The hook is stateless;
+partial inheritance, both specialization orders, forced rebuilds, and Python/JSON
+validation and serialization are covered.
+
+Shared traversal now lives on `Evaluator`, composed with a TypeSystem and a typed
+EvaluationPolicy. This replaces the initial callback design within slice 2.
+Map ordering stays on the evaluator; matching primitives live in `map_matching`.
+Individual expression families retain named `singledispatchmethod` handlers,
+with a typed recursive entry point preserving the evaluator's backend parameter.
+Rejected no-match outcomes return the original Map, evaluated subject, and context
+as a declared failure. Policy returns an explicit acceptance/rejection decision;
+Pydantic translates failures at its own boundary.
+
+Each evaluator binds an immutable context, with `with_context` creating children
+that share its adapter and policy. Recursive handlers consume only the expression;
+field bindings, captures, and speculative branches derive child evaluators without
+mutating parent or sibling state. Contexts distinguish definite execution from
+speculative output exploration, including nested branches and indeterminate
+predicate operands.
+The runtime policy rejects definite no-match immediately and accepts speculative
+no-match bounds. It does not suppress unrelated failures. Compiler consumers keep
+the default `evaluate` entry point and its Never behavior. Explicit Never outputs
+remain distinct, and an uninhabited generic field schema is emitted only when
+selection depends on generic fallbacks. A parameter used only in an unreachable
+output does not defer an unrelated concrete failure.
+
+Architecture tests protect the new module responsibilities and compiler/runtime
+separation. Alias expansion, dependent generic defaults, structural templates,
+records, and Input remain later-slice work and fail explicitly on the private
+path where unsupported. There is no fallback to the legacy evaluator.
+
+Implemented scope:
 
 Build a private orchestration seam with runtime adaptation, a TypeSystem adapter,
 shared evaluation, Pydantic generic fallback/emission policy, ordinary-type emission,
@@ -539,7 +596,8 @@ dependencies actually change.
 
 ## Immediate next action
 
-Implement slice 2 using the [contract handoff](pydantic-characterization.md).
-Start with the no-default generic Map tracer through the private replacement
-annotation hook, then add generic fallback and typed no-match outcomes. Retain
-the public strict xfail until the complete production cutover in slice 6.
+Implement slice 3 using the [contract handoff](pydantic-characterization.md).
+Extend the existing private frontend and TypeSystem for aliases, generic/variadic
+binding, structural patterns, and output templates. Keep matching and captures
+in shared semantics, preserve fallback and annotation provenance through those
+operations, and retain the public strict xfail until the slice 6 cutover.

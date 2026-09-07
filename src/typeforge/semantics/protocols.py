@@ -5,7 +5,24 @@ from typing import Protocol, runtime_checkable
 from returns.result import Result
 
 from typeforge.semantics.domain.exceptions import SemanticIssue
-from typeforge.semantics.domain.models import ParameterizedTypeShape, RecordShape
+from typeforge.semantics.domain.models import (
+    MapNoMatch,
+    NoMatchDecision,
+    ParameterizedTypeShape,
+    RecordShape,
+)
+
+
+class EvaluationPolicy[T](Protocol):
+    """Consumer acceptance rules; matching and output selection remain shared."""
+
+    def no_match(self, outcome: MapNoMatch[T]) -> NoMatchDecision:
+        """Decide explicitly, including whether the path is speculative.
+
+        Expected rejection is a decision, not an exception. The evaluator returns
+        the rejected outcome as a typed failure, retaining its expression/context.
+        """
+        ...
 
 
 @runtime_checkable

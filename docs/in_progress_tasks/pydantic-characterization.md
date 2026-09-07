@@ -1,17 +1,47 @@
 # Pydantic Redesign: Runtime Contracts
 
-Status: Slice 1 complete; replacement implementation pending
+Status: Slices 1–2 complete; private resolved pipeline implemented, public cutover pending
 
 Owning task: [Pydantic integration redesign](pydantic-integration-redesign.md)
 
 ## Scope and evidence
 
-This is the handoff for slices 2–6. Production code is unchanged. Public behavior
+This is the contract handoff for the replacement. The public hook is unchanged. Public behavior
 is exercised through Schema, TypeAdapter, and BaseModel with actual Pydantic.
 The baseline is Python 3.14.3 / Pydantic 2.13.4. Existing tests remain in place;
 new characterization tests retain working behavior without enshrining discovered
 bugs. One accepted correction is parked as a strict xfail; other corrections are
 specified below for their owning implementation slices.
+
+Slice 2 implements C1, C2, C3, and C8 through the private replacement hook in
+`typeforge.pydantic._annotation`; its tests are in `test_replacement.py` and
+`test_policy.py`. The public C1 tracer remains a strict xfail until slice 6.
+Records (C4), aliases, structural captures, and runtime Input are still pending.
+The new lifecycle coverage includes partial inheritance, both specialization
+orders, rebuilt JSON Schemas in both modes, and JSON validation/serialization.
+It also ensures a TypeVar used only in an unreachable output cannot postpone a
+concrete no-match error. Unexpected schema-hook exceptions retain their identity.
+
+`test_frontend.py` covers the per-call annotation adapter: nested authored origins,
+opaque metadata, isolation across successful and failed builds, and original
+identity for modeled and unexpected failures. Annotation-family handlers retain
+the slice 2 behavior behind the existing `adapt_annotation` result boundary.
+
+`test_annotation_compilation.py` verifies that parsing, evaluation, no-match, and non-type
+outcomes stop before emission. Compilation uses `Result.do` for its normal stages
+and a separate generic no-match recovery function; existing lifecycle and schema
+hook contracts continue to exercise successful recovery and unexpected failures.
+
+`tests/unit/semantics/test_evaluation_policy.py` covers the composed evaluator:
+typed policy rejection, nested expression/context identity, explicit Never
+distinction, short-circuit failure propagation, unvisited outputs, and evaluator
+reuse without leaked bindings or modes. Context-bound child evaluators preserve
+parent and sibling bindings after failures and during reentrant policy calls;
+their shared dependencies and read-only context are covered. Speculative selected outputs, reachable
+remainders, deferred bounds, and later indeterminate predicate operands retain
+their evaluation mode. `test_policy.py` verifies Pydantic's definite/speculative
+decision and propagation of unrelated errors. Runtime policy retains the evaluated
+subject as structured issue data. The original callback is removed.
 
 Test paths below are relative to `tests/unit/pydantic/`. A named test denotes its
 full pytest function name; parameterized tests include multiple contracts.
@@ -132,7 +162,7 @@ no-match outcome, without collapsing all paths into an output bound. Runtime
 adaptation supplies on-demand test decisions from the supported raw observation
 language; predicates use shared evaluation with the raw input type bound in
 context. Do not put raw values or Pydantic validators in shared semantic data,
-and do not put pattern-aware methods on TypeSystem. A callback/adapter for
+and do not put pattern-aware methods on TypeSystem. The adapter for
 runtime test decisions must not choose case order, defaults, or outputs itself.
 
 Only visited tests are evaluated. A reached modeled test failure propagates as
@@ -140,7 +170,8 @@ an error; it is not a mismatch. Shared selection returns branch identity before
 emission invokes the selected output validator. Validation failure never resumes
 selection at a later branch. Nested deferred results retain their own context.
 Concrete API names and private plan data should be chosen when slice 5 implements
-this seam, reusing slice 2's selection outcome rather than creating another loop.
+this seam, extending slice 2's evaluator and typed selection outcomes rather than
+creating another ordering loop or adding callback parameters throughout traversal.
 
 No-match uses `typeforge_map_no_match`. Other reached predicate failures use
 their modeled code with a `typeforge_` prefix at validation (for example,
@@ -194,7 +225,13 @@ Slice 1 does not implement a new evaluator, generic fallback rules, no-match
 schemas, literal correction, or compiler plugin. It supplies reviewable contracts
 and decisions for that implementation. No dependency or lockfile changes.
 
-Validation result: the Pydantic suite has 72 passing cases and one intentional
+Slice 1 validation result: the Pydantic suite had 72 passing cases and one intentional
 strict xfail. Full make check passes pytest, Ruff lint/format, Flake8 block spacing,
 mypy, and pyright. The tracer was also run with expected failures disabled and
 failed during generic origin construction for the documented missing capability.
+
+Slice 2 validation result: focused checks for Pydantic, semantics, and architecture
+pass, as does full `make check` (pytest, Ruff lint/format, Flake8 block spacing,
+mypy, and pyright). The private tracer passes normally; the public tracer remains
+the intentional strict xfail for the slice 6 cutover. No dependency or lockfile
+changes were required.

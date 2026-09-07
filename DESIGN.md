@@ -40,6 +40,38 @@ indeterminate case, only its output and the reachable remainder contribute to th
 possible output type. Nested results retain their provenance so a possible union
 is not mistaken for a definitely selected type.
 
+`Evaluator` owns traversal and ordered Map selection, composed with `TypeSystem`
+for type operations and `EvaluationPolicy` for consumer acceptance decisions.
+Expressions and outcomes remain data. Each evaluator binds a read-only, immutable
+`EvaluationContext` carrying bindings and definite/speculative reachability.
+`with_context` creates a child sharing the type adapter and policy; it never
+temporarily replaces the parent's context. Ordinary recursive calls use the bound
+context, while field bindings, captures, and speculative paths use derived child
+evaluators. Parent and sibling evaluations remain independent, including after
+failures and during reentrant evaluation.
+
+Expression families use separate named `singledispatchmethod` handlers on the
+evaluator. A small typed recursive entry point preserves the backend type
+parameter across the dispatch descriptor; individual operators remain local
+rather than accumulating in one conditional traversal method.
+
+An exhausted Map produces a `MapNoMatch` fact retaining its original expression,
+evaluated subject, and context. Policy returns `NoMatchDecision.ACCEPT` or
+`REJECT`; rejection stops evaluation and returns that fact as a declared failure
+alongside ordinary `SemanticIssue` failures. Explicit case/default outputs of
+Never do not invoke no-match policy. Integration code translates failures using
+its authored source information; expected integration exceptions do not escape
+through semantic callbacks.
+
+Indeterminate branches, their reachable remainders, deferred output bounds, and
+conditions following an indeterminate short-circuit operand are speculative.
+That mode propagates through nested expressions even when their own subjects are
+concrete. Policy decides explicitly whether to reject such a path. Pydantic
+accepts speculative no-match bounds and rejects reached no-match paths; unrelated
+semantic errors still propagate. The existing `evaluate(expression, type_system)`
+entry point remains the default-policy convenience used by compiler consumers:
+exhausted selections produce Never and its failure type remains SemanticIssue.
+
 Compiler semantic lowering keeps field-name expressions distinct from typing
 types and output templates. A string Literal can name a transformed field while
 remaining an ordinary typing Literal in that field's type. Output-template roles

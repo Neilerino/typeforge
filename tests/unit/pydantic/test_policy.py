@@ -1,0 +1,79 @@
+import pytest
+from returns.result import Failure
+
+from tests.unit.semantics.test_migration_spec import NameTypeSystem
+from typeforge import semantics as s
+from typeforge.pydantic._policy import (
+    PydanticEvaluationPolicy,
+    generic_fallback,
+    no_match_issue,
+)
+
+
+@pytest.mark.parametrize(
+    ("default", "constraints", "bound", "expected"),
+    [
+        ("default", ("first", "second"), "bound", ("default",)),
+        (None, ("first", "second"), "bound", ("first", "second")),
+        (None, (), "bound", ("bound",)),
+        (None, (), None, ("Any",)),
+        ("", (), "bound", ("",)),
+    ],
+)
+def test_generic_fallback_precedence_from_adapted_parameter_facts(
+    default: str | None,
+    constraints: tuple[str, ...],
+    bound: str | None,
+    expected: tuple[str, ...],
+) -> None:
+    assert (
+        generic_fallback(
+            default=default, constraints=constraints, bound=bound, any_type="Any"
+        )
+        == expected
+    )
+
+
+def test_no_match_issue_keeps_operands_available_before_diagnostic_presentation() -> (
+    None
+):
+    expression, subject = object(), object()
+    issue = no_match_issue(expression, subject, uses_generic_fallback=True)
+
+    assert issue.code == "map_no_match"
+    assert issue.expression is expression
+    assert issue.subject is subject
+    assert issue.uses_generic_fallback is True
+
+
+def test_policy_accepts_speculative_no_match_but_rejects_the_selected_path() -> None:
+    unmatched = s.MapExpression(s.TypeReference("bytes"), ())
+    expression = s.MapExpression(
+        s.InputReference(),
+        (s.CaseExpression(s.ExactTypePattern("int"), unmatched),),
+    )
+    evaluator = s.Evaluator(NameTypeSystem(), policy=PydanticEvaluationPolicy())
+
+    deferred = evaluator.evaluate(expression).unwrap()
+    assert isinstance(deferred, s.DeferredMap)
+    assert deferred.possible_output.value == "Never"
+
+    result = evaluator.with_context(
+        s.EvaluationContext(input_type=s.ResolvedType("int"))
+    ).evaluate(expression)
+    assert isinstance(result, Failure)
+    assert isinstance(result.failure(), s.MapNoMatch)
+    assert result.failure().expression is unmatched
+
+
+def test_speculative_policy_does_not_suppress_unrelated_semantic_failures() -> None:
+    expression = s.MapExpression(
+        s.InputReference(),
+        (s.CaseExpression(s.ExactTypePattern("int"), s.KeyReference()),),
+    )
+    result = s.Evaluator(NameTypeSystem(), policy=PydanticEvaluationPolicy()).evaluate(
+        expression
+    )
+
+    assert isinstance(result, Failure)
+    assert isinstance(result.failure(), s.UnboundKeySemanticError)

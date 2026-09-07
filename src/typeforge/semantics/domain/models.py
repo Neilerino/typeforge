@@ -238,14 +238,29 @@ class DroppedField:
     pass
 
 
+class EvaluationMode(StrEnum):
+    """Whether a path is reached or explored for its possible output."""
+
+    DEFINITE = "definite"
+    SPECULATIVE = "speculative"
+
+
+class NoMatchDecision(StrEnum):
+    """Accept the language's Never output, or reject an exhausted selection."""
+
+    ACCEPT = "accept"
+    REJECT = "reject"
+
+
 @dataclass(frozen=True, slots=True)
 class EvaluationContext[T]:
-    """Bindings available while evaluating nested expressions."""
+    """Immutable bindings and reachability for a nested evaluation."""
 
     key: str | None = None
     value: TypeValue[T] | None = None
     capture: TypeValue[T] | None = None
     input_type: TypeValue[T] | None = None
+    mode: EvaluationMode = EvaluationMode.DEFINITE
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,6 +271,15 @@ class DeferredMap[T]:
     default: Expression[T] | None
     context: EvaluationContext[T]
     possible_output: ResolvedType[T]
+
+
+@dataclass(frozen=True, slots=True)
+class MapNoMatch[T]:
+    """An evaluated Map path exhausted its cases without an authored default."""
+
+    expression: MapExpression[T]
+    subject: EvaluationValue[T]
+    context: EvaluationContext[T]
 
 
 type EvaluationValue[T] = (
