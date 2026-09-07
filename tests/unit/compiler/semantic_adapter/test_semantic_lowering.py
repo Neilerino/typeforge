@@ -381,7 +381,9 @@ def test_literal_type_output_inside_a_transformed_field() -> None:
     result = evaluate(
         lower_semantic_expression(expression, ()),
         COMPILER_TYPE_SYSTEM,
-        EvaluationContext(key="original", value=ResolvedType(NamedType("int"))),
+        EvaluationContext[StaticType](
+            key="original", value=ResolvedType(NamedType("int"))
+        ),
     )
 
     assert result == Success(
@@ -412,5 +414,5 @@ def test_key_map_can_compare_literal_field_types() -> None:
     assert evaluate(
         lower_semantic_expression(expression, ()),
         COMPILER_TYPE_SYSTEM,
-        EvaluationContext(key="value", value=ResolvedType(literal_type)),
+        EvaluationContext[StaticType](key="value", value=ResolvedType(literal_type)),
     ) == Success(RecordField("value", NamedType("str")))

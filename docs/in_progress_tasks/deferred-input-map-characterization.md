@@ -234,8 +234,12 @@ Slice 3's evaluation contracts are in `tests/unit/semantics/test_migration_spec.
 slice 4's data contracts are in `tests/unit/semantics/test_unresolved_types.py`.
 Slice 5 consumes that model and covers C1–C9 in
 `tests/unit/semantics/test_indeterminate_evaluation.py`. The observed outputs above
-remain the slice-1 baseline inventory. C10–C12 still require slice 6's source alias
-expansion. All C1–C13 end-to-end correction contracts remain assigned to slice 8;
+remain the slice-1 baseline inventory. Slice 6 now covers C10–C12 through
+`compiler.adaptation.expand_schema_aliases()`; slice 7 directly tests
+`adapt_schema_expression()`, shared emission, and authored diagnostics/origins.
+Their contracts are in `tests/unit/compiler/adaptation/test_schema_aliases.py`,
+`test_schema_adapter.py`, and the semantic adapter's `test_static_emission.py`.
+All C1–C13 end-to-end correction contracts remain assigned to slice 8;
 the compiler schema evaluator has not cut over.
 
 ## Existing integration contracts to carry forward

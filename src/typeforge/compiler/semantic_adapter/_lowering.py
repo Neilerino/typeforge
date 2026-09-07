@@ -6,9 +6,11 @@ from functools import singledispatch
 from typing import Literal
 
 from typeforge.compiler.semantic_adapter._types import (
+    NEVER,
     NamedType,
     ParameterizedType,
     StaticType,
+    is_static,
     union_of,
 )
 from typeforge.compiler.source import (
@@ -33,6 +35,7 @@ from typeforge.compiler.source import (
     RawTypeExpression,
     ReadonlyFieldMarker,
     RuntimeInputTypeExpression,
+    SchemaTypeExpression,
     SourceTypeExpression,
     StarredTypeExpression,
     UnionTypeExpression,
@@ -62,7 +65,8 @@ from typeforge.semantics import (
     ReadonlyFieldExpression,
     TypePattern,
     TypeReference,
-    TypeTemplate,
+    TypeValue,
+    TypeValueReference,
     UnionExpression,
     ValueReference,
 )
@@ -70,7 +74,7 @@ from typeforge.semantics import (
 type SemanticRole = Literal["type", "output", "field-name"]
 
 
-type SemanticEnvironment = tuple[tuple[str, StaticType], ...]
+type SemanticEnvironment = tuple[tuple[str, StaticType | TypeValue[StaticType]], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,7 +104,26 @@ def _(
     role: SemanticRole = "type",
 ) -> Expression[StaticType]:
     bound = dict(environment).get(expression.source)
-    return TypeReference(bound if bound is not None else NamedType(expression.source))
+    if bound is not None and not is_static(bound):
+        return TypeValueReference(bound)
+
+    return TypeReference(_lower_concrete_type(expression, environment))
+
+
+@lower_semantic_expression.register
+def _(
+    expression: SchemaTypeExpression,
+    environment: SemanticEnvironment,
+    output_name: str | None = None,
+    *,
+    role: SemanticRole = "type",
+) -> Expression[StaticType]:
+    if len(expression.arguments) != 1:
+        raise SemanticLoweringError("Schema requires one type argument")
+
+    return lower_semantic_expression(
+        expression.arguments[0], environment, output_name, role=role
+    )
 
 
 @lower_semantic_expression.register
@@ -155,7 +178,7 @@ def _(
     ):
         return field_name
 
-    if role == "output":
+    if role == "output" or _requires_evaluation(expression, environment):
         return _lower_type_template(expression, environment)
 
     return TypeReference(_lower_concrete_type(expression, environment))
@@ -254,6 +277,18 @@ def _lower_concrete_type(
     match expression:
         case NameTypeExpression(source=source):
             bound = dict(environment).get(source)
+            if bound is not None and not is_static(bound):
+                raise SemanticLoweringError(
+                    f"{source} requires semantic type evaluation"
+                )
+
+            if bound is None and source in {
+                "Never",
+                "typing.Never",
+                "typing_extensions.Never",
+            }:
+                return NEVER
+
             return bound if bound is not None else NamedType(source)
         case AppliedTypeExpression(constructor=constructor, arguments=arguments):
             return ParameterizedType(
@@ -300,6 +335,10 @@ def _lower_type_pattern(
     environment: SemanticEnvironment,
 ) -> TypePattern[StaticType]:
     match expression:
+        case NameTypeExpression(source=source) if (
+            bound := dict(environment).get(source)
+        ) is not None and not is_static(bound):
+            return TypeValueReference(bound)
         case AppliedTypeExpression(constructor=constructor, arguments=arguments):
             return ParameterizedTypePattern(
                 origin=_lower_concrete_type(constructor, environment),
@@ -323,7 +362,7 @@ def _lower_type_pattern(
 def _lower_type_template(
     expression: SourceTypeExpression,
     environment: SemanticEnvironment,
-) -> TypeTemplate[StaticType]:
+) -> Expression[StaticType]:
     match expression:
         case UnionTypeExpression(members=members):
             return UnionExpression(
@@ -337,17 +376,8 @@ def _lower_type_template(
                     for argument in arguments
                 ),
             )
-        case MarkerTypeExpression():
-            marker = _normalize_semantic_marker(expression)
-            if isinstance(marker, ValueMarker):
-                return ValueReference()
-
-            raise SemanticLoweringError(
-                "unsupported type template "
-                f"{type(marker).__name__.removesuffix('Marker')}"
-            )
         case _:
-            return TypeReference(_lower_concrete_type(expression, environment))
+            return lower_semantic_expression(expression, environment, role="output")
 
 
 def _normalize_semantic_marker(
@@ -357,6 +387,30 @@ def _normalize_semantic_marker(
         return normalize_marker(expression)
     except MarkerNormalizationError as error:
         raise SemanticLoweringError(error.message) from error
+
+
+def _requires_evaluation(
+    expression: SourceTypeExpression, environment: SemanticEnvironment
+) -> bool:
+    match expression:
+        case (
+            MarkerTypeExpression()
+            | SchemaTypeExpression()
+            | RuntimeInputTypeExpression()
+        ):
+            return True
+        case NameTypeExpression(source=source):
+            bound = dict(environment).get(source)
+            return bound is not None and not is_static(bound)
+        case AppliedTypeExpression(constructor=constructor, arguments=arguments):
+            return any(
+                _requires_evaluation(item, environment)
+                for item in (constructor, *arguments)
+            )
+        case UnionTypeExpression(members=members):
+            return any(_requires_evaluation(item, environment) for item in members)
+        case _:
+            return False
 
 
 def field_name_literal(expression: AppliedTypeExpression) -> FieldName | None:

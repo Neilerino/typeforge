@@ -21,6 +21,11 @@ class ParameterizedType:
     arguments: tuple[StaticType, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class UnpackedType:
+    item: StaticType
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class UnionType:
     members: tuple[StaticType, ...]
@@ -30,7 +35,12 @@ class UnionType:
 
 
 type StaticType = (
-    NamedType | NeverType | ParameterizedType | UnionType | RecordShape[StaticType]
+    NamedType
+    | NeverType
+    | ParameterizedType
+    | UnpackedType
+    | UnionType
+    | RecordShape[StaticType]
 )
 
 NEVER = NeverType()
@@ -58,5 +68,10 @@ def union_of(*members: StaticType) -> StaticType:
 def is_static(value: object) -> TypeIs[StaticType]:
     return isinstance(
         value,
-        NamedType | NeverType | ParameterizedType | UnionType | RecordShape,
+        NamedType
+        | NeverType
+        | ParameterizedType
+        | UnpackedType
+        | UnionType
+        | RecordShape,
     )

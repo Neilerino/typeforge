@@ -95,7 +95,7 @@ class ParameterizedTypeTemplate[T]:
     """A parameterized output type awaiting contextual substitution."""
 
     origin: T
-    arguments: tuple[TypeTemplate[T], ...]
+    arguments: tuple[Expression[T], ...]
 
 
 @dataclass(frozen=True, slots=True)

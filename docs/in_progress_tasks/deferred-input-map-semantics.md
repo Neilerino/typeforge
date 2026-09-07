@@ -1,6 +1,6 @@
 # Deferred Map Semantics and Compiler Cutover
 
-Status: In progress — slices 1–5 complete; slice 6 next
+Status: In progress — slices 1–7 complete; production cutover (slice 8) next
 Depends on: Parameterized type pattern semantics
 Related design: `docs/ideas/pydantic-integration-redesign.md`
 
@@ -58,6 +58,11 @@ in slice 1.
 - Slice 5 evaluates unresolved static values through three-way predicates and
   structural matches, preserves ordered reachable alternatives and capture
   constraints, and retains uncertainty through nested types and predicates.
+- Slice 6 expands authored schema aliases through the required source alias
+  context, preserving default omission, generic binding, and authored cycle paths.
+- Slice 7 provides a directly tested schema adapter with scoped generic bindings,
+  shared evaluation, authored diagnostics, and independent schema roots. Schema
+  adaptation and record materialization now share StaticType emission.
 
 ### Not cut over
 
@@ -78,10 +83,10 @@ The legacy evaluator still owns:
 The duplicate path remains intentionally until the prerequisites below are
 complete and the production pipeline can move in one small change.
 
-Shared lowering and the compiler `TypeSystem` now live in
-`src/typeforge/compiler/semantic_adapter/`. Record materialization already uses
-them; its `_static_type_expression()` is an existing owner of StaticType-to-stub
-conversion to consider when unifying emission in slice 7.
+Shared lowering, the compiler `TypeSystem`, and `static_type_expression()` live in
+`src/typeforge/compiler/semantic_adapter/`. Record materialization and the new
+schema adapter consume that single emission policy, including unpacked types and
+caller-selected Never spelling. The old record-local conversion is removed.
 
 Overlay projection consumes the compiler's `CompilationPlan`, including authored
 origins and reusable schema roots, rather than calling schema evaluation helpers.
@@ -290,7 +295,8 @@ slice and interface that will own its strict contract.
 
 Slices 2 and 5 have now discharged the lowering and evaluation prerequisites
 for C13 and C1–C9 respectively. Their compiler end-to-end correction coverage
-remains assigned to slice 8. Next: slice 6's source alias contracts (C10–C12).
+remains assigned to slice 8. Slices 6–7 now discharge C10–C12 at the source alias
+and direct schema adapter interfaces. Next: production cutover and deletion.
 
 ### 2. Complete output-role composition
 
@@ -440,6 +446,19 @@ compiler correction contracts remain assigned to slice 8.
 
 ### 6. Preserve schema alias source and expansion
 
+Complete. `compiler.adaptation.expand_schema_aliases()` consumes the existing
+`SourceModule.aliases` facts; no additional alias representation or parsing is
+needed. Its alias context is required. Source expansion and substitution share
+one exhaustive child traversal, preserve authored text and spans, and never
+round-trip through callable `MapType`.
+
+`tests/unit/compiler/adaptation/test_schema_aliases.py` covers all eight source
+variants, constructor and argument substitution, nested aliases, finite repeated
+applications, omitted/explicit defaults, arity failures, and C10–C12. Variadic
+alias binding is explicitly unsupported rather than silently binding a pack as
+one ordinary parameter. The correcting contracts pass without xfails; callable
+alias IR and its consumers are unchanged.
+
 Keep callable relationship aliases on the existing `MapType` lane while
 retaining authored semantic source for schema evaluation. Build and test source
 alias binding and expansion separately from schema evaluation.
@@ -455,6 +474,31 @@ omitted and explicit-Never defaults, nested aliases, and cycles; callable alias
 IR and its existing consumers are unchanged.
 
 ### 7. Build the compiler schema adapter
+
+Complete at `compiler.adaptation.adapt_schema_expression()`. The caller supplies
+authored source, alias context, available type/record bindings, and declaring
+scope for unresolved parameters. The adapter returns typing IR and can append
+authored origins; failures publish no partial origins. Separate calls produce
+independent reusable roots even when alias outputs compare equal. Origin
+projection follows union flattening and deduplication within the normalized
+expression, preserving nested Schema locations.
+
+Direct contracts in `tests/unit/compiler/adaptation/test_schema_adapter.py` cover
+structural/aliased Maps, deferred bounds, generic identity, nested types, record
+references, diagnostics, backend failures, and origins. Static emission contracts
+cover bare and qualified Never and unpacked types. Architecture tests identify
+the sole semantic-to-AdaptationError conversion function and StaticType emission
+traversal, and enforce the temporary absence of production callers until slice 8.
+
+These adapter contracts also exposed a remaining template composition gap:
+parameterized arguments now accept nested semantic expressions and consume a
+deferred argument's existing possible bound. Unresolved static arguments retain
+their provenance. Direct `evaluate()` regressions cover this composition and
+non-type argument short-circuiting.
+
+Production compiler and overlay schema boundaries still use the existing path.
+The next slice must activate the end-to-end corrections and remove that path;
+record references continue to rely on the existing materialization owner.
 
 Add a compiler-owned adapter that performs:
 

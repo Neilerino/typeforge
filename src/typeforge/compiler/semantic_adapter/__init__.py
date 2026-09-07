@@ -1,5 +1,6 @@
 """Adapt compiler source types to the shared semantic engine."""
 
+from typeforge.compiler.semantic_adapter._emission import static_type_expression
 from typeforge.compiler.semantic_adapter._lowering import (
     SemanticEnvironment,
     SemanticLoweringError,
@@ -16,6 +17,7 @@ from typeforge.compiler.semantic_adapter._types import (
     ParameterizedType,
     StaticType,
     UnionType,
+    UnpackedType,
     is_static,
     union_of,
 )
@@ -31,7 +33,9 @@ __all__ = [
     "SemanticLoweringError",
     "StaticType",
     "UnionType",
+    "UnpackedType",
     "is_static",
     "lower_semantic_expression",
+    "static_type_expression",
     "union_of",
 ]

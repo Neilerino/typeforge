@@ -46,6 +46,13 @@ remaining an ordinary typing Literal in that field's type. Output-template roles
 compose through unions and parameterized arguments, preserving contextual Value
 bindings. Production schema cutover remains tracked by the deferred-Map roadmap.
 
+The compiler's source schema adapter expands authored aliases before shared
+lowering, keeping callable relationship IR separate. It requires the source
+snapshot's alias context and preserves omitted defaults and authored cycles.
+Static type emission is shared with record materialization; schema origins follow
+normalization without merging independent boundary roots. This adapter is tested
+directly until production schema boundaries cut over.
+
 ## Library and project output
 
 Published library stubs must be deterministic from library source and configuration. Consumer call sites must never influence them, and consumers should not need to run the Typeforge compiler.

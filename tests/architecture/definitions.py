@@ -42,8 +42,11 @@ TYPE_FORGE = ArchModule(
             name="compiler",
             sub_modules=[
                 ArchModule(name="source"),
-                ArchModule(name="adaptation"),
-                ArchModule(name="semantic_adapter"),
+                ArchModule(
+                    name="adaptation",
+                    files=[ArchFile(name="_schema"), ArchFile(name="_schema_aliases")],
+                ),
+                ArchModule(name="semantic_adapter", files=[ArchFile(name="_emission")]),
                 ArchModule(name="specialization"),
                 ArchModule(name="record_materialization"),
                 ArchModule(name="pipeline"),

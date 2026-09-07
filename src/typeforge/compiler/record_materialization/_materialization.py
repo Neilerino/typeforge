@@ -13,12 +13,10 @@ from typeforge.compiler.record_materialization._models import (
 from typeforge.compiler.semantic_adapter import (
     COMPILER_TYPE_SYSTEM,
     NamedType,
-    NeverType,
-    ParameterizedType,
     SemanticLoweringError,
     StaticType,
-    UnionType,
     lower_semantic_expression,
+    static_type_expression,
 )
 from typeforge.compiler.source import (
     AppliedTypeExpression,
@@ -50,7 +48,6 @@ from typeforge.compiler.stub_ir import (
     TypeApplication,
     TypeName,
     TypeRewriteObserver,
-    UnionExpression,
     VariableDeclaration,
     rewrite_type,
     substitute_type,
@@ -221,7 +218,7 @@ def typed_dict_declaration(shape: RecordShape[StaticType]) -> ClassDeclaration:
 
 
 def _typed_dict_field_type(field: RecordField[StaticType]) -> StubTypeExpression:
-    annotation = _static_type_expression(field.value)
+    annotation = static_type_expression(field.value, never_name="tf_typing.Never")
     if field.readonly:
         annotation = TypeApplication(
             TypeName("tf_typing.ReadOnly"),
@@ -235,27 +232,6 @@ def _typed_dict_field_type(field: RecordField[StaticType]) -> StubTypeExpression
         )
 
     return annotation
-
-
-def _static_type_expression(value: StaticType) -> StubTypeExpression:
-    match value:
-        case NamedType(name):
-            return TypeName(name)
-        case NeverType():
-            return TypeName("tf_typing.Never")
-        case ParameterizedType(origin, arguments):
-            return TypeApplication(
-                _static_type_expression(origin),
-                tuple(_static_type_expression(argument) for argument in arguments),
-            )
-        case UnionType(members):
-            return UnionExpression(
-                tuple(_static_type_expression(member) for member in members)
-            )
-        case RecordShape(name=name):
-            return TypeName(name or "object")
-        case _ as unreachable:
-            assert_never(unreachable)
 
 
 def replace_record_aliases_in_function(

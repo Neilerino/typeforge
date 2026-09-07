@@ -24,6 +24,7 @@ from typeforge.semantics.domain.models import (
     AllExpression,
     AnyExpression,
     AssignableExpression,
+    DeferredMap,
     DropExpression,
     DroppedField,
     EqualExpression,
@@ -45,6 +46,7 @@ from typeforge.semantics.domain.models import (
     RecordField,
     ResolvedType,
     TypeReference,
+    TypeValue,
     TypeValueReference,
     UnionExpression,
     ValueReference,
@@ -166,14 +168,19 @@ def _[T](
     type_system: TypeSystem[T],
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
-    arguments = tuple(
-        expect_type_value(
-            _evaluate(argument, type_system, context),
-            "parameterized type arguments must evaluate to types",
+    arguments: list[TypeValue[T]] = []
+    for argument in expression.arguments:
+        value = _evaluate(argument, type_system, context)
+        # A deferred argument contributes its existing bound; static uncertainty
+        # keeps its provenance for later predicates.
+        arguments.append(
+            expect_type_value(
+                value.possible_output if isinstance(value, DeferredMap) else value,
+                "parameterized type arguments must evaluate to types",
+            )
         )
-        for argument in expression.arguments
-    )
-    shape = ParameterizedTypeShape(ResolvedType(expression.origin), arguments)
+
+    shape = ParameterizedTypeShape(ResolvedType(expression.origin), tuple(arguments))
     return build_type(shape, type_system)
 
 

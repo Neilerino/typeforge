@@ -623,3 +623,31 @@ def test_opaque_parameter_supports_a_structural_case_without_capture() -> None:
     result = s.evaluate(expression, NameTypeSystem()).unwrap()
     assert isinstance(result, s.IndeterminateType)
     assert result.possible_output == s.ResolvedType("str | bytes")
+
+
+def test_parameterized_arguments_accept_nested_deferred_maps() -> None:
+    expression = s.ParameterizedTypeTemplate(
+        "tuple",
+        (
+            s.MapExpression(
+                s.InputReference(),
+                (s.CaseExpression(s.TypeReference("int"), s.TypeReference("str")),),
+            ),
+        ),
+    )
+
+    assert s.evaluate(expression, BuildingTypeSystem()) == Success(
+        s.ResolvedType("tuple[str]")
+    )
+
+
+def test_non_type_parameterized_argument_stops_before_later_unbound_input() -> None:
+    expression = s.ParameterizedTypeTemplate(
+        "tuple", (condition(True), s.InputReference())
+    )
+
+    assert s.evaluate(expression, BuildingTypeSystem()) == Failure(
+        s.ExpectedTypeSemanticError(
+            "parameterized type arguments must evaluate to types"
+        )
+    )
