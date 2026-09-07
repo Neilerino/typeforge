@@ -1,10 +1,10 @@
 # Map slice syntax migration
 
 Status: In progress — feasibility POC, authoring contract, union investigation,
-and public runtime construction complete. Remaining integration and union gates
-remain open.
+public runtime construction, and source normalization complete. Remaining
+integration and union gates remain open.
 
-Next slice: 04 — production source normalization. Confirmed contract:
+Next slice: 05 — predicate binding through aliases and nested scopes. Confirmed contract:
 None and empty endpoints are equivalent; old authoring is removed at cutover;
 string selectors require Literal until tooling supports bare strings.
 
@@ -59,7 +59,7 @@ Annotation normalization must not add work to ordinary application call paths.
 - [x] **01 — Settle the authoring and migration contract.**
 - [x] **02 — De-risk union behavior across both frontends and consumers.**
 - [x] **03 — Implement production runtime marker construction.**
-- [ ] **04 — Normalize source slices into existing compiler data.**
+- [x] **04 — Normalize source slices into existing compiler data.**
 - [ ] **05 — Bind predicates through aliases and nested scopes.**
 - [ ] **06 — Project inline annotations for checker overlays.**
 - [ ] **07 — Complete callable and published-stub integration.**
@@ -274,7 +274,35 @@ union syntax, and source locations. Syntactic normalization must not itself
 invent union membership or distribution semantics.
 Carry G2's resolved-equality mismatch separately from syntax normalization.
 
-Evidence/commit: pending.
+Completed: the production source parser normalizes slices into existing
+MarkerTypeExpression Case/Default data. None and empty endpoints emit the same
+interface; an explicit None step is inert. Selector literal sugar and inline
+predicate binding preserve structural patterns, explicit operands, nested subject
+scope, output roles, and union grouping.
+
+The parser now returns located SourceSyntaxError results for non-None steps,
+branches after a fallback (including mixed legacy entries), bare string selectors,
+and a slice where the subject is required. Errors use authored AST spans,
+including UTF-8 columns. Synthesized None endpoints are anchored to their branch;
+the branch retains its exact source spelling. General marker arity and entry-role
+validation remain with the existing normalization owner. No source data model,
+evaluator, or union matching semantics changed.
+
+Evidence: [34 source contracts](../../tests/unit/compiler/source/test_map_slices.py)
+cover generated-interface equivalence, qualified/renamed imports, unrelated
+subscriptions, nested scopes, output strings, union roles, sentinel outcomes,
+located failures, and compiler isolation from authored execution. Obsolete POC
+None-rejection tests were replaced by these contracts; compiler POC string
+examples now use Literal. The separate runtime POC and its import recognition
+remain historical consumers pending slice 11.
+
+Validation passed: focused `make check` (185 tests including the union matrix,
+Ruff lint/format, block spacing, mypy, Pyright), full `make check`, and diff
+whitespace checks. README and DESIGN describe source normalization. Alias-aware
+binding (05), inline projection (06), diagnostics beyond this syntax boundary
+(10), and union gate G2 retain their owners. No expected-failure markers were
+introduced or left pending for this slice.
+Commit: pending; implementation is in the working tree.
 
 ### 05 — Bind predicates through aliases and nested scopes
 

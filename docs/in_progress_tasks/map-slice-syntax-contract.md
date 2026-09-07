@@ -2,15 +2,16 @@
 
 Status: Authoring contract settled — slice 01 complete. Slice 02's union
 investigation is complete with explicit follow-up gates; production
-public runtime construction is complete through slice 03. Remaining integration
+public runtime construction and source normalization are complete through slice 04. Remaining integration
 and cross-consumer union semantics are not complete.
 
 Task: [Map slice syntax migration, slice 01](map-slice-syntax.md#01--settle-the-authoring-and-migration-contract).
 Evidence: [Feasibility POC](../ideas/map-slice-poc.md), `08d940a`.
 
 This document specifies the target public behavior. Slice 03 implements runtime
-construction through the public export; remaining source normalization, aliases,
-and consumer integration are assigned to slices 04–11. Union decisions remain
+construction through the public export, and slice 04 implements source
+normalization. Remaining aliases and consumer integration are assigned to
+slices 05–11. Union decisions remain
 subject to slice 02's explicit gates.
 
 ## Outcome and success evidence
@@ -287,6 +288,13 @@ typing-only public import retains that object fallback. Constructed GenericAlias
 arguments contain existing Case/Default data, so Pydantic only changes its marker
 identity import. Runtime Doc metadata remains available on the constructor.
 Legacy branch aliases remain opaque until frontend validation during migration.
+
+Slice 04 normalizes the AST into the same existing source marker data. Missing
+endpoints synthesize None anchored to the authored branch; explicit endpoints
+retain their spans. Invalid slice syntax produces a SourceSyntaxError result
+with the authored location. Existing marker normalization continues to validate
+general arity and entry roles, and alias expansion retains its current owner.
+This does not alter the unresolved union semantics in G1–G6.
 
 Malformed construction must fail through an appropriate annotation-construction
 exception; compiler entry points retain their typed failure results. Pydantic

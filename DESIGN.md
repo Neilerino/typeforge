@@ -132,6 +132,15 @@ Parsed syntax locations use one-based lines and zero-based UTF-8 byte columns;
 syntax errors retain Python's character offsets. Projection and integration code
 own conversion to editor or checker coordinates.
 
+Source Map slices normalize at parsing into existing marker expressions. Empty
+endpoints synthesize the None type anchored to the authored branch; explicit
+endpoints retain their own spans. Selector-only literal sugar and inline unary
+predicate binding preserve ordinary output roles and structural patterns.
+Invalid slice spelling returns SourceSyntaxError with an authored UTF-8 span;
+the parser does not execute annotations. Existing marker normalization continues
+to own general arity and entry-role validation, and alias binding remains with
+the existing frontend expansion owners.
+
 Adaptation interprets annotations, expands aliases, and materializes records. Its
 `StubModule.reusable_elements` retains authored callable contracts and reusable
 type expressions before declaration rewriting and finite specialization discard

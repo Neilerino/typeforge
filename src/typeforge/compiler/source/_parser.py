@@ -62,6 +62,12 @@ class _ImportBindings:
     names: tuple[tuple[str, tuple[str, ...]], ...]
 
 
+@dataclass(frozen=True, slots=True)
+class _AnnotationSyntaxError(Exception):
+    message: str
+    span: SourceSpan
+
+
 def parse_module(path: Path) -> Result[ParsedSource, FrontendError]:
     source = _read_source(path)
     if isinstance(source, Failure):
@@ -74,10 +80,15 @@ def parse_source(
     source: str, path: Path = Path("<memory>")
 ) -> Result[ParsedSource, SourceSyntaxError]:
     try:
-        tree = ast.parse(source, filename=str(path), type_comments=True)
+        return Success(_parse_source(source, path))
     except SyntaxError as error:
         return Failure(_syntax_error(path, error))
+    except _AnnotationSyntaxError as error:
+        return Failure(SourceSyntaxError(path, error.message, error.span))
 
+
+def _parse_source(source: str, path: Path) -> ParsedSource:
+    tree = ast.parse(source, filename=str(path), type_comments=True)
     bindings = _collect_import_bindings(tree)
     scoped_statements = _scoped_statements(tree)
     functions = tuple(
@@ -126,7 +137,7 @@ def parse_source(
             if isinstance(node, ast.Name | ast.arg)
         ),
     )
-    return Success(ParsedSource(source=facts, tree=tree))
+    return ParsedSource(source=facts, tree=tree)
 
 
 def _docstring_span(path: Path, tree: ast.Module) -> SourceSpan | None:
@@ -736,8 +747,28 @@ def _parse_annotation(
         slice_nodes = (
             node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
         )
+        marker = _marker_kind(constructor)
+        slice_map = marker is MarkerKind.MAP and any(
+            isinstance(item, ast.Slice) for item in slice_nodes
+        )
         argument_values: list[SourceTypeExpression] = []
         for slice_node in slice_nodes:
+            if slice_map:
+                if not argument_values and isinstance(slice_node, ast.Slice):
+                    raise _AnnotationSyntaxError(
+                        "Map requires a subject before its branches",
+                        _span(path, slice_node),
+                    )
+
+                if (
+                    len(argument_values) > 1
+                    and _marker_kind(argument_values[-1]) is MarkerKind.DEFAULT
+                ):
+                    raise _AnnotationSyntaxError(
+                        "Map fallback must be last; no branch may follow it",
+                        _span(path, slice_node),
+                    )
+
             argument = (
                 _parse_map_slice(
                     path,
@@ -745,13 +776,8 @@ def _parse_annotation(
                     slice_node,
                     bindings,
                     argument_values[0],
-                    after_default=any(
-                        isinstance(previous, MarkerTypeExpression)
-                        and previous.marker is MarkerKind.DEFAULT
-                        for previous in argument_values[1:]
-                    ),
                 )
-                if _marker_kind(constructor) is MarkerKind.MAP
+                if marker is MarkerKind.MAP
                 and isinstance(slice_node, ast.Slice)
                 and argument_values
                 else _parse_annotation(path, source, slice_node, bindings)
@@ -767,7 +793,6 @@ def _parse_annotation(
                 arguments=arguments,
             )
 
-        marker = _marker_kind(constructor)
         if marker is not None:
             return MarkerTypeExpression(
                 source=rendered,
@@ -792,31 +817,30 @@ def _parse_map_slice(
     node: ast.Slice,
     bindings: _ImportBindings,
     subject: SourceTypeExpression,
-    *,
-    after_default: bool,
-) -> SourceTypeExpression:
-    """THROWAWAY: lower slice syntax directly to existing source marker data."""
+) -> MarkerTypeExpression:
+    """Normalize branch spelling without changing matching or output semantics."""
     rendered = ast.get_source_segment(source, node) or ast.unparse(node)
     span = _span(path, node)
-    if (
-        after_default
-        or node.lower is None
-        or node.upper is None
-        or node.step is not None
-        or any(
-            isinstance(endpoint, ast.Constant) and endpoint.value is None
-            for endpoint in (node.lower, node.upper)
-        )
+    if node.step is not None and not (
+        isinstance(node.step, ast.Constant) and node.step.value is None
     ):
-        return RawTypeExpression(rendered, span)
+        raise _AnnotationSyntaxError(
+            "Map branches do not accept a slice step", _span(path, node.step)
+        )
 
     output = _parse_annotation(path, source, node.upper, bindings)
-    assert output is not None
+    # A missing token denotes None. Anchor synthesized endpoints to the branch
+    # that supplied them, while retaining its exact authored spelling above.
+    if output is None:
+        output = RawTypeExpression("None", span)
+
     if isinstance(node.lower, ast.Constant) and node.lower.value is Ellipsis:
         return MarkerTypeExpression(rendered, span, MarkerKind.DEFAULT, (output,))
 
-    selector = _parse_annotation(path, source, node.lower, bindings)
-    assert selector is not None
+    selector = _parse_annotation(
+        path, source, node.lower, bindings
+    ) or RawTypeExpression("None", span)
+
     return MarkerTypeExpression(
         rendered,
         span,
@@ -857,7 +881,12 @@ def _map_literal(expression: SourceTypeExpression) -> SourceTypeExpression:
     except ValueError, SyntaxError:
         return expression
 
-    if not isinstance(value, str | bytes | bool | int):
+    if isinstance(value, str):
+        raise _AnnotationSyntaxError(
+            'Map string selectors require Literal["text"]', expression.span
+        )
+
+    if not isinstance(value, bytes | bool | int):
         return expression
 
     return AppliedTypeExpression(

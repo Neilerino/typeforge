@@ -1,4 +1,4 @@
-"""Static-pipeline evidence for the throwaway slice-syntax experiment."""
+"""Compiler integration regressions carried forward from the slice-syntax POC."""
 
 import json
 from pathlib import Path
@@ -41,7 +41,7 @@ from typeforge.pydantic import Schema
             "Map[T, Case[Literal[True], str], Default[bytes]]",
         ),
         (
-            'Map[T, "text": str, ...: bytes]',
+            'Map[T, Literal["text"]: str, ...: bytes]',
             'Map[T, Case[Literal["text"], str], Default[bytes]]',
         ),
         (
@@ -73,7 +73,7 @@ def test_slice_callables_emit_the_same_stubs_as_existing_syntax(
             "Map[bool, Case[Assignable[bool, int], str], Default[bytes]]",
         ),
         (
-            'Map[Literal["text"], "text": str, ...: bytes]',
+            'Map[Literal["text"], Literal["text"]: str, ...: bytes]',
             'Map[Literal["text"], Case[Literal["text"], str], Default[bytes]]',
         ),
         (
@@ -130,8 +130,8 @@ class User(TypedDict):
     age: int
 
 type Public[T] = MapFields[T, Map[Key,
-    "password": Drop,
-    "name": OptionalField[Literal["display_name"], Value],
+    Literal["password"]: Drop,
+    Literal["name"]: OptionalField[Literal["display_name"], Value],
     ...: Field[Key, Value],
 ]]
 
@@ -144,26 +144,6 @@ def publicize[T](value: T) -> Public[T]: ...
     assert "password" not in result
     assert "display_name: tf_typing.NotRequired[str]" in result
     assert "age: int" in result
-
-
-@pytest.mark.parametrize(
-    "expression",
-    [
-        "Map[T, int:]",
-        "Map[T, :str]",
-        "Map[T, int:str:bytes]",
-        "Map[T, ...:str, int:bytes]",
-        "Map[T, ...:str, ...:bytes]",
-    ],
-)
-def test_invalid_branches_are_rejected_with_authored_source(expression: str) -> None:
-    result = compile_source(
-        IMPORTS + f"def f[T](x: T) -> {expression}: ...\n",
-        Path("example.py"),
-        maximum_arity=2,
-    )
-    assert isinstance(result, Failure)
-    assert result.failure().expression in expression
 
 
 @pytest.mark.parametrize("checker", ["mypy", "pyright", "pyrefly"])

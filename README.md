@@ -82,7 +82,8 @@ result = collect(1, "two", True)
 
 Map input types to output types:
 
-Runtime slice construction is available through the public `Map` import:
+Slice construction and compiler source normalization are available through the
+public `Map` import:
 
 ```python
 from typing import TypeVar
@@ -99,8 +100,12 @@ type; use `Literal["text"]` for string selectors. A fallback must be last, and
 non-None slice steps are invalid. Construction does not evaluate relationships;
 `Schema[specialized]` uses the existing Pydantic integration.
 
-The syntax migration is in progress: compiler normalization, predicate aliases,
-and inline checker projection still have work remaining. Raw slice annotations
+The compiler normalizes these branches into its existing Case/Default data,
+preserving authored locations. Qualified and renamed imports work. Invalid steps,
+branches following a fallback, and bare string selectors receive located errors.
+
+The syntax migration is in progress: predicate aliases and inline checker
+projection still have work remaining. Raw slice annotations
 are not promised to work in ordinary type checkers. Existing Case/Default
 examples below remain valid during the repository migration and will be removed
 at the coordinated cutover. See the
