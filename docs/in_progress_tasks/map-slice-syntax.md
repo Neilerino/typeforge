@@ -1,10 +1,11 @@
 # Map slice syntax migration
 
 Status: In progress — feasibility POC, authoring contract, union investigation,
-public runtime construction, source normalization, and predicate alias binding complete. Remaining
+public runtime construction, source normalization, predicate alias binding, and
+inline checker projection complete. Remaining
 integration and union gates remain open.
 
-Next slice: 06 — inline annotations for checker overlays. Confirmed contract:
+Next slice: 07 — callable and published-stub integration. Confirmed contract:
 None and empty endpoints are equivalent; old authoring is removed at cutover;
 string selectors require Literal until tooling supports bare strings.
 
@@ -61,7 +62,7 @@ Annotation normalization must not add work to ordinary application call paths.
 - [x] **03 — Implement production runtime marker construction.**
 - [x] **04 — Normalize source slices into existing compiler data.**
 - [x] **05 — Bind predicates through aliases and nested scopes.**
-- [ ] **06 — Project inline annotations for checker overlays.**
+- [x] **06 — Project inline annotations for checker overlays.**
 - [ ] **07 — Complete callable and published-stub integration.**
 - [ ] **08 — Complete Pydantic integration and runtime dispatch.**
 - [ ] **09 — Preserve existing field-mapping composition.**
@@ -382,7 +383,42 @@ outputs, explicit Never, no-match behavior, and definite versus speculative
 results before choosing the projected type.
 Carry slice 02's provenance/checker evidence forward under G7.
 
-Evidence/commit: pending.
+Completed: adaptation retains inline Map roots using existing reusable elements
+and authored origins. Source facts now include assignment annotations for module
+and local variables. Overlay projection replaces parameters, returns, fields,
+variables, nested alias values, and generated overload annotations with ordinary
+typing expressions. Both slice and canonical spellings use this path. Authored
+callable contracts remain intact for implementation verification.
+
+The existing checker fallback and stub-IR child traversal own type projection;
+there is no new evaluator. Overlapping Schema/Map roots produce one outer edit.
+UTF-8 authored columns convert correctly to character offsets. Publication keeps
+its existing record-field and variable-surface policies. Source text remains
+untouched, and projection consumes the completed plan without parsing or compiling
+again.
+
+Evidence: [17 overlay cases](../../tests/unit/overlay/test_inline_maps.py) exercise
+direct and nested annotations, methods, predicate aliases, variables, qualified
+imports, ordinary value slices, source isolation, idempotence, Unicode spans,
+diagnostic provenance, and union fallback policies. Three new real-checker cases
+accept nested union annotations and reject wrong implementation returns. The
+POC's three inline checker rejection cases now assert success and wrong-return
+rejection alongside the existing alias/stub cases.
+
+Union de-risking: inline fallback remains the conservative union of declared
+outputs and fallback, including explicit Never and unmatched-subject alternatives;
+Schema selects/evaluates separately. Union outputs, nested Maps, and nested alias
+unions project without conflating those policies. The original 85-case union
+matrix passes. This closes slice 06's G7 projection work, not G1–G6 or remaining
+publication/runtime obligations. An Assignable/isinstance verification probe
+retains the same conservative extra fallback obligation in both spellings;
+its precision belongs to 07.
+
+Validation passed: focused compiler/overlay checks, real mypy/Pyright/Pyrefly
+probes, full repository checks (pytest, Ruff lint/format, block spacing, mypy,
+Pyright), and diff whitespace checks. README, DESIGN, and the contract were
+updated. No expected-failure markers were introduced or left pending.
+Commit: pending; implementation is in the working tree.
 
 ### 07 — Complete callable and published-stub integration
 
@@ -403,6 +439,11 @@ syntax. Track it explicitly as existing callable-lowering follow-up work unless
 resolving it becomes an agreed prerequisite; do not silently claim it is fixed
 by this syntax migration. Unifying callable semantics is separately tracked in
 [Callable Map semantics cutover](../ideas/callable-map-semantics-cutover.md).
+
+Slice 06 also records an existing conservative verification limit: an Assignable
+predicate combined with an isinstance guard may require the fallback output on the
+guarded return as well. Exact Equal/type guards have successful checker evidence.
+De-risk this predicate/guard interaction before expanding callable precision.
 
 **Needs de-risking — unions:** overload inputs/outputs, branch overlap, inferred
 fallbacks, and finite specialization of union subjects need checker evidence,

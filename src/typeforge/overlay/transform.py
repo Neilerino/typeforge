@@ -53,6 +53,7 @@ from typeforge.compiler.stub_ir import (
     UnionExpression,
     UnpackedType,
     is_declaration,
+    rewrite_type_children,
     union_types,
 )
 from typeforge.utils.error_handling import safe_result
@@ -144,20 +145,20 @@ def _project_overlay(plan: CompilationPlan, *, version: int) -> VirtualDocument:
     generated = _generate_overloads(source, plan)
     blocks = tuple(_overload_insertion(source, item) for item in generated)
     alias_edits = _alias_edits(source, plan)
-    schema_edits = _schema_edits(source, plan)
+    annotation_edits = _annotation_edits(source, plan)
     verification_edits = _verification_edits(
         source=source,
         plan=plan.verification,
         reserved_names={item.name for item in module.identifiers},
     )
-    record_declarations = _render_derived_records(plan) if schema_edits else ()
+    record_declarations = _render_derived_records(plan) if annotation_edits else ()
     content = (
         tuple(item.text for item in generated)
         + tuple(
             item.text
             for item in (
                 *alias_edits,
-                *schema_edits,
+                *annotation_edits,
                 *verification_edits,
             )
         )
@@ -191,7 +192,7 @@ def _project_overlay(plan: CompilationPlan, *, version: int) -> VirtualDocument:
         *import_edit,
         *record_edit,
         *alias_edits,
-        *schema_edits,
+        *annotation_edits,
         *blocks,
         *verification_edits,
     )
@@ -253,6 +254,13 @@ def _generate_overloads(
         if _declaration_contains_map_value(declaration):
             continue
 
+        declaration = replace(
+            declaration,
+            signatures=tuple(
+                _checker_function(item) for item in declaration.signatures
+            ),
+            fallback=_checker_function(declaration.fallback),
+        )
         emitted = emit_stub_module(
             StubModule(module.path.stem, (declaration,))
         ).unwrap()
@@ -266,6 +274,18 @@ def _generate_overloads(
         )
 
     return tuple(generated)
+
+
+def _checker_function(declaration: FunctionDeclaration) -> FunctionDeclaration:
+    parameters = tuple(
+        replace(parameter, annotation=_checker_type(parameter.annotation))
+        for parameter in declaration.parameters
+    )
+    return replace(
+        declaration,
+        parameters=parameters,
+        return_type=_checker_type(declaration.return_type),
+    )
 
 
 def _has_variadic_specializations(declaration: OverloadDeclaration) -> bool:
@@ -432,19 +452,9 @@ def _positional_variadic_overloads(
 
 
 def _source_span(source: str, span: AuthoredSourceSpan) -> SourceSpan:
-    start_offset = _line_offset(source, span.start.line - 1) + (span.start.column)
-    end_offset = _line_offset(source, span.end.line - 1) + (span.end.column)
     return SourceSpan(
-        start=SourcePosition(
-            offset=start_offset,
-            line=span.start.line - 1,
-            column=span.start.column,
-        ),
-        end=SourcePosition(
-            offset=end_offset,
-            line=span.end.line - 1,
-            column=span.end.column,
-        ),
+        start=source_position_from_utf8(source, span.start.line - 1, span.start.column),
+        end=source_position_from_utf8(source, span.end.line - 1, span.end.column),
     )
 
 
@@ -468,36 +478,33 @@ def _alias_edits(source: str, plan: CompilationPlan) -> tuple[_Edit, ...]:
 
         alias = aliases[origin.origin]
         relationship = relationships.get(origin.origin)
-        projected = (
-            replace(declaration, value=_relationship_fallback(relationship))
-            if relationship is not None
-            else declaration
-        )
+        value = relationship if relationship is not None else declaration.value
+        projected = replace(declaration, value=_checker_type(value))
         emitted = emit_stub_module(StubModule(module.path.stem, (projected,))).unwrap()
 
-        start = (
-            _line_offset(source, alias.span.start.line - 1) + alias.span.start.column
-        )
-        end = _line_offset(source, alias.span.end.line - 1) + alias.span.end.column
+        span = _source_span(source, alias.span)
         edits.append(
             _Edit(
-                start=start,
-                end=end,
+                start=span.start.offset,
+                end=span.end.offset,
                 text=emitted.rstrip(),
-                authored_span=_offset_span(module.path, source, start, end),
+                authored_span=span,
             )
         )
 
     return tuple(edits)
 
 
-def _schema_edits(source: str, plan: CompilationPlan) -> tuple[_Edit, ...]:
+def _annotation_edits(source: str, plan: CompilationPlan) -> tuple[_Edit, ...]:
     module = plan.source
     roots = {
         id(element): element
         for element in plan.module.reusable_elements
         if not is_declaration(element)
     }
+    root_spans = tuple(
+        origin.origin for origin in plan.module.origins if id(origin.generated) in roots
+    )
     edits: list[_Edit] = []
     for origin in plan.module.origins:
         expression = roots.get(id(origin.generated))
@@ -508,17 +515,23 @@ def _schema_edits(source: str, plan: CompilationPlan) -> tuple[_Edit, ...]:
         ):
             continue
 
-        emitted = emit_type_expression(expression).unwrap()
+        if any(
+            span != origin.origin
+            and span.start <= origin.origin.start
+            and origin.origin.end <= span.end
+            for span in root_spans
+        ):
+            continue
 
-        span = origin.origin
-        start = _line_offset(source, span.start.line - 1) + span.start.column
-        end = _line_offset(source, span.end.line - 1) + span.end.column
+        emitted = emit_type_expression(_checker_type(expression)).unwrap()
+
+        span = _source_span(source, origin.origin)
         edits.append(
             _Edit(
-                start,
-                end,
+                span.start.offset,
+                span.end.offset,
                 emitted,
-                _offset_span(module.path, source, start, end),
+                span,
             )
         )
 
@@ -574,16 +587,10 @@ def _checker_type(expression: StubTypeExpression) -> StubTypeExpression:
     if isinstance(expression, MapType):
         return _relationship_fallback(expression)
 
-    if isinstance(expression, TypeApplication):
-        return TypeApplication(
-            _checker_type(expression.constructor),
-            tuple(_checker_type(item) for item in expression.arguments),
-        )
-
     if isinstance(expression, UnionExpression):
         return union_types(tuple(_checker_type(item) for item in expression.members))
 
-    return expression
+    return rewrite_type_children(expression, _checker_type)
 
 
 def _verification_edits(

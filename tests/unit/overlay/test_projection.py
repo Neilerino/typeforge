@@ -64,7 +64,7 @@ def test_completed_plan_projects_guarded_return_without_compiler_work() -> None:
             @overload
             def convert[T](value: T) -> str | bytes: ...
         # typeforge: overlay-end
-        def convert[T](value: T) -> Map[T, Case[int, str], Default[bytes]]:
+        def convert[T](value: T) -> str | bytes:
             if type(value) is int:
                 __typeforge_return_1: str = value
                 return value

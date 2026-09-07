@@ -60,6 +60,9 @@ def _published_source_scope(source: SourceModule) -> SourceModule:
     }
     return replace(
         source,
+        # Variable annotations are retained for overlay edits. Publication keeps
+        # their existing module-surface policy and does not inspect local bodies.
+        variable_annotations=(),
         functions=tuple(
             function
             for function in source.functions

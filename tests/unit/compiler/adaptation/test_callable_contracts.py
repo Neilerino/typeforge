@@ -47,7 +47,7 @@ def test_callable_contract_preserves_relationship_before_record_rewriting(
 
     adapted = adapt_source_module(source).unwrap()
 
-    relationship, contract = adapted.reusable_elements
+    relationship, contract = adapted.reusable_elements[:2]
     assert isinstance(contract, FunctionDeclaration)
     assert contract == FunctionDeclaration(
         name="encode",
@@ -116,10 +116,15 @@ def test_same_named_contracts_keep_authored_identity_and_class_type_variables() 
     adapted = adapt_source_module(source).unwrap()
     specialized = lower_variadic_module(adapted, ArityFrontier(0, 2)).unwrap()
 
-    assert len(specialized.reusable_elements) == 4
+    contracts = tuple(
+        item
+        for item in specialized.reusable_elements
+        if isinstance(item, FunctionDeclaration)
+    )
+    assert len(contracts) == 4
     expected_types = (("T", "str"), ("U", "bytes"), ("V", "bool"), ("V", "float"))
     for authored, contract, (parameter, output) in zip(
-        source.functions, specialized.reusable_elements, expected_types, strict=True
+        source.functions, contracts, expected_types, strict=True
     ):
         assert isinstance(contract, FunctionDeclaration)
         assert contract.name == "convert"
@@ -157,7 +162,8 @@ def test_schema_origins_reach_retained_predicate_operands() -> None:
 
     specialized = lower_variadic_module(adapted, ArityFrontier(0, 1)).unwrap()
 
-    contract, schema_root = specialized.reusable_elements
+    contract, schema_root, annotation_root = specialized.reusable_elements
+    assert isinstance(annotation_root, MapType)
     assert isinstance(contract, FunctionDeclaration)
     assert isinstance(contract.return_type, MapType)
     predicate = contract.return_type.cases[0].test

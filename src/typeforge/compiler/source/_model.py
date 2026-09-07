@@ -230,6 +230,7 @@ class SourceModule:
     future_import_spans: tuple[SourceSpan, ...] = ()
     return_sites: tuple[ReturnSite, ...] = ()
     identifiers: tuple[IdentifierOccurrence, ...] = ()
+    variable_annotations: tuple[SourceTypeExpression, ...] = ()
 
 
 def contains_marker(

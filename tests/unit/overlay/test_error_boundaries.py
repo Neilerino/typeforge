@@ -51,7 +51,8 @@ def test_unexpected_emitter_exception_propagates_unchanged() -> None:
 def test_unrenderable_verification_type_still_skips_only_the_obligation() -> None:
     source = dedent("""\
         from typeforge import Case, Map
-        def convert[T](value: T) -> Map[T, Case[int, str]]:
+        type Encoded[T] = Map[T, Case[int, str]]
+        def convert[T](value: T) -> Encoded[T]:
             if type(value) is int:
                 return value
             raise RuntimeError

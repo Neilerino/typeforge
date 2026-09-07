@@ -182,6 +182,16 @@ place edits, and construct source mappings and diagnostic provenance.
 compiles once and projects. Diagnostics use authored descriptions and provenance;
 neither consumer reparses source or reconstructs compiler stages.
 
+Adaptation retains inline Map annotation roots alongside Schema roots and authored
+callable contracts. Assignment annotations, including local variables, are source
+facts collected during parsing. Overlay edits choose the outermost retained root
+to avoid overlapping replacements, and convert UTF-8 source columns to character
+offsets. Maps project through the existing conservative output fallback, including
+nested aliases and overload annotations; Schema retains evaluated selection.
+The shared stub-IR traversal handles nested typing constructs. Publication excludes
+assignment annotation roots from its source scope and retains its existing surface
+and record-field policies.
+
 For published stubs, `generate_module` reads the file once and passes its parsed
 snapshot to `compiler.module_surface`. Surface inspection reuses the original AST
 to validate and preserve imports and variables. Publication then compiles its

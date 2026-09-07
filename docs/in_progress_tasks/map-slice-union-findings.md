@@ -128,8 +128,11 @@ slice parser change. See the separate
 For the output test, `encode(1)` infers `str | None`, while `encode(value)` with
 value: int | str infers the conservative `str | None | bytes`. Named aliases
 publish as object and use possible-output bounds in overlays, preserving their
-different policies. Raw inline slices remain the POC's known rejection in all
-three checkers; their projection belongs to slice 06. This experiment does not
+different policies. Raw inline slices were rejected by all three checkers during
+this investigation. Slice 06 now projects them successfully, with
+[inline and nested overlay evidence](../../tests/unit/overlay/test_inline_maps.py)
+for union outputs, authored diagnostics, and the same conservative fallback.
+This completes G7's inline projection work. This experiment does not
 add a general finite-specialization guarantee for unbounded captures or Each/Collect.
 
 Static `Schema[MapFields[Row, ...]]` also fails with a supported-record error in

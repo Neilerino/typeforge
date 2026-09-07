@@ -252,14 +252,14 @@ def adapt_source_module(
         if isinstance(generated_function.return_type, MapType):
             reusable_elements.append(generated_function)
 
-    # Schema roots keep authored parameter names and their own boundary identity,
-    # even when semantic aliases reuse the same output node in other declarations.
+    # Annotation roots retain their authored span and independent identity so
+    # overlays can replace them without losing callable verification contracts.
     scopes: tuple[SourceClass | SourceFunction | SourceTypeAlias, ...] = (
         *module.classes,
         *module.functions,
         *module.aliases,
     )
-    for boundary in _schema_boundaries(module):
+    for boundary in _annotation_boundaries(module):
         parameters = tuple(
             dict.fromkeys(
                 parameter.name
@@ -268,12 +268,22 @@ def adapt_source_module(
                 for parameter in declaration.type_parameters
             )
         )
-        expression = adapt_schema_expression(
-            boundary,
-            schema_aliases,
-            declaration="Schema",
-            type_parameters=parameters,
-        ).unwrap()
+        if isinstance(boundary, SchemaTypeExpression):
+            expression = adapt_schema_expression(
+                boundary,
+                schema_aliases,
+                declaration="Schema",
+                type_parameters=parameters,
+            ).unwrap()
+        else:
+            expression = _adapt_type_expression(
+                boundary,
+                "annotation",
+                parameters,
+                schema_aliases=schema_aliases,
+            )
+            expression = expand_map_aliases(expression, semantic_aliases)
+
         reusable_elements.append(expression)
         origins.append(GeneratedElementOrigin(boundary.span, expression))
 
@@ -1075,7 +1085,9 @@ def adapt_parameter_kind(kind: SourceParameterKind) -> ParameterKind:
     return ParameterKind(kind.value)
 
 
-def _schema_boundaries(module: SourceModule) -> tuple[SchemaTypeExpression, ...]:
+def _annotation_boundaries(
+    module: SourceModule,
+) -> tuple[SchemaTypeExpression | MarkerTypeExpression, ...]:
     alias_spans = {alias.span for alias in module.aliases}
     expressions = (
         *(
@@ -1108,10 +1120,11 @@ def _schema_boundaries(module: SourceModule) -> tuple[SchemaTypeExpression, ...]
             )
             if annotation is not None
         ),
+        *module.variable_annotations,
     )
-    boundaries: dict[SourceSpan, SchemaTypeExpression] = {}
+    boundaries: dict[SourceSpan, SchemaTypeExpression | MarkerTypeExpression] = {}
     for expression in expressions:
-        for boundary in _outer_schema_boundaries(expression):
+        for boundary in _outer_annotation_boundaries(expression):
             if boundary.span in alias_spans:
                 continue
 
@@ -1120,11 +1133,20 @@ def _schema_boundaries(module: SourceModule) -> tuple[SchemaTypeExpression, ...]
     return tuple(boundaries.values())
 
 
-def _outer_schema_boundaries(
+def _outer_annotation_boundaries(
     expression: SourceTypeExpression,
-) -> tuple[SchemaTypeExpression, ...]:
+    *,
+    inside_map: bool = False,
+) -> tuple[SchemaTypeExpression | MarkerTypeExpression, ...]:
     if isinstance(expression, SchemaTypeExpression):
         return (expression,)
+
+    mapping = (
+        expression
+        if isinstance(expression, MarkerTypeExpression)
+        and expression.marker is MarkerKind.MAP
+        else None
+    )
 
     if isinstance(expression, AppliedTypeExpression):
         children = (expression.constructor, *expression.arguments)
@@ -1137,6 +1159,14 @@ def _outer_schema_boundaries(
     else:
         children = ()
 
-    return tuple(
-        boundary for child in children for boundary in _outer_schema_boundaries(child)
+    boundaries = tuple(
+        boundary
+        for child in children
+        for boundary in _outer_annotation_boundaries(
+            child, inside_map=inside_map or mapping is not None
+        )
     )
+    if mapping is not None and not inside_map:
+        return (*boundaries, mapping)
+
+    return boundaries

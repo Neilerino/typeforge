@@ -2,7 +2,8 @@
 
 Status: Authoring contract settled — slice 01 complete. Slice 02's union
 investigation is complete with explicit follow-up gates; production
-public construction, source normalization, and predicate binding are complete through slice 05. Remaining integration
+public construction, source normalization, predicate binding, and inline overlay
+projection are complete through slice 06. Remaining integration
 and cross-consumer union semantics are not complete.
 
 Task: [Map slice syntax migration, slice 01](map-slice-syntax.md#01--settle-the-authoring-and-migration-contract).
@@ -11,7 +12,8 @@ Evidence: [Feasibility POC](../ideas/map-slice-poc.md), `08d940a`.
 This document specifies the target public behavior. Slice 03 implements runtime
 construction through the public export, and slice 04 implements source
 normalization. Slice 05 implements predicate aliases at both frontend seams.
-Remaining consumer integration is assigned to slices 06–11. Union decisions remain
+Slice 06 projects inline and nested annotations in checker overlays.
+Remaining consumer integration is assigned to slices 07–11. Union decisions remain
 subject to slice 02's explicit gates.
 
 ## Outcome and success evidence
@@ -322,7 +324,10 @@ whether a raw authored expression is legal to a checker.
 Published relationship aliases retain the existing conservative object fallback;
 specialized callable interfaces retain their existing portable output contract.
 Overlays retain the existing possible-output fallback policy. Slice 02 exercises
-union bounds in named-alias overlays; inline projection remains gated by G7.
+union bounds in named-alias overlays. Slice 06 adds inline projection evidence for
+the same conservative fallback policy, methods, nested annotations, and union
+outputs in all three checkers. Schema selection remains separate, and G7's
+remaining publication/runtime obligations stay with 07/08.
 Do not replace the bound with Any or silently narrow it to one branch.
 
 ## Union investigation and implementation handoff

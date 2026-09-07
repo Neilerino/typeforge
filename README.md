@@ -119,9 +119,15 @@ Generic predicate aliases such as `type Is[T] = Equal[T]` and compounds using
 explicit binary operands stay explicit. A unary predicate used outside a selector
 fails as unbound. Existing union restrictions still apply.
 
-The syntax migration is in progress: inline checker
-projection still has work remaining. Raw slice annotations
-are not promised to work in ordinary type checkers. Existing Case/Default
+Typeforge overlays project inline Maps in parameters, returns, fields, variable
+annotations, and nested alias values to ordinary checker types. Generated overloads
+retain mapped call results; authored contracts still drive implementation checks.
+Inline annotations use the conservative union of branch outputs and the fallback,
+whereas `Schema[Map[...]]` uses evaluated selection. Projection preserves authored
+files and diagnostic locations. Raw slices require Typeforge processing before
+ordinary type checking.
+
+The syntax migration is in progress. Existing Case/Default
 examples below remain valid during the repository migration and will be removed
 at the coordinated cutover. See the
 [migration checklist](docs/in_progress_tasks/map-slice-syntax.md) and

@@ -107,6 +107,19 @@ def _parse_source(source: str, path: Path) -> ParsedSource:
     )
     typed_dicts = _parse_typed_dicts(path, source, scoped_statements, bindings)
     classes = _parse_classes(path, source, tree, bindings, typed_dicts)
+    field_spans = {field.span for record in typed_dicts for field in record.fields}
+    field_spans.update(
+        field.span for declaration in classes for field in declaration.fields
+    )
+    variable_annotations: list[SourceTypeExpression] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.AnnAssign) or _span(path, node) in field_spans:
+            continue
+
+        annotation = _parse_annotation(path, source, node.annotation, bindings)
+        if annotation is not None:
+            variable_annotations.append(annotation)
+
     located_nodes = sorted(
         (
             node
@@ -121,6 +134,7 @@ def _parse_source(source: str, path: Path) -> ParsedSource:
         aliases=aliases,
         typed_dicts=typed_dicts,
         classes=classes,
+        variable_annotations=tuple(variable_annotations),
         text=source,
         docstring_span=_docstring_span(path, tree),
         future_import_spans=_future_import_spans(path, tree),

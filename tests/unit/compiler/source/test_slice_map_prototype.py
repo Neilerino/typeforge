@@ -148,7 +148,7 @@ def publicize[T](value: T) -> Public[T]: ...
 
 @pytest.mark.parametrize("checker", ["mypy", "pyright", "pyrefly"])
 @pytest.mark.parametrize("projection", ["alias", "inline", "stub"])
-def test_real_checkers_accept_aliases_but_inline_slices_need_projection_changes(
+def test_real_checkers_accept_aliases_inline_slices_and_stubs(
     tmp_path: Path, checker: str, projection: str
 ) -> None:
     source = """\
@@ -214,15 +214,6 @@ assert_type(encode(1), str)
         )
 
     result = run([*command, str(path)], capture_output=True, text=True, check=False)
-    if projection == "inline":
-        # Existing overlays leave the implementation annotation untouched.
-        # Characterize the blocker instead of changing projection in this POC.
-        assert result.returncode != 0
-        assert "slice" in result.stdout + result.stderr or (
-            "Invalid type comment or annotation" in result.stdout
-        )
-        return
-
     assert result.returncode == 0, result.stdout + result.stderr
 
     if projection == "stub":
