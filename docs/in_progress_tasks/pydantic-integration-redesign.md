@@ -1,12 +1,14 @@
 # Pydantic Integration Redesign
 
-Status: In progress — design reviewed for generic model fields; implementation not started
+Status: In progress — slice 1 complete; next: replacement pipeline (slice 2)
 
 Priority: Next implementation scope
 
 Deferred follow-up: [Callable Map semantics cutover](../ideas/callable-map-semantics-cutover.md)
 
 Integration follow-up: [Compiler integration diagnostics](../ideas/compiler-integration-diagnostics.md)
+
+Slice 1 contracts and handoff: [Runtime characterization](pydantic-characterization.md)
 
 ## Goal
 
@@ -329,8 +331,10 @@ Local probes on Python 3.14.3 and Pydantic 2.13.4 established the following:
   before the model can be rebuilt.
 
 The review supports the proposed module responsibilities, with lifecycle handling
-added to the first implementation gate. These probes must become durable public
-contracts in slice 1; they do not establish full generic support today.
+added to the first implementation gate. Slice 1 now supplies durable public
+characterization and a Pydantic hook lifecycle proof, plus one strict pending
+contract. See the companion matrix for retained behavior and corrections; full
+generic transformation support is not implemented yet.
 
 ## Behavior to preserve
 
@@ -361,29 +365,34 @@ Use actual Pydantic in integration tests. Assert observable behavior at Schema,
 and shared language rules at the semantics interface. Avoid freezing unrelated
 CoreSchema layout or introducing a broad mock schema protocol.
 
-## Decisions to resolve before deferred dispatch implementation
+## Deferred dispatch decisions
 
-The old implementation is evidence, not automatic approval of every edge case.
-Record each discovered behavior as retained, an intended correction, or an
-explicitly unsupported input before replacing it.
+Slice 1 classifies the old implementation's behavior in the
+[runtime contract matrix](pydantic-characterization.md). The following decisions
+govern the replacement; the companion document defines the resumption seam,
+supported language, diagnostics, and serialization limits in detail.
 
 1. **Value-time pattern language.** Concrete runtime cases use exact raw type
    matching; predicates can express assignability. The existing matcher also
-   handles unions, Annotated, and Literal values. Decide which forms are supported
-   and how literal equality distinguishes values such as `True` and `1`.
-   Parameterized runtime patterns currently report an unsupported relationship.
-2. **Resuming deferred meaning.** Define how runtime observations enter shared
-   selection without passing raw values into semantics or reimplementing ordered
-   selection in Pydantic. A possible-output union is not a dispatch plan. Include
-   nested deferred expressions and modeled failures in the contract.
+   handles unions, Annotated, and Literal values. Retain those forms and match
+   Literals by both type and value, as confirmed during slice 1: True does not
+   match Literal[1]. Parameterized runtime patterns remain unsupported, including
+   when nested under unions, annotations, or aliases.
+2. **Resuming deferred meaning.** Shared semantics owns ordered selection and
+   returns chosen-branch/context or no-match evidence. Runtime adaptation supplies
+   on-demand test decisions for the supported observation language; shared
+   predicates evaluate with the raw input type bound in context. Keep raw values
+   outside semantics and avoid another ordered selection loop. A possible-output
+   union is not a dispatch plan. Nested Maps retain their own contexts.
 3. **Predicate failures.** The old dispatcher catches SchemaIssue and treats it
-   as a mismatch. Classify this behavior explicitly; do not silently carry it into
-   a new failure boundary or change it without a correction contract.
+   as a mismatch. Correct this: a reached modeled failure propagates with its
+   authored diagnostic; unvisited operands remain unvisited. Output validation
+   failure does not resume matching or try the default.
 4. **Serialization.** The current implementation infers an output branch from
    the returned value, rather than preserving the original validation branch.
-   Preserve tested unambiguous output behavior. Document the supported contract
-   for overlapping outputs without promising unavailable branch identity or
-   adding a public wrapper.
+   Preserve tested unambiguous output behavior. Original-branch serialization for
+   indistinguishable overlapping outputs is outside this pass; do not promote
+   the old heuristic into a permanent promise or add a public wrapper.
 
 An empty JSON Schema for deferred validation input is an honest temporary
 behavior, not a permanent compatibility requirement. A complete raw-input schema
@@ -399,7 +408,10 @@ protects. Mark a slice complete only after its tests and deletion obligations pa
 
 ### 1. Characterize the runtime contract and prove generic lifecycle support
 
-Next slice; not started. Inventory the existing tests in
+Complete. Production code is unchanged. The
+[characterization matrix](pydantic-characterization.md) records retained behavior,
+corrections C1–C9, a generic-hook lifecycle proof, and the single strict xfail
+tracer for the no-default generic Map. The existing test inventory includes
 `tests/unit/pydantic/test_schema.py`, `test_structural_map.py`, `test_input.py`,
 `test_map_fields.py`, `test_json_schema.py`, and `test_errors.py`, plus optional
 dependency coverage in `tests/unit/runtime/test_imports.py`.
@@ -424,12 +436,16 @@ failure for a generic Map without a default. Name the exception phase and
 diagnostic at each public entry point.
 
 Completion: retained contracts pass, each intended correction names its owning
-seam and later slice, the Pydantic-compatible generic hook strategy is demonstrated without a custom
-model base, and the supported Input language and deferred-selection seam are
-recorded. This slice does not replace production evaluation. Do not start the
-replacement pipeline until its treatment of unresolved source is settled.
+seam and later slice, the Pydantic-compatible generic hook strategy is demonstrated
+without a custom model base, and the supported Input language and shared
+selection responsibilities are recorded. Direct no-match schema construction and
+unparametrized generic validation have explicit exception phases. Slice 2 can
+implement the private replacement; the public tracer remains pending until the
+slice 6 cutover.
 
 ### 2. Establish the replacement pipeline for resolved types and Maps
+
+Next slice; not started.
 
 Build a private orchestration seam with runtime adaptation, a TypeSystem adapter,
 shared evaluation, Pydantic generic fallback/emission policy, ordinary-type emission,
@@ -523,8 +539,7 @@ dependencies actually change.
 
 ## Immediate next action
 
-Implement slice 1. Start with the existing public Pydantic tests and record the
-runtime decision matrix here or in a companion characterization document.
-Turn the selected Pydantic generic policy into lifecycle and transformation
-contracts before slice 2. Resolve dispatch semantics before treating slice 5 as
-an approved interface.
+Implement slice 2 using the [contract handoff](pydantic-characterization.md).
+Start with the no-default generic Map tracer through the private replacement
+annotation hook, then add generic fallback and typed no-match outcomes. Retain
+the public strict xfail until the complete production cutover in slice 6.
