@@ -1,6 +1,6 @@
 # Deferred Map Semantics and Compiler Cutover
 
-Status: In progress — slices 1, 3, and 4 complete; slice 2 remains next
+Status: In progress — slices 1–5 complete; slice 6 next
 Depends on: Parameterized type pattern semantics
 Related design: `docs/ideas/pydantic-integration-redesign.md`
 
@@ -51,8 +51,13 @@ in slice 1.
 - Slice 3 composes possible output types for nested deferred Maps, union-subject
   outputs, and explicit union expressions through one shared operation.
 - Slice 4's public data model retains scoped type symbols, partial parameterized
-  structure, and indeterminate alternatives. Evaluation of those values remains
-  slice 5 work.
+  structure, and indeterminate alternatives.
+- Slice 2 composes output templates through unions and applications, with explicit
+  type, output-template, and field-name roles in compiler lowering. Structural
+  case tests use their dedicated pattern lowering path.
+- Slice 5 evaluates unresolved static values through three-way predicates and
+  structural matches, preserves ordered reachable alternatives and capture
+  constraints, and retains uncertainty through nested types and predicates.
 
 ### Not cut over
 
@@ -283,15 +288,16 @@ Completion criterion: every surfaced case is classified, all retained-behavior
 characterization tests are green, and each intended correction names the later
 slice and interface that will own its strict contract.
 
-Next: slice 2. Preserve the already-green union-template and Literal schema
-outputs while making their roles explicit in shared lowering. Include correction
-C13 (Literal type output inside a transformed field) at the lowering interface.
+Slices 2 and 5 have now discharged the lowering and evaluation prerequisites
+for C13 and C1–C9 respectively. Their compiler end-to-end correction coverage
+remains assigned to slice 8. Next: slice 6's source alias contracts (C10–C12).
 
 ### 2. Complete output-role composition
 
-Extend shared output templates only as far as required to compose through
-existing union and parameterized expressions. Make compiler lowering choose an
-explicit role for:
+Complete. Shared output templates compose through existing union and
+parameterized expressions. `lower_semantic_expression()` accepts a keyword-only
+role (`type`, `output`, or `field-name`); structural case tests use the dedicated
+pattern lowerer. Compiler lowering chooses the appropriate role for:
 
 - concrete type;
 - structural case test;
@@ -300,6 +306,12 @@ explicit role for:
 
 Keep `Literal["x"]` contextual: field names lower to `FieldName`; type outputs
 remain standard typing literals.
+
+The contracts in
+`tests/unit/compiler/semantic_adapter/test_semantic_lowering.py` cover both union
+template positions, Literal case/predicate/output roles, C13's transformed field,
+and predicates over a field's Literal type inside a Map over Key. Defaults use
+the same output role as cases. No compiler schema boundary has cut over.
 
 Completion criterion: `set[Value] | None`, `tuple[Value | None]`, field renames,
 and Literal case tests, predicate operands, and outputs all lower according to
@@ -316,8 +328,10 @@ possible type from either:
 Deferred case/default outputs, union-subject outputs, and explicit union
 expressions use that operation. It consumes the nested `possible_output` without
 re-evaluating cases. Backend union normalization remains behind `TypeSystem`.
-Definite-type checks for predicates, fields, and parameterized templates remain
-separate; extracting a bound does not resume a deferred selection.
+Concrete field/record consumers remain separate. Slice 5's comparisons and
+parameterized templates retain unresolved provenance rather than reducing those
+values to their possible bounds. Extracting a bound does not resume a deferred
+selection.
 
 Contracts at `evaluate()` in `tests/unit/semantics/test_migration_spec.py` cover
 nested case/default outputs, duplicate normalization, omitted/explicit-Never
@@ -326,8 +340,8 @@ short-circuiting, and propagation of unexpected adapter exceptions. The name-onl
 test adapter now honors union flattening and Never elimination for nested bounds.
 The strict correcting contracts were removed from xfail in this slice.
 
-When slice 5 introduces indeterminate evaluation, extend the same operation for
-its possible output bound while retaining provenance in semantic comparisons.
+Slice 5 extends the same operation to unresolved static values and indeterminate
+output bounds while retaining provenance in semantic comparisons.
 
 Completion criterion: nested deferred Maps contribute their normalized possible
 output once, and adapter failures or non-type outputs retain their established
@@ -350,11 +364,13 @@ identity. Nested structures can retain these values rather than replacing them
 with their union bound. Ordered selection and normalization of alternatives
 belong to slice 5.
 
-These are model-only additions in slice 4. Do not add them to `Expression`,
-`EvaluationValue`, or evaluation contexts until slice 5 defines how evaluation
-consumes and propagates them. Model contracts use the package's public data
-interface; existing architecture rules enforce independence from compiler data
-and control flow. See [domain terminology](../../CONTEXT.md).
+These were model-only additions in slice 4. Slice 5 now integrates them through
+`TypeValueReference`, evaluation values, contexts, and structural case tests.
+`UnionTypeShape` additionally preserves the members of a definite union containing
+unresolved positions; such a union is distinct from an indeterminate selection's
+alternative results. Model contracts use the package's public data interface;
+architecture rules enforce independence from compiler data and control flow.
+See [domain terminology](../../CONTEXT.md).
 
 `tests/unit/semantics/test_unresolved_types.py` covers scope identity, nested
 resolved/unresolved positions, alternative provenance, backend `None`, and
@@ -379,8 +395,8 @@ compiler control data.
 
 ### 5. Add three-way condition and pattern decisions
 
-Teach shared evaluation to propagate true/match, false/mismatch, and
-indeterminate through:
+Complete. Shared evaluation propagates true/match, false/mismatch, and an
+`IndeterminateCondition` through:
 
 - `Equal` and `Assignable`;
 - the full three-way truth tables for `All`, `Any`, and `Not`;
@@ -392,6 +408,27 @@ indeterminate through:
 For an indeterminate ordered case, combine that case's possible output with only
 the recursively reachable remainder. Preserve definite earlier matches and
 known structural mismatches.
+
+`tests/unit/semantics/test_indeterminate_evaluation.py` exercises the public
+`evaluate()` seam: full truth tables, failure short-circuiting, C1–C9, nested
+predicates, repeated-capture reconciliation (including complementary known
+positions), unresolved union identity, nested output provenance, and adapter
+failure identity. `semantics.type_evaluation` owns shared type relations and
+composition; Map matching and predicate evaluation both consume those operations.
+All correction contracts pass without xfails. Focused checks and full `make check`
+pass; compiler characterization and callable behavior remain green.
+
+An omitted default contributes no possible output type. Its unmatched `Never`
+alternative remains in an indeterminate result's provenance so a later predicate
+does not mistake its possible bound for a definitely selected result.
+
+TypeSystem still supplies primitive inspect/build operations, not generic
+variance or bound rules. Assignability is definite for resolved comparisons and
+proven identical static types; other partial generic relationships remain
+indeterminate unless union/alternative reasoning decides them. Structural capture
+requires known argument positions: `list[T]` supports capturing T, whereas an
+opaque T matched against `list[Value]` reports a modeled unsupported-expression
+failure instead of inventing an argument type or using an unrelated field binding.
 
 Completion criterion: all strict unresolved-generic contracts at the shared
 `evaluate()` interface pass without xfails, including condition truth tables,

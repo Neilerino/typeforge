@@ -90,13 +90,18 @@ def test_semantics_dependencies_point_toward_the_domain(
         .may_only_depend_on_layers()
         .where_layer(protocols.name)
         .may_only_depend_on_layers(domain.name)
-        .where_layer(map_evaluation.name)
+        .where_layer(SEMANTICS.file("type_evaluation").name)
         .may_only_depend_on_layers(domain.name, protocols.name)
+        .where_layer(map_evaluation.name)
+        .may_only_depend_on_layers(
+            domain.name, protocols.name, SEMANTICS.file("type_evaluation").name
+        )
         .where_layer(evaluation.name)
         .may_only_depend_on_layers(
             domain.name,
             protocols.name,
             map_evaluation.name,
+            SEMANTICS.file("type_evaluation").name,
             typeforge.file("utils.error_handling").name,
         )
         .where_layer(interface.name)

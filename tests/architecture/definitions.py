@@ -27,6 +27,7 @@ SEMANTICS = ArchModule(
     ],
     files=[
         ArchFile(name="protocols"),
+        ArchFile(name="type_evaluation"),
         ArchFile(name="map_evaluation"),
         ArchFile(name="evaluation"),
     ],

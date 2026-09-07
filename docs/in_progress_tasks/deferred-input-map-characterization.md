@@ -228,12 +228,15 @@ asserting internal legacy behavior:
 | 7, schema adaptation and typing emission | Authored diagnostics at one modeled failure boundary, bare/qualified Never through one StaticType conversion, nested types, record references, and generic lowering; preserve compiler origins and reusable roots. |
 | 8, production boundaries | Activate C1–C13 compiler correction contracts, keep retained tests green, delete the duplicate evaluator without fallback. |
 
-Slices 3 and 4 are now complete at their owning interfaces. Slice 3's evaluation
-contracts are in `tests/unit/semantics/test_migration_spec.py`; slice 4's data
-contracts are in `tests/unit/semantics/test_unresolved_types.py`. The latter
-establish the model that slice 5 will consume; they do not activate C1–C9 or change
-compiler selection. Slice 2 remains outstanding. All C1–C13 end-to-end correction
-contracts remain assigned to slice 8.
+Slices 2–5 are now complete at their owning interfaces. Slice 2's lowering
+contracts cover C13 in `tests/unit/compiler/semantic_adapter/test_semantic_lowering.py`.
+Slice 3's evaluation contracts are in `tests/unit/semantics/test_migration_spec.py`;
+slice 4's data contracts are in `tests/unit/semantics/test_unresolved_types.py`.
+Slice 5 consumes that model and covers C1–C9 in
+`tests/unit/semantics/test_indeterminate_evaluation.py`. The observed outputs above
+remain the slice-1 baseline inventory. C10–C12 still require slice 6's source alias
+expansion. All C1–C13 end-to-end correction contracts remain assigned to slice 8;
+the compiler schema evaluator has not cut over.
 
 ## Existing integration contracts to carry forward
 

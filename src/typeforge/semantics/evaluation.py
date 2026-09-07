@@ -9,12 +9,11 @@ from typeforge.semantics.domain.assertions import (
     expect_condition,
     expect_field,
     expect_field_name,
-    expect_possible_type,
     expect_type,
+    expect_type_value,
 )
 from typeforge.semantics.domain.exceptions import (
     DuplicateFieldSemanticError,
-    ExpectedTypeSemanticError,
     SemanticIssue,
     UnboundInputSemanticError,
     UnboundKeySemanticError,
@@ -33,6 +32,7 @@ from typeforge.semantics.domain.models import (
     Expression,
     FieldExpression,
     FieldName,
+    IndeterminateCondition,
     InputReference,
     KeyReference,
     MapExpression,
@@ -45,11 +45,20 @@ from typeforge.semantics.domain.models import (
     RecordField,
     ResolvedType,
     TypeReference,
+    TypeValueReference,
     UnionExpression,
     ValueReference,
 )
 from typeforge.semantics.map_evaluation import evaluate_map
 from typeforge.semantics.protocols import TypeSystem
+from typeforge.semantics.type_evaluation import (
+    assignable_types,
+    build_type,
+    conjunction,
+    disjunction,
+    equal_types,
+    union_type,
+)
 from typeforge.utils.error_handling import safe_result
 
 
@@ -92,6 +101,15 @@ def _[T](
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
     return expression
+
+
+@_evaluate.register(TypeValueReference)
+def _[T](
+    expression: TypeValueReference[T],
+    type_system: TypeSystem[T],
+    context: EvaluationContext[T],
+) -> EvaluationValue[T]:
+    return expression.value
 
 
 @_evaluate.register(InputReference)
@@ -149,14 +167,14 @@ def _[T](
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
     arguments = tuple(
-        expect_type(
+        expect_type_value(
             _evaluate(argument, type_system, context),
             "parameterized type arguments must evaluate to types",
-        ).value
+        )
         for argument in expression.arguments
     )
-    shape = ParameterizedTypeShape(expression.origin, arguments)
-    return ResolvedType(type_system.build(shape).unwrap())
+    shape = ParameterizedTypeShape(ResolvedType(expression.origin), arguments)
+    return build_type(shape, type_system)
 
 
 @_evaluate.register(FieldExpression | OptionalFieldExpression | ReadonlyFieldExpression)
@@ -231,14 +249,11 @@ def _[T](
     type_system: TypeSystem[T],
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
-    members = tuple(
-        expect_possible_type(
-            _evaluate(member, type_system, context),
-            "union members must evaluate to types",
-        ).value
-        for member in expression.members
+    return union_type(
+        (_evaluate(member, type_system, context) for member in expression.members),
+        type_system,
+        "union members must evaluate to types",
     )
-    return ResolvedType(type_system.union(members).unwrap())
 
 
 @_evaluate.register(EqualExpression)
@@ -250,14 +265,12 @@ def _[T](
     left = _evaluate(expression.left, type_system, context)
     right = _evaluate(expression.right, type_system, context)
 
-    if isinstance(left, ResolvedType) and isinstance(right, ResolvedType):
-        return type_system.equal(left.value, right.value).unwrap()
-
     if isinstance(left, FieldName) and isinstance(right, FieldName):
         return left == right
 
-    raise ExpectedTypeSemanticError(
-        "Equal operands must both be types or both be field names"
+    message = "Equal operands must both be types or both be field names"
+    return equal_types(
+        expect_type_value(left, message), expect_type_value(right, message), type_system
     )
 
 
@@ -267,16 +280,16 @@ def _[T](
     type_system: TypeSystem[T],
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
-    source = expect_type(
+    source = expect_type_value(
         _evaluate(expression.source, type_system, context),
         "Assignable operands must both be types",
     )
-    target = expect_type(
+    target = expect_type_value(
         _evaluate(expression.target, type_system, context),
         "Assignable operands must both be types",
     )
 
-    return type_system.assignable(source.value, target.value).unwrap()
+    return assignable_types(source, target, type_system)
 
 
 @_evaluate.register(AnyExpression | AllExpression)
@@ -285,16 +298,15 @@ def _[T](
     type_system: TypeSystem[T],
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
-    for condition in expression.conditions:
-        matched = expect_condition(_evaluate(condition, type_system, context))
-
-        if isinstance(expression, AllExpression) and not matched:
-            return False
-
-        if isinstance(expression, AnyExpression) and matched:
-            return True
-
-    return isinstance(expression, AllExpression)
+    conditions = (
+        expect_condition(_evaluate(condition, type_system, context))
+        for condition in expression.conditions
+    )
+    return (
+        conjunction(conditions)
+        if isinstance(expression, AllExpression)
+        else disjunction(conditions)
+    )
 
 
 @_evaluate.register(NotExpression)
@@ -303,7 +315,8 @@ def _[T](
     type_system: TypeSystem[T],
     context: EvaluationContext[T],
 ) -> EvaluationValue[T]:
-    return not expect_condition(_evaluate(expression.condition, type_system, context))
+    value = expect_condition(_evaluate(expression.condition, type_system, context))
+    return value if isinstance(value, IndeterminateCondition) else not value
 
 
 @_evaluate.register(MapExpression)

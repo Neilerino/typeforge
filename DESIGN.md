@@ -32,6 +32,20 @@ capture `Value`, while predicates may compose `Equal`, `Assignable`, `All`,
 `Any`, and `Not` and may inspect contextual `Key` and `Value` bindings inside
 `MapFields`.
 
+Shared semantic evaluation distinguishes runtime `Input` from unresolved static
+type identity. A deferred Map preserves selection until input is available;
+unresolved static comparisons instead produce true, false, or indeterminate.
+Same-symbol identity and known structural positions remain meaningful. At an
+indeterminate case, only its output and the reachable remainder contribute to the
+possible output type. Nested results retain their provenance so a possible union
+is not mistaken for a definitely selected type.
+
+Compiler semantic lowering keeps field-name expressions distinct from typing
+types and output templates. A string Literal can name a transformed field while
+remaining an ordinary typing Literal in that field's type. Output-template roles
+compose through unions and parameterized arguments, preserving contextual Value
+bindings. Production schema cutover remains tracked by the deferred-Map roadmap.
+
 ## Library and project output
 
 Published library stubs must be deterministic from library source and configuration. Consumer call sites must never influence them, and consumers should not need to run the Typeforge compiler.

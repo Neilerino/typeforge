@@ -22,6 +22,7 @@ from typeforge.compiler.source import (
     SourcePosition,
     SourceSpan,
     SourceTypeExpression,
+    UnionTypeExpression,
 )
 from typeforge.semantics import (
     CaptureValuePattern,
@@ -37,6 +38,7 @@ from typeforge.semantics import (
     ParameterizedTypePattern,
     ParameterizedTypeTemplate,
     RecordFamily,
+    RecordField,
     RecordShape,
     ResolvedType,
     TypeReference,
@@ -166,7 +168,9 @@ def test_string_literal_lowers_to_a_field_name() -> None:
         arguments=(RawTypeExpression('"token"', SPAN),),
     )
 
-    assert lower_semantic_expression(literal, ()) == FieldName("token")
+    assert lower_semantic_expression(literal, (), role="field-name") == FieldName(
+        "token"
+    )
 
 
 def test_map_case_preserves_string_literal_field_names() -> None:
@@ -188,7 +192,9 @@ def test_map_case_preserves_string_literal_field_names() -> None:
         marker(MarkerKind.CASE, source, target),
     )
 
-    assert lower_semantic_expression(expression, ()) == MapExpression(
+    assert lower_semantic_expression(
+        expression, (), role="field-name"
+    ) == MapExpression(
         KeyReference(),
         (CaseExpression(FieldName("source"), FieldName("target")),),
     )
@@ -291,3 +297,120 @@ def marker(
     *arguments: SourceTypeExpression,
 ) -> MarkerTypeExpression:
     return MarkerTypeExpression(kind.value, SPAN, kind, arguments)
+
+
+def application(
+    constructor: str, *arguments: SourceTypeExpression
+) -> AppliedTypeExpression:
+    return AppliedTypeExpression(
+        source=f"{constructor}[{', '.join(argument.source for argument in arguments)}]",
+        span=SPAN,
+        constructor=name(constructor),
+        arguments=arguments,
+    )
+
+
+@pytest.mark.parametrize("nested", (False, True))
+def test_capture_output_role_composes_through_unions(nested: bool) -> None:
+    value = marker(MarkerKind.VALUE)
+    output = (
+        application(
+            "tuple", UnionTypeExpression("Value | None", SPAN, (value, name("None")))
+        )
+        if nested
+        else UnionTypeExpression(
+            "set[Value] | None", SPAN, (application("set", value), name("None"))
+        )
+    )
+    expression = marker(
+        MarkerKind.MAP,
+        application("list", name("int")),
+        marker(MarkerKind.CASE, application("list", value), output),
+    )
+    integer = NamedType("int")
+    none = NamedType("None")
+    expected = (
+        ParameterizedType(NamedType("tuple"), (UnionType(integer, none),))
+        if nested
+        else UnionType(ParameterizedType(NamedType("set"), (integer,)), none)
+    )
+
+    assert evaluate(
+        lower_semantic_expression(expression, ()), COMPILER_TYPE_SYSTEM
+    ) == Success(ResolvedType(expected))
+
+
+@pytest.mark.parametrize("kind", (MarkerKind.EQUAL, MarkerKind.ASSIGNABLE))
+def test_literal_predicate_operands_remain_types(kind: MarkerKind) -> None:
+    literal = application("Literal", RawTypeExpression('"accepted"', SPAN))
+    expression = marker(kind, literal, literal)
+
+    assert evaluate(
+        lower_semantic_expression(expression, ()), COMPILER_TYPE_SYSTEM
+    ) == Success(True)
+
+
+def test_literal_case_and_default_outputs_remain_types() -> None:
+    literal = application("Literal", RawTypeExpression('"accepted"', SPAN))
+    expression = marker(
+        MarkerKind.MAP,
+        literal,
+        marker(MarkerKind.CASE, literal, literal),
+        marker(MarkerKind.DEFAULT, literal),
+    )
+    expected = ParameterizedType(NamedType("Literal"), (NamedType('"accepted"'),))
+
+    assert evaluate(
+        lower_semantic_expression(expression, ()), COMPILER_TYPE_SYSTEM
+    ) == Success(ResolvedType(expected))
+
+
+def test_literal_type_output_inside_a_transformed_field() -> None:
+    literal = application("Literal", RawTypeExpression('"accepted"', SPAN))
+    expression = marker(
+        MarkerKind.FIELD,
+        marker(MarkerKind.KEY),
+        marker(
+            MarkerKind.MAP,
+            marker(MarkerKind.VALUE),
+            marker(MarkerKind.CASE, name("int"), literal),
+            marker(MarkerKind.DEFAULT, name("bytes")),
+        ),
+    )
+
+    result = evaluate(
+        lower_semantic_expression(expression, ()),
+        COMPILER_TYPE_SYSTEM,
+        EvaluationContext(key="original", value=ResolvedType(NamedType("int"))),
+    )
+
+    assert result == Success(
+        RecordField(
+            "original",
+            ParameterizedType(NamedType("Literal"), (NamedType('"accepted"'),)),
+        )
+    )
+
+
+def test_key_map_can_compare_literal_field_types() -> None:
+    literal = application("Literal", RawTypeExpression('"accepted"', SPAN))
+    expression = marker(
+        MarkerKind.MAP,
+        marker(MarkerKind.KEY),
+        marker(
+            MarkerKind.CASE,
+            marker(MarkerKind.EQUAL, marker(MarkerKind.VALUE), literal),
+            marker(MarkerKind.FIELD, marker(MarkerKind.KEY), name("str")),
+        ),
+        marker(
+            MarkerKind.DEFAULT,
+            marker(MarkerKind.FIELD, marker(MarkerKind.KEY), name("bytes")),
+        ),
+    )
+    literal_type = ParameterizedType(NamedType("Literal"), (NamedType('"accepted"'),))
+
+    assert evaluate(
+        lower_semantic_expression(expression, ()),
+        COMPILER_TYPE_SYSTEM,
+        EvaluationContext(key="value", value=ResolvedType(literal_type)),
+    ) == Success(RecordField("value", NamedType("str")))

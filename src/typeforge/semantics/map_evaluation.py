@@ -3,27 +3,46 @@
 from collections.abc import Sequence
 from dataclasses import replace
 from functools import singledispatch
-from typing import NamedTuple, Protocol
+from typing import NamedTuple, Protocol, assert_never
 
-from typeforge.semantics.domain.assertions import expect_condition, expect_possible_type
+from typeforge.semantics.domain.assertions import (
+    expect_condition,
+    expect_possible_type,
+)
 from typeforge.semantics.domain.exceptions import UnsupportedExpressionSemanticError
 from typeforge.semantics.domain.models import (
     CaptureValuePattern,
+    Condition,
     DeferredMap,
     EvaluationContext,
     EvaluationValue,
     ExactTypePattern,
     Expression,
     FieldName,
+    IndeterminateCondition,
+    IndeterminateType,
     InputReference,
     MapExpression,
     ParameterizedTypePattern,
     ResolvedType,
     TypePattern,
+    TypeValue,
+    TypeValueReference,
+    UnresolvedType,
     is_bool_expr,
     is_pattern_expr,
 )
 from typeforge.semantics.protocols import TypeSystem
+from typeforge.semantics.type_evaluation import (
+    consensus,
+    equal_types,
+    indeterminate_type,
+    inspect_type,
+    is_symbol,
+    merge_captures,
+    union_members,
+    union_type,
+)
 
 
 class _ExpressionEvaluator[T](Protocol):
@@ -38,13 +57,11 @@ class _ExpressionEvaluator[T](Protocol):
 class _R_MatchTypePattern[T](NamedTuple):
     """A mismatch, a match without `Value`, or a match with a `Value` binding."""
 
-    matched: bool
-    value_binding: ResolvedType[T] | None
+    matched: Condition
+    value_binding: TypeValue[T] | None
 
     @classmethod
-    def match(
-        cls, value_binding: ResolvedType[T] | None = None
-    ) -> _R_MatchTypePattern[T]:
+    def match(cls, value_binding: TypeValue[T] | None = None) -> _R_MatchTypePattern[T]:
         return cls(matched=True, value_binding=value_binding)
 
     @classmethod
@@ -64,9 +81,8 @@ def evaluate_map[T](
 
     subject = fn(expression.subject, type_system, context)
     members: tuple[EvaluationValue[T], ...]
-    if isinstance(subject, ResolvedType):
-        native_members = type_system.union_members(subject.value).unwrap()
-        members = tuple(ResolvedType(member) for member in native_members)
+    if isinstance(subject, ResolvedType | UnresolvedType):
+        members = union_members(subject, type_system)
     else:
         members = (subject,)
 
@@ -80,14 +96,9 @@ def evaluate_map[T](
     if len(outputs) == 1:
         return outputs[0]
 
-    output_types = tuple(
-        expect_possible_type(
-            output,
-            "Map outputs for a union subject must evaluate to types",
-        ).value
-        for output in outputs
+    return union_type(
+        outputs, type_system, "Map outputs for a union subject must evaluate to types"
     )
-    return ResolvedType(type_system.union(output_types).unwrap())
 
 
 def _defer_map[T](
@@ -147,13 +158,13 @@ def _evaluate_map_member[T](
     *,
     fn: _ExpressionEvaluator[T],
 ) -> EvaluationValue[T]:
-    for case in expression.cases:
+    for index, case in enumerate(expression.cases):
         output_context = context
         if is_bool_expr(case.test):
             matched = expect_condition(fn(case.test, type_system, context))
 
         elif is_pattern_expr(case.test):
-            if isinstance(subject, ResolvedType):
+            if isinstance(subject, ResolvedType | UnresolvedType | IndeterminateType):
                 matched, value_binding = _match_type_pattern(
                     case.test,
                     subject,
@@ -167,8 +178,22 @@ def _evaluate_map_member[T](
             test = fn(case.test, type_system, context)
             matched = _map_values_are_equal(subject, test, type_system)
 
-        if matched:
+        if matched is True:
             return fn(case.output, type_system, output_context)
+
+        if isinstance(matched, IndeterminateCondition):
+            selected = fn(case.output, type_system, output_context)
+            expect_possible_type(
+                selected, "indeterminate Map outputs must evaluate to types"
+            )
+            remaining = _evaluate_map_member(
+                subject,
+                replace(expression, cases=expression.cases[index + 1 :]),
+                type_system,
+                context,
+                fn=fn,
+            )
+            return indeterminate_type((selected, remaining), type_system)
 
     if expression.default is not None:
         return fn(expression.default, type_system, context)
@@ -179,7 +204,7 @@ def _evaluate_map_member[T](
 @singledispatch
 def _match_type_pattern[T](
     pattern: TypePattern[T],
-    subject: ResolvedType[T],
+    subject: TypeValue[T],
     type_system: TypeSystem[T],
 ) -> _R_MatchTypePattern[T]:
     raise UnsupportedExpressionSemanticError(
@@ -190,53 +215,83 @@ def _match_type_pattern[T](
 @_match_type_pattern.register(ExactTypePattern)
 def _[T](
     pattern: ExactTypePattern[T],
-    subject: ResolvedType[T],
+    subject: TypeValue[T],
     type_system: TypeSystem[T],
 ) -> _R_MatchTypePattern[T]:
-    if type_system.equal(subject.value, pattern.value).unwrap():
-        return _R_MatchTypePattern[T].match()
-
-    return _R_MatchTypePattern[T].mismatch()
+    return _R_MatchTypePattern(
+        equal_types(subject, ResolvedType(pattern.value), type_system), None
+    )
 
 
 @_match_type_pattern.register(CaptureValuePattern)
 def _[T](
     pattern: CaptureValuePattern,
-    subject: ResolvedType[T],
+    subject: TypeValue[T],
     type_system: TypeSystem[T],
 ) -> _R_MatchTypePattern[T]:
     return _R_MatchTypePattern[T].match(subject)
 
 
+@_match_type_pattern.register(TypeValueReference)
+def _[T](
+    pattern: TypeValueReference[T], subject: TypeValue[T], type_system: TypeSystem[T]
+) -> _R_MatchTypePattern[T]:
+    return _R_MatchTypePattern(equal_types(subject, pattern.value, type_system), None)
+
+
 @_match_type_pattern.register(ParameterizedTypePattern)
 def _[T](
     pattern: ParameterizedTypePattern[T],
-    subject: ResolvedType[T],
+    subject: TypeValue[T],
     type_system: TypeSystem[T],
 ) -> _R_MatchTypePattern[T]:
-    if (
-        (shape := type_system.inspect(subject.value).unwrap()) is None
-        or len(shape.arguments) != len(pattern.arguments)
-        or not type_system.equal(shape.origin, pattern.origin).unwrap()
-    ):
+    if isinstance(subject, IndeterminateType):
+        matches = tuple(
+            _match_type_pattern(pattern, alternative, type_system)
+            for alternative in subject.alternatives
+        )
+        bindings = tuple(
+            match.value_binding
+            for match in matches
+            if match.matched is not False and match.value_binding is not None
+        )
+        binding = (
+            indeterminate_type(bindings, type_system)
+            if len(bindings) > 1
+            else (bindings[0] if bindings else None)
+        )
+        return _R_MatchTypePattern(
+            consensus(match.matched for match in matches), binding
+        )
+
+    if is_symbol(subject):
+        if _has_capture(pattern):
+            raise UnsupportedExpressionSemanticError(
+                "cannot capture type arguments from an unresolved type parameter"
+            )
+
+        return _R_MatchTypePattern(IndeterminateCondition(), None)
+
+    shape = inspect_type(subject, type_system)
+    if shape is None or len(shape.arguments) != len(pattern.arguments):
         return _R_MatchTypePattern[T].mismatch()
 
-    current_binding: ResolvedType[T] | None = None
+    origin_match = equal_types(shape.origin, ResolvedType(pattern.origin), type_system)
+    if origin_match is False:
+        return _R_MatchTypePattern[T].mismatch()
+
+    uncertain = isinstance(origin_match, IndeterminateCondition)
+    current_binding: TypeValue[T] | None = None
     for nested_pattern, nested_subject in zip(
-        pattern.arguments,
-        shape.arguments,
-        strict=True,
+        pattern.arguments, shape.arguments, strict=True
     ):
         matched, nested_binding = _match_type_pattern(
-            nested_pattern,
-            ResolvedType(nested_subject),
-            type_system,
+            nested_pattern, nested_subject, type_system
         )
-        if not matched:
+        if matched is False:
             return _R_MatchTypePattern[T].mismatch()
 
-        # One `Value` binding is shared by the whole pattern. The first nested
-        # binding establishes it; every later binding must resolve to the same type.
+        uncertain |= isinstance(matched, IndeterminateCondition)
         if nested_binding is None:
             continue
 
@@ -244,27 +299,45 @@ def _[T](
             current_binding = nested_binding
             continue
 
-        if not type_system.equal(
-            current_binding.value,
-            nested_binding.value,
-        ).unwrap():
+        matched, current_binding = merge_captures(
+            current_binding, nested_binding, type_system
+        )
+        if matched is False:
             return _R_MatchTypePattern[T].mismatch()
 
-    return _R_MatchTypePattern[T].match(current_binding)
+        uncertain |= isinstance(matched, IndeterminateCondition)
+
+    return _R_MatchTypePattern(
+        IndeterminateCondition() if uncertain else True, current_binding
+    )
 
 
 def _map_values_are_equal[T](
     left: EvaluationValue[T],
     right: EvaluationValue[T],
     type_system: TypeSystem[T],
-) -> bool:
-    if isinstance(left, ResolvedType) and isinstance(right, ResolvedType):
-        return type_system.equal(left.value, right.value).unwrap()
+) -> Condition:
+    if isinstance(
+        left, ResolvedType | UnresolvedType | IndeterminateType
+    ) and isinstance(right, ResolvedType | UnresolvedType | IndeterminateType):
+        return equal_types(left, right, type_system)
 
     if isinstance(left, FieldName) and isinstance(right, FieldName):
         return left == right
 
     return False
+
+
+def _has_capture[T](pattern: TypePattern[T]) -> bool:
+    match pattern:
+        case CaptureValuePattern():
+            return True
+        case ParameterizedTypePattern(arguments=arguments):
+            return any(_has_capture(argument) for argument in arguments)
+        case ExactTypePattern() | TypeValueReference():
+            return False
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
 __all__ = ("evaluate_map",)

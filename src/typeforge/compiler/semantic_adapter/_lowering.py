@@ -3,11 +3,13 @@
 import ast
 from dataclasses import dataclass
 from functools import singledispatch
+from typing import Literal
 
 from typeforge.compiler.semantic_adapter._types import (
     NamedType,
     ParameterizedType,
     StaticType,
+    union_of,
 )
 from typeforge.compiler.source import (
     AllMarker,
@@ -61,8 +63,12 @@ from typeforge.semantics import (
     TypePattern,
     TypeReference,
     TypeTemplate,
+    UnionExpression,
     ValueReference,
 )
+
+type SemanticRole = Literal["type", "output", "field-name"]
+
 
 type SemanticEnvironment = tuple[tuple[str, StaticType], ...]
 
@@ -77,6 +83,8 @@ def lower_semantic_expression(
     expression: SourceTypeExpression,
     environment: SemanticEnvironment,
     output_name: str | None = None,
+    *,
+    role: SemanticRole = "type",
 ) -> Expression[StaticType]:
     raise SemanticLoweringError(
         f"unsupported record expression {type(expression).__name__}"
@@ -88,6 +96,8 @@ def _(
     expression: NameTypeExpression,
     environment: SemanticEnvironment,
     output_name: str | None = None,
+    *,
+    role: SemanticRole = "type",
 ) -> Expression[StaticType]:
     bound = dict(environment).get(expression.source)
     return TypeReference(bound if bound is not None else NamedType(expression.source))
@@ -95,11 +105,29 @@ def _(
 
 @lower_semantic_expression.register
 def _(
-    expression: RawTypeExpression | UnionTypeExpression | StarredTypeExpression,
+    expression: RawTypeExpression | StarredTypeExpression,
     environment: SemanticEnvironment,
     output_name: str | None = None,
+    *,
+    role: SemanticRole = "type",
 ) -> Expression[StaticType]:
     return TypeReference(NamedType(expression.source))
+
+
+@lower_semantic_expression.register
+def _(
+    expression: UnionTypeExpression,
+    environment: SemanticEnvironment,
+    output_name: str | None = None,
+    *,
+    role: SemanticRole = "type",
+) -> Expression[StaticType]:
+    return UnionExpression(
+        tuple(
+            lower_semantic_expression(member, environment, role=role)
+            for member in expression.members
+        )
+    )
 
 
 @lower_semantic_expression.register
@@ -107,6 +135,8 @@ def _(
     expression: RuntimeInputTypeExpression,
     environment: SemanticEnvironment,
     output_name: str | None = None,
+    *,
+    role: SemanticRole = "type",
 ) -> Expression[StaticType]:
     return InputReference()
 
@@ -116,10 +146,17 @@ def _(
     expression: AppliedTypeExpression,
     environment: SemanticEnvironment,
     output_name: str | None = None,
+    *,
+    role: SemanticRole = "type",
 ) -> Expression[StaticType]:
-    field_name = field_name_literal(expression)
-    if field_name is not None:
+    if (
+        role == "field-name"
+        and (field_name := field_name_literal(expression)) is not None
+    ):
         return field_name
+
+    if role == "output":
+        return _lower_type_template(expression, environment)
 
     return TypeReference(_lower_concrete_type(expression, environment))
 
@@ -129,11 +166,15 @@ def _(
     expression: MarkerTypeExpression,
     environment: SemanticEnvironment,
     output_name: str | None = None,
+    *,
+    role: SemanticRole = "type",
 ) -> Expression[StaticType]:
     marker = _normalize_semantic_marker(expression)
 
-    def lower(item: SourceTypeExpression) -> Expression[StaticType]:
-        return lower_semantic_expression(item, environment)
+    def lower(
+        item: SourceTypeExpression, item_role: SemanticRole = "type"
+    ) -> Expression[StaticType]:
+        return lower_semantic_expression(item, environment, role=item_role)
 
     match marker:
         case KeyMarker():
@@ -143,11 +184,15 @@ def _(
         case DropMarker():
             return DropExpression()
         case FieldMarker(key=key, value=value):
-            return FieldExpression(lower(key), lower(value))
+            return FieldExpression(lower(key, "field-name"), lower(value, "output"))
         case OptionalFieldMarker(key=key, value=value):
-            return OptionalFieldExpression(lower(key), lower(value))
+            return OptionalFieldExpression(
+                lower(key, "field-name"), lower(value, "output")
+            )
         case ReadonlyFieldMarker(key=key, value=value):
-            return ReadonlyFieldExpression(lower(key), lower(value))
+            return ReadonlyFieldExpression(
+                lower(key, "field-name"), lower(value, "output")
+            )
         case MapFieldsMarker(record=record, transform=transform):
             return MapFieldsExpression(
                 lower(record),
@@ -155,33 +200,46 @@ def _(
                 output_name,
             )
         case MapMarker(subject=subject, entries=entries):
+            subject_role: SemanticRole = (
+                "field-name" if _is_key_expression(subject) else "type"
+            )
+            output_role: SemanticRole = (
+                "field-name" if role == "field-name" else "output"
+            )
             cases = tuple(
                 CaseExpression(
-                    _lower_case_test(entry.test, environment),
-                    _lower_case_output(entry.output, environment),
+                    _lower_case_test(entry.test, environment, role=subject_role),
+                    lower(entry.output, output_role),
                 )
                 for entry in entries
                 if isinstance(entry, CaseMarker)
             )
             default = next(
                 (
-                    lower(entry.output)
+                    lower(entry.output, output_role)
                     for entry in entries
                     if isinstance(entry, DefaultMarker)
                 ),
                 None,
             )
-            return MapExpression(lower(subject), cases, default)
+            return MapExpression(lower(subject, subject_role), cases, default)
         case EqualMarker(left=left, right=right):
-            return EqualExpression(lower(left), lower(right))
+            operand_role: SemanticRole = (
+                "field-name"
+                if _is_key_expression(left) or _is_key_expression(right)
+                else "type"
+            )
+            return EqualExpression(
+                lower(left, operand_role), lower(right, operand_role)
+            )
         case AssignableMarker(left=left, right=right):
             return AssignableExpression(lower(left), lower(right))
         case AllMarker(items=items):
-            return AllExpression(tuple(lower(item) for item in items))
+            return AllExpression(tuple(lower(item, role) for item in items))
         case AnyMarker(items=items):
-            return AnyExpression(tuple(lower(item) for item in items))
+            return AnyExpression(tuple(lower(item, role) for item in items))
         case NotMarker(item=item):
-            return NotExpression(lower(item))
+            return NotExpression(lower(item, role))
         case _:
             raise SemanticLoweringError(
                 "unsupported record expression "
@@ -205,6 +263,10 @@ def _lower_concrete_type(
                     for argument in arguments
                 ),
             )
+        case UnionTypeExpression(members=members):
+            return union_of(
+                *(_lower_concrete_type(member, environment) for member in members)
+            )
         case _:
             return NamedType(expression.source)
 
@@ -212,11 +274,13 @@ def _lower_concrete_type(
 def _lower_case_test(
     expression: SourceTypeExpression,
     environment: SemanticEnvironment,
+    *,
+    role: SemanticRole,
 ) -> Expression[StaticType] | TypePattern[StaticType]:
     match expression:
         case AppliedTypeExpression():
             field_name = field_name_literal(expression)
-            if field_name is not None:
+            if role == "field-name" and field_name is not None:
                 return field_name
 
             return _lower_type_pattern(expression, environment)
@@ -228,7 +292,7 @@ def _lower_case_test(
         case _:
             pass
 
-    return lower_semantic_expression(expression, environment)
+    return lower_semantic_expression(expression, environment, role=role)
 
 
 def _lower_type_pattern(
@@ -256,25 +320,15 @@ def _lower_type_pattern(
             return ExactTypePattern(_lower_concrete_type(expression, environment))
 
 
-def _lower_case_output(
-    expression: SourceTypeExpression,
-    environment: SemanticEnvironment,
-) -> Expression[StaticType]:
-    if isinstance(expression, AppliedTypeExpression):
-        field_name = field_name_literal(expression)
-        if field_name is not None:
-            return field_name
-
-        return _lower_type_template(expression, environment)
-
-    return lower_semantic_expression(expression, environment)
-
-
 def _lower_type_template(
     expression: SourceTypeExpression,
     environment: SemanticEnvironment,
 ) -> TypeTemplate[StaticType]:
     match expression:
+        case UnionTypeExpression(members=members):
+            return UnionExpression(
+                tuple(_lower_type_template(member, environment) for member in members)
+            )
         case AppliedTypeExpression(constructor=constructor, arguments=arguments):
             return ParameterizedTypeTemplate(
                 origin=_lower_concrete_type(constructor, environment),
@@ -323,3 +377,16 @@ def field_name_literal(expression: AppliedTypeExpression) -> FieldName | None:
         return None
 
     return FieldName(value) if isinstance(value, str) else None
+
+
+def _is_key_expression(expression: SourceTypeExpression) -> bool:
+    if not isinstance(expression, MarkerTypeExpression):
+        return False
+
+    match _normalize_semantic_marker(expression):
+        case KeyMarker():
+            return True
+        case MapMarker(subject=subject):
+            return _is_key_expression(subject)
+        case _:
+            return False

@@ -193,7 +193,14 @@ class UnresolvedType[T]:
     """A backend type with symbolic or partially unresolved structural provenance."""
 
     value: T
-    provenance: TypeSymbol | ParameterizedTypeShape[TypeValue[T]]
+    provenance: TypeSymbol | ParameterizedTypeShape[TypeValue[T]] | UnionTypeShape[T]
+
+
+@dataclass(frozen=True, slots=True)
+class UnionTypeShape[T]:
+    """Members of a definite union with unresolved static positions."""
+
+    members: tuple[TypeValue[T], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,6 +219,21 @@ type TypeValue[T] = ResolvedType[T] | UnresolvedType[T] | IndeterminateType[T]
 
 
 @dataclass(frozen=True, slots=True)
+class TypeValueReference[T]:
+    """Reference a static value while retaining its resolution provenance."""
+
+    value: TypeValue[T]
+
+
+@dataclass(frozen=True, slots=True)
+class IndeterminateCondition:
+    """A condition whose truth depends on unresolved static information."""
+
+
+type Condition = bool | IndeterminateCondition
+
+
+@dataclass(frozen=True, slots=True)
 class DroppedField:
     pass
 
@@ -221,9 +243,9 @@ class EvaluationContext[T]:
     """Bindings available while evaluating nested expressions."""
 
     key: str | None = None
-    value: ResolvedType[T] | None = None
-    capture: ResolvedType[T] | None = None
-    input_type: ResolvedType[T] | None = None
+    value: TypeValue[T] | None = None
+    capture: TypeValue[T] | None = None
+    input_type: TypeValue[T] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,18 +259,20 @@ class DeferredMap[T]:
 
 
 type EvaluationValue[T] = (
-    ResolvedType[T]
+    TypeValue[T]
     | RecordShape[T]
     | RecordField[T]
     | FieldName
     | DroppedField
     | DeferredMap[T]
     | bool
+    | IndeterminateCondition
 )
 
 
 type Expression[T] = (
     TypeReference[T]
+    | TypeValueReference[T]
     | UnionExpression[T]
     | InputReference
     | KeyReference
@@ -277,11 +301,20 @@ type BooleanExpression[T] = (
 )
 
 type TypePattern[T] = (
-    ExactTypePattern[T] | CaptureValuePattern | ParameterizedTypePattern[T]
+    ExactTypePattern[T]
+    | CaptureValuePattern
+    | ParameterizedTypePattern[T]
+    | TypeValueReference[T]
 )
 
 
-type TypeTemplate[T] = TypeReference[T] | ValueReference | ParameterizedTypeTemplate[T]
+type TypeTemplate[T] = (
+    TypeReference[T]
+    | TypeValueReference[T]
+    | ValueReference
+    | ParameterizedTypeTemplate[T]
+    | UnionExpression[T]
+)
 
 
 def type_ref(value: object, /) -> TypeReference[object]:
@@ -307,5 +340,8 @@ def is_pattern_expr[T](
 ) -> TypeIs[TypePattern[T]]:
     return isinstance(
         expression,
-        ExactTypePattern | CaptureValuePattern | ParameterizedTypePattern,
+        ExactTypePattern
+        | CaptureValuePattern
+        | ParameterizedTypePattern
+        | TypeValueReference,
     )

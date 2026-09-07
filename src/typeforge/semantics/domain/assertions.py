@@ -7,11 +7,16 @@ from typeforge.semantics.domain.exceptions import (
     ExpectedTypeSemanticError,
 )
 from typeforge.semantics.domain.models import (
+    Condition,
     DeferredMap,
     EvaluationValue,
     FieldName,
+    IndeterminateCondition,
+    IndeterminateType,
     RecordField,
     ResolvedType,
+    TypeValue,
+    UnresolvedType,
 )
 
 
@@ -20,8 +25,11 @@ def expect_possible_type[T](
     message: str,
 ) -> ResolvedType[T]:
     """Obtain a static output bound without treating deferred selection as resolved."""
-    if isinstance(value, DeferredMap):
+    if isinstance(value, DeferredMap | IndeterminateType):
         return value.possible_output
+
+    if isinstance(value, UnresolvedType):
+        return ResolvedType(value.value)
 
     return expect_type(value, message)
 
@@ -39,8 +47,8 @@ def expect_type[T](
 def expect_condition[T](
     value: EvaluationValue[T],
     message: str = "condition must evaluate to bool",
-) -> bool:
-    if isinstance(value, bool):
+) -> Condition:
+    if isinstance(value, bool | IndeterminateCondition):
         return value
 
     raise ExpectedConditionSemanticError(message)
@@ -64,3 +72,10 @@ def expect_field[T](
         return value
 
     raise ExpectedFieldSemanticError(message)
+
+
+def expect_type_value[T](value: EvaluationValue[T], message: str) -> TypeValue[T]:
+    if isinstance(value, ResolvedType | UnresolvedType | IndeterminateType):
+        return value
+
+    raise ExpectedTypeSemanticError(message)

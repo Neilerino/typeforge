@@ -14,6 +14,7 @@ from typeforge.semantics import (
     SemanticIssue,
     TypeReference,
     TypeSystem,
+    TypeValue,
     evaluate,
     type_ref,
 )
@@ -83,7 +84,7 @@ def test_evaluation_context_distinguishes_none_from_an_unbound_type() -> None:
         input_type=ResolvedType(None),
     )
 
-    assert_type(context.value, ResolvedType[object] | None)
+    assert_type(context.value, TypeValue[object] | None)
     assert context.value == ResolvedType(None)
     assert context.capture == ResolvedType(None)
     assert context.input_type == ResolvedType(None)

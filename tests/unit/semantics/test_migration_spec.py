@@ -497,7 +497,7 @@ def test_parameterized_map_semantics_are_shared_by_type_system_adapters() -> Non
         ),
         TypeReference("list[int]"),
     )
-    runtime_expression = MapExpression(
+    runtime_expression = MapExpression[object](
         type_ref(list[int]),
         (
             CaseExpression(
