@@ -19,7 +19,7 @@ from typing import (
 
 from returns.result import Result, Success
 
-from typeforge.pydantic import _records
+import typeforge.pydantic._records as _records
 from typeforge.pydantic._policy import generic_fallback
 from typeforge.pydantic._records import UnsupportedRecord, record_shape
 from typeforge.semantics import (

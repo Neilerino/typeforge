@@ -59,9 +59,10 @@ backend-specific types into Typeforge's shared evaluator. It exposes immutable
 semantic expressions, family-aware record shapes, the `TypeSystem` adapter
 protocol, typed `SemanticIssue` failures, and `evaluate`.
 
-The compiler and Pydantic integrations are still migrating to this interface.
-Application code should continue to use Typeforge markers and `Schema[...]`;
-the root `typeforge` exports remain unchanged.
+Compiler Schema evaluation and the Pydantic integration use this shared evaluator.
+Callable Map specialization remains a separate compiler path. Application code
+should use Typeforge markers and `Schema[...]`; the semantic interface is for
+integration authors.
 
 ## Examples
 
@@ -221,6 +222,105 @@ returns an ordinary `dict`; `Schema` is not a value wrapper. Schema-time `Map`
 expressions add no Typeforge Python calls during validation. Expressions
 using `typeforge.pydantic.Input` intentionally dispatch on each raw input value
 before letting the selected Pydantic schema validate it.
+
+### Generic model fields
+
+`Schema` works on ordinary generic `BaseModel` fields, including nested containers
+and aliased Typeforge expressions. Pydantic owns specialization, inheritance,
+field configuration, validators, serializers, and `model_rebuild()`:
+
+```python
+from pydantic import BaseModel
+from typeforge import Case, Map
+from typeforge.pydantic import Schema
+
+
+class Payload[T](BaseModel):
+    value: Schema[Map[T, Case[int, str], Case[bytes, int]]]
+
+
+assert Payload[int](value="3").value == "3"
+assert Payload[bytes](value="3").value == 3
+```
+
+Unparametrized fields follow Pydantic's fallback order: a type default, constraints,
+a bound, then `typing.Any`. Typeforge applies transformations to that fallback
+while preserving Pydantic's validation and serialization behavior for TypeVars.
+It never infers an omitted model type argument from submitted values.
+
+For a static Map, `Any` matches an exact `Any` case but does not match `int` or
+invent structure for `list[Value]`. A known `list[Any]` can capture `Any`.
+Unmatched cases proceed to the authored default. With no default, direct concrete
+schema construction raises `PydanticSchemaGenerationError` with `[map_no_match]`.
+A generic model can still be defined and specialized: validating an unmatched
+fallback, such as `Payload(value="3")` above, raises a field-located
+`ValidationError` with code `typeforge_map_no_match`. Its JSON Schema describes
+the uninhabited field with `{"not": {}}`.
+
+An explicitly selected `Never` output also rejects schema construction, with
+`[expected_type]`; it is distinct from a Map that found no matching case.
+
+### Raw Input dispatch
+
+```python
+from pydantic import TypeAdapter
+from typeforge import Case, Default, Map
+from typeforge.pydantic import Input, Schema
+
+
+adapter = TypeAdapter(Schema[Map[Input, Case[str, int], Default[float]]])
+assert adapter.validate_python("3") == 3
+assert type(adapter.validate_python(3)) is float
+```
+
+Input dispatch selects the first matching case before output coercion. For
+example, `"bad"` selects the `int` output above and fails integer validation;
+validation does not retry another case or the default. Nested Maps see the same
+raw value until output validation begins, while Input inside a container's item
+schema observes each item.
+
+Supported tests include exact Python types, unions, `Annotated` wrappers,
+`Literal` values, `Input` as a catch-all, and `Equal`, `Assignable`, `All`, `Any`,
+and `Not` predicates. Exact type tests distinguish `bool` from `int`; use
+`Assignable` to accept subclasses. Literals compare both type and value:
+`Literal[1]` does not match `True`, `1.0`, or an integer enum member. Annotation
+validators are not executed to choose a case.
+
+Parameterized value-time patterns such as `list[int]` and `list[Value]` fail
+construction with `[unsupported_runtime_pattern]`, including under unions,
+annotations, and aliases. Runtime dispatch does not capture types from container
+values. Existing static captures and MapFields bindings remain available.
+
+No matching Input case or default produces `typeforge_map_no_match` during
+validation. A reached predicate failure retains its `typeforge_` diagnostic code,
+such as `typeforge_unbound_key`; it is never treated as a mismatch. Short-circuited
+operands remain unvisited. Errors retain authored field/item locations and input
+values. Malformed markers fail during parsing, and unexpected hook or validator
+exceptions propagate.
+
+Returned values have no dispatch wrapper. Serialization observes output types
+and delegates their Pydantic serializers. When different branches produce
+indistinguishable outputs with different serializers, the original branch cannot
+be recovered; branch-history serialization is not guaranteed. Deferred Input JSON
+Schema is currently `{}` in both validation and serialization modes.
+
+### Records and supported expressions
+
+MapFields supports `TypedDict` records, including inherited and generic fields,
+renaming, Drop, metadata, and readonly information. Field operators explicitly
+set output requiredness and readonly state: `Field` is required, `OptionalField`
+is optional, and `ReadonlyField` is required and readonly. An invalid concrete
+record operand fails construction; an invalid unparametrized fallback reports
+`typeforge_unsupported_record` at validation while allowing valid specialization.
+
+Ordinary model output types delegate to Pydantic. Transforming BaseModel records
+or structurally capturing their generic arguments is outside this integration's
+supported scope. Ordinary recursive aliases delegate to Pydantic; recursive
+aliases containing Typeforge operators fail explicitly. Variadic Typeforge aliases
+require specialization or a finite default. Callable-only `Each` and `Collect`
+relationships have no Pydantic model-field semantics.
+
+### Compiler output
 
 For generated typing interfaces, a schema Map over runtime `Input` emits its
 possible output types. An unresolved generic parameter keeps its identity:

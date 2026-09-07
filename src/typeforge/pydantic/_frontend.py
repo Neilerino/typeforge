@@ -33,8 +33,8 @@ from typeforge import (
 )
 from typeforge import Any as AnyCondition
 from typeforge import semantics as s
-from typeforge.pydantic import Input
 from typeforge.pydantic._errors import SchemaIssue, UnresolvedAnnotationIssue
+from typeforge.pydantic._markers import Input
 from typeforge.pydantic._type_system import (
     RUNTIME_TYPE_SYSTEM,
     RuntimeType,
@@ -256,9 +256,7 @@ class _AnnotationAdapter:
                 code="unsupported_relationship",
                 phase="parsing",
                 expression=value,
-                message=(
-                    "This operator is not supported by the replacement pipeline yet"
-                ),
+                message="This operator has no Pydantic model-field semantics",
             )
 
         if origin is Annotated:

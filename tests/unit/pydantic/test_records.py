@@ -24,7 +24,7 @@ from typeforge import (
     ReadonlyField,
     Value,
 )
-from typeforge.pydantic._annotation import Schema
+from typeforge.pydantic import Schema
 
 
 def test_record_transforms_validate_rename_drop_and_preserve_leaf_constraints() -> None:
@@ -311,21 +311,7 @@ def test_missing_record_field_name_can_be_resolved_by_model_rebuild() -> None:
     }
 
 
-def test_record_outputs_use_shared_semantics_without_legacy_calls_or_callbacks(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import typeforge.pydantic._schema as legacy
-
-    def forbidden(*args: object, **kwargs: object) -> object:
-        raise AssertionError("Legacy pipeline used")
-
-    for name in (
-        "parse_runtime_expression",
-        "evaluate_runtime_expression",
-        "emit_core_schema",
-    ):
-        monkeypatch.setattr(legacy, name, forbidden)
-
+def test_resolved_record_outputs_need_no_validation_callbacks() -> None:
     class User(TypedDict):
         value: int
 

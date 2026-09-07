@@ -1,4 +1,6 @@
-"""Private replacement responsibilities; the public hook cuts over in slice 6."""
+"""Runtime annotation responsibilities and the shared semantic interface."""
+
+import ast
 
 import pytest
 from archunitpython import assert_passes, project_files, project_layers
@@ -21,7 +23,7 @@ def architecture() -> LayeredArchitecture:
     return architecture
 
 
-def test_replacement_dependencies_keep_policy_and_emission_separate(
+def test_runtime_dependencies_keep_policy_and_emission_separate(
     architecture: LayeredArchitecture,
 ) -> None:
     integration = TYPE_FORGE.mod("pydantic")
@@ -31,7 +33,11 @@ def test_replacement_dependencies_keep_policy_and_emission_separate(
 
     shared = (SEMANTICS.interface.name, TYPE_FORGE.file("utils.error_handling").name)
     rule = (
-        architecture.where_layer(file("_errors"))
+        architecture.where_layer(integration.interface.name)
+        .may_only_depend_on_layers(file("_annotation"), file("_markers"))
+        .where_layer(file("_markers"))
+        .may_only_depend_on_layers()
+        .where_layer(file("_errors"))
         .may_only_depend_on_layers()
         .where_layer(file("_policy"))
         .may_only_depend_on_layers(file("_errors"), SEMANTICS.interface.name)
@@ -44,7 +50,7 @@ def test_replacement_dependencies_keep_policy_and_emission_separate(
             file("_errors"),
             file("_policy"),
             file("_type_system"),
-            integration.interface.name,
+            file("_markers"),
             TYPE_FORGE.interface.name,
             *shared,
         )
@@ -110,3 +116,26 @@ def test_pydantic_implementation_has_no_cycles() -> None:
         .should()
         .have_no_cycles()
     )
+
+
+def test_core_schema_construction_stays_in_emission_modules() -> None:
+    integration = TYPE_FORGE.mod("pydantic")
+    emitters = {integration.file("_emission").path, integration.file("_deferred").path}
+    for source in integration.path.rglob("*.py"):
+        if source in emitters:
+            continue
+
+        for node in ast.walk(ast.parse(source.read_text())):
+            if isinstance(node, ast.ImportFrom) and node.module is not None:
+                if node.module == "pydantic_core" or node.module.startswith(
+                    "pydantic_core."
+                ):
+                    assert node.module == "pydantic_core", source
+                    assert all(name.name == "CoreSchema" for name in node.names), source
+
+            elif isinstance(node, ast.Import):
+                assert not any(
+                    name.name == "pydantic_core"
+                    or name.name.startswith("pydantic_core.")
+                    for name in node.names
+                ), source

@@ -1,4 +1,4 @@
-"""Deferred Input contracts through the private replacement hook."""
+"""Deferred Input contracts through the public Schema annotation."""
 
 from enum import IntEnum
 from typing import Annotated, Any, Literal, TypedDict
@@ -28,8 +28,7 @@ from typeforge import (
     Value,
 )
 from typeforge import Any as AnyCondition
-from typeforge.pydantic import Input
-from typeforge.pydantic._annotation import Schema
+from typeforge.pydantic import Input, Schema
 
 
 def test_deferred_selection_uses_raw_type_and_only_selected_output() -> None:
@@ -133,26 +132,6 @@ def test_structural_capture_remains_available_to_deferred_selection_and_output()
     assert adapter.validate_python("3") == 3
     with pytest.raises(ValidationError, match="string_type"):
         adapter.validate_python(3)
-
-
-def test_deferred_pipeline_never_calls_legacy_evaluation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import typeforge.pydantic._schema as legacy
-
-    def forbidden(*args: object, **kwargs: object) -> object:
-        raise AssertionError("legacy pipeline called")
-
-    for name in (
-        "parse_runtime_expression",
-        "evaluate_runtime_expression",
-        "emit_core_schema",
-    ):
-        monkeypatch.setattr(legacy, name, forbidden)
-
-    adapter = TypeAdapter(Schema[Map[Input, Case[str, int], Default[float]]])
-    assert adapter.validate_python("3") == 3
-    assert adapter.dump_json(3) == b"3"
 
 
 class Code(IntEnum):

@@ -165,6 +165,34 @@ This lets a Map select an annotated record while keeping annotation execution an
 schema construction in the consumer. Field operators continue to define output
 requiredness and readonly flags explicitly.
 
+## Pydantic runtime integration
+
+The public `typeforge.pydantic.Schema` annotation adapts Python typing objects,
+evaluates shared expressions, and emits Pydantic schemas. Its stateless hook
+recompiles the current source supplied by Pydantic, including generic
+specializations and rebuilds. There is no separate runtime expression evaluator.
+
+The frontend owns marker recognition and alias binding; the runtime TypeSystem
+owns primitive type operations, with TypedDict reflection in the record adapter.
+Policy owns generic fallback and Input test admissibility from adapted facts.
+Outcome translation preserves authored expressions and distinguishes no-match
+from explicit Never and unsupported record operands. Resolved and deferred
+emission own CoreSchema construction; raw observation owns Python value matching.
+The inert Input marker is independent of compilation, keeping imports acyclic.
+
+Pydantic owns model lifecycle, leaf validation, metadata, and serialization.
+Schema-time transformations add no Typeforge validation callbacks. Deferred
+Maps consume shared selection results before validating one output and retain
+field/capture bindings without inferring static generic arguments from values.
+Serialization can distinguish output types but does not retain branch history
+for indistinguishable values. Neither compiler implementation imports the runtime
+integration nor the runtime integration imports the compiler.
+
+Importing base Typeforge does not load Pydantic. The optional integration guard
+reports missing Pydantic dependencies specifically and propagates unrelated import
+failures. A future compiler plugin may reuse policy inside the integration;
+plugin loading and static integration diagnostics remain separate work.
+
 ## Result boundaries
 
 Use `typeforge.utils.error_handling.safe_result` at a seam whose implementation

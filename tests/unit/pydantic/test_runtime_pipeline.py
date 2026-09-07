@@ -13,7 +13,7 @@ from pydantic import (
     ValidationError,
 )
 from typeforge import All, Assignable, Case, Default, Equal, Key, Map, Not
-from typeforge.pydantic._annotation import Schema
+from typeforge.pydantic import Schema
 
 
 def test_generic_no_default_map_specializes_and_rejects_unmatched_any() -> None:
@@ -241,21 +241,7 @@ def test_unexpected_schema_hook_failure_propagates_with_identity() -> None:
     assert captured.value is failure
 
 
-def test_supported_path_does_not_call_legacy_parser_evaluator_or_emitter(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import typeforge.pydantic._schema as legacy
-
-    def forbidden(*args: object, **kwargs: object) -> object:
-        raise AssertionError("Legacy pipeline used")
-
-    for name in (
-        "parse_runtime_expression",
-        "evaluate_runtime_expression",
-        "emit_core_schema",
-    ):
-        monkeypatch.setattr(legacy, name, forbidden)
-
+def test_resolved_structural_maps_need_no_validation_callbacks() -> None:
     adapter = TypeAdapter[object](Schema[Map[int, Case[int, list[int]]]])
     assert adapter.validate_python(["3"]) == [3]
 

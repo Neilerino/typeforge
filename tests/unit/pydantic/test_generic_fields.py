@@ -6,7 +6,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    PydanticSchemaGenerationError,
     ValidationError,
     field_serializer,
     field_validator,
@@ -153,11 +152,6 @@ def test_generic_field_preserves_model_configuration_and_field_middleware() -> N
         Payload[int].model_validate({"amount": 1, "extra": True})
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=PydanticSchemaGenerationError,
-    reason="Slice 2: generic Map origins need fallback-aware no-match schemas",
-)
 def test_generic_no_default_map_specializes_and_rejects_unmatched_any() -> None:
     class Payload[T](BaseModel):
         value: Schema[Map[T, Case[int, str], Case[bytes, int]]]

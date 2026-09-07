@@ -1,4 +1,4 @@
-"""Private replacement hook, pending the complete public Schema cutover."""
+"""Pydantic annotation hook for the public Schema alias."""
 
 from dataclasses import dataclass
 from typing import Annotated

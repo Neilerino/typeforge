@@ -2,7 +2,13 @@ from typing import Annotated
 
 import pytest
 
-from pydantic import BaseModel, Field, TypeAdapter, ValidationError
+from pydantic import (
+    BaseModel,
+    Field,
+    PydanticSchemaGenerationError,
+    TypeAdapter,
+    ValidationError,
+)
 from typeforge import All, Any, Assignable, Case, Default, Equal, Map, Not
 from typeforge.pydantic import Schema
 
@@ -87,8 +93,10 @@ def test_schema_time_map_distributes_over_union() -> None:
     assert adapter.validate_python("value") == "value"
 
 
-def test_schema_time_map_without_a_match_resolves_to_never() -> None:
-    with pytest.raises(Exception, match="Never"):
+def test_schema_time_map_without_a_match_reports_no_match() -> None:
+    with pytest.raises(
+        PydanticSchemaGenerationError, match=r"evaluation.*map_no_match"
+    ):
         TypeAdapter(Schema[Map[bytes, Case[int, str]]])
 
 

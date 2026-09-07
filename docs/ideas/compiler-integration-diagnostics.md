@@ -1,8 +1,8 @@
 # Compiler Integration Diagnostics
 
-Status: Idea — follow-up after the first Pydantic redesign pass
+Status: Idea — the Pydantic runtime redesign is complete; compiler plugins remain follow-up work
 
-Related work: [Pydantic integration redesign](../in_progress_tasks/pydantic-integration-redesign.md)
+Runtime contract: [Pydantic integration](../../README.md#pydantic-integration)
 
 ## Intended outcome
 
@@ -51,10 +51,10 @@ not prescribe a public plugin API or a checker-specific plugin implementation.
 
 ## First-pass preparation
 
-The Pydantic redesign should retain modeled failure categories, authored
-diagnostics, and executable behavior contracts, including Any/no-default cases.
-Those contracts provide evidence for later static checks. No plugin registry,
-compiler hooks, or static diagnostic implementation is required in that pass.
-The first pass keeps reusable integration rules separate from schema emission
-inside the Pydantic package. Guarded plugin loading is implemented in this
-follow-up, without restructuring the runtime package for dependency-free imports.
+The completed runtime redesign retains modeled failure categories, authored
+diagnostics, and executable contracts in `tests/unit/pydantic/`, including
+Any/no-default cases. The public Schema hook now uses shared semantics.
+Reusable rules live in `typeforge.pydantic._policy`, with outcome translation
+separate from schema emission. Input test policy consumes frontend-supplied facts
+without observing raw values. Guarded plugin loading remains part of this
+follow-up, without requiring dependency-free imports of the runtime package.

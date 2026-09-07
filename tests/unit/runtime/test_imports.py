@@ -1,7 +1,10 @@
 import os
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
+
+import pytest
 
 import typeforge
 
@@ -43,3 +46,35 @@ def test_importing_pydantic_integration_without_extra_has_focused_error() -> Non
 
     assert completed.returncode != 0
     assert "pip install 'typeforge[pydantic]'" in completed.stderr
+
+
+@pytest.mark.parametrize("missing", ["returns", "typeforge.pydantic._compile"])
+def test_pydantic_optional_dependency_guard_preserves_unrelated_import_failures(
+    missing: str,
+) -> None:
+    script = textwrap.dedent(f"""
+        import importlib.abc
+        import sys
+
+        failure = ModuleNotFoundError("unrelated import failure", name={missing!r})
+
+        class BlockImport(importlib.abc.MetaPathFinder):
+            def find_spec(self, fullname, path, target=None):
+                if fullname == {missing!r}:
+                    raise failure
+
+        sys.meta_path.insert(0, BlockImport())
+        try:
+            import typeforge.pydantic
+        except ModuleNotFoundError as error:
+            assert error is failure
+        else:
+            raise AssertionError("Expected the blocked import to propagate")
+    """)
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr

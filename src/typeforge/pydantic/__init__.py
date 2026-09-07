@@ -1,5 +1,8 @@
+"""Pydantic validation for Typeforge annotations and raw Input mappings."""
+
 try:
-    from typeforge.pydantic._schema import Input, Schema
+    from typeforge.pydantic._annotation import Schema
+    from typeforge.pydantic._markers import Input
 except ModuleNotFoundError as error:
     if error.name not in {"pydantic", "pydantic_core"}:
         raise

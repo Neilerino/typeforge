@@ -1,6 +1,6 @@
 import pytest
 
-from pydantic import TypeAdapter
+from pydantic import PydanticSchemaGenerationError, TypeAdapter
 from typeforge import (
     All,
     Any,
@@ -18,15 +18,21 @@ from typeforge.pydantic import Input, Schema
 
 
 def test_unbound_field_placeholders_fail_during_schema_generation() -> None:
-    with pytest.raises(Exception, match=r"unbound_key.*Key is only valid"):
+    with pytest.raises(
+        PydanticSchemaGenerationError, match=r"unbound_key.*Key requires MapFields"
+    ):
         TypeAdapter(Schema[Key])
 
-    with pytest.raises(Exception, match=r"unbound_value.*Value requires"):
+    with pytest.raises(
+        PydanticSchemaGenerationError, match=r"unbound_value.*Value requires"
+    ):
         TypeAdapter(Schema[Value])
 
 
 def test_nested_schema_failure_preserves_the_original_issue() -> None:
-    with pytest.raises(Exception, match=r"unbound_key.*Key is only valid"):
+    with pytest.raises(
+        PydanticSchemaGenerationError, match=r"unbound_key.*Key requires MapFields"
+    ):
         TypeAdapter(Schema[Map[int, Case[Equal[Key, Key], int], Default[str]]])
 
 
@@ -55,13 +61,15 @@ def test_schema_conditions_short_circuit_nested_failures() -> None:
 
 
 def test_malformed_map_reports_operator_and_phase() -> None:
-    with pytest.raises(Exception, match=r"evaluation.*invalid_marker.*Map entries"):
+    with pytest.raises(
+        PydanticSchemaGenerationError, match=r"parsing.*invalid_marker.*Map entries"
+    ):
         TypeAdapter(Schema[Map[int, str]])
 
 
 def test_callable_only_relationship_is_rejected() -> None:
     with pytest.raises(
-        Exception,
+        PydanticSchemaGenerationError,
         match=r"unsupported_relationship.*no Pydantic model-field semantics",
     ):
         TypeAdapter(Schema[Each[int]])
@@ -73,7 +81,10 @@ def test_map_fields_transform_must_produce_a_field_or_drop() -> None:
     class Payload(TypedDict):
         value: int
 
-    with pytest.raises(Exception, match=r"expected_field.*must produce Field"):
+    with pytest.raises(
+        PydanticSchemaGenerationError,
+        match=r"expected_field.*MapFields transform must evaluate to a field or Drop",
+    ):
         TypeAdapter(Schema[MapFields[Payload, Value]])
 
 
@@ -84,14 +95,17 @@ def test_map_fields_rejects_duplicate_renames() -> None:
         left: int
         right: int
 
-    with pytest.raises(Exception, match=r"duplicate_field.*'same'"):
+    with pytest.raises(PydanticSchemaGenerationError, match=r"duplicate_field.*'same'"):
         TypeAdapter(Schema[MapFields[Payload, Field[Literal["same"], Value]]])
 
 
 def test_value_time_map_rejects_undefined_generic_patterns() -> None:
     with pytest.raises(
-        Exception,
-        match=r"planning.*value-time generic Map patterns are not supported",
+        PydanticSchemaGenerationError,
+        match=(
+            r"planning.*unsupported_runtime_pattern.*"
+            r"Input does not support parameterized runtime patterns"
+        ),
     ):
         TypeAdapter(Schema[Map[Input, Case[list[int], str]]])
 
@@ -103,5 +117,7 @@ def test_recursive_typeforge_alias_fails_instead_of_delegating_inert_markers() -
         Default[bytes],
     ]
 
-    with pytest.raises(Exception, match=r"alias_cycle.*recursive aliases"):
+    with pytest.raises(
+        PydanticSchemaGenerationError, match=r"alias_cycle.*recursive aliases"
+    ):
         TypeAdapter(Schema[Recursive])

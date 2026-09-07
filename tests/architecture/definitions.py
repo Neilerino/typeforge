@@ -41,7 +41,7 @@ TYPE_FORGE = ArchModule(
         ArchModule(
             name="pydantic",
             files=[
-                ArchFile(name="_schema"),
+                ArchFile(name="_markers"),
                 ArchFile(name="_annotation"),
                 ArchFile(name="_compile"),
                 ArchFile(name="_frontend"),

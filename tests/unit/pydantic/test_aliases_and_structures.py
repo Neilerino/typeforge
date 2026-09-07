@@ -9,7 +9,7 @@ from pydantic import (
     ValidationError,
 )
 from typeforge import Case, Default, Map, Value
-from typeforge.pydantic._annotation import Schema
+from typeforge.pydantic import Schema
 
 
 def test_alias_capture_builds_nested_templates_and_selects_nested_maps() -> None:

@@ -1,8 +1,8 @@
 # Callable Map Semantics Cutover
 
-Status: Idea — deferred until after the Pydantic redesign
+Status: Idea — Pydantic redesign prerequisite complete; callable cutover remains deferred
 
-Related work: [Pydantic integration redesign](../in_progress_tasks/pydantic-integration-redesign.md)
+Related work: [Pydantic integration](../../README.md#pydantic-integration)
 
 ## Motivation
 
@@ -61,10 +61,10 @@ Each implementation slice must pass focused checks and full `make check`.
 
 ## Promotion criteria
 
-Revisit after the Pydantic replacement has exercised shared semantics with a
-runtime consumer, or earlier if a callable correctness bug or required feature
-makes this work necessary. Promotion requires an explicit behavior matrix and
-an agreed seam between semantic decisions and finite specialization.
+The public Pydantic integration now exercises shared semantics for resolved
+transformations and deferred Input selection; that prerequisite is complete.
+Promotion still requires an explicit behavior matrix and an agreed seam between
+semantic decisions and finite specialization.
 
 Completion means callable language evaluation uses shared semantics without
 duplicating case selection or predicate rules, while compiler-specific
