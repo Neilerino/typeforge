@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from typeforge.pydantic._display import format_annotation
+
 
 @dataclass(frozen=True, slots=True)
 class SchemaIssue(Exception):
@@ -13,7 +15,7 @@ class SchemaIssue(Exception):
     def render(self) -> str:
         return (
             f"Typeforge schema {self.phase} failed [{self.code}] "
-            f"for {self.expression!r}: {self.message}"
+            f"for {format_annotation(self.expression)}: {self.message}"
         )
 
 
@@ -28,7 +30,8 @@ class UnsupportedRecordIssue(SchemaIssue):
     subject: object
 
     def render(self) -> str:
-        return f"{SchemaIssue.render(self)} (subject: {self.subject!r})"
+        subject = format_annotation(self.subject)
+        return f"{SchemaIssue.render(self)} (subject: {subject})"
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,4 +40,5 @@ class MapNoMatchIssue(SchemaIssue):
     subject: object
 
     def render(self) -> str:
-        return f"{SchemaIssue.render(self)} (subject: {self.subject!r})"
+        subject = format_annotation(self.subject)
+        return f"{SchemaIssue.render(self)} (subject: {subject})"

@@ -104,6 +104,13 @@ The compiler normalizes these branches into its existing Case/Default data,
 preserving authored locations. Qualified and renamed imports work. Invalid steps,
 branches following a fallback, and bare string selectors receive located errors.
 
+Diagnostics describe branches as `selector: output` and fallbacks as `...: output`.
+Runtime errors retain their codes and field locations while displaying normalized
+Map data in slice notation. Ruff can compact spacing around colons without changing
+the expression. The supported examples pass the existing lint rules; raw slices
+still require Typeforge projection before ordinary type checking. See the
+[tested tooling and diagnostic behavior](docs/in_progress_tasks/map-slice-tooling.md).
+
 Reusable unary predicate aliases bind to the subject of the consuming Map in
 both compiler and Pydantic frontends:
 

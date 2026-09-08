@@ -305,7 +305,7 @@ def _lower_map_function(
                 LoweringError(
                     LoweringErrorCode.DUPLICATE_MAP_CASE,
                     declaration.name,
-                    "Map case tests must be unique",
+                    "Map branch selectors must be unique at a callable boundary",
                 )
             )
 

@@ -42,7 +42,7 @@ def test_every_marker_has_one_authoritative_valid_arity(kind: MarkerKind) -> Non
         (
             MarkerKind.MAP,
             (ITEM,),
-            "a subject and at least one Case or Default",
+            "a subject and at least one branch",
         ),
     ),
 )
@@ -58,10 +58,10 @@ def test_invalid_arities_use_the_shared_signature_table(
 
 
 def test_map_normalization_validates_entry_roles_and_duplicate_defaults() -> None:
-    with pytest.raises(MarkerNormalizationError, match="Map entries must be"):
+    with pytest.raises(MarkerNormalizationError, match="Map entries must use"):
         normalize_marker(marker(MarkerKind.MAP, ITEM, marker(MarkerKind.KEY)))
 
-    with pytest.raises(MarkerNormalizationError, match="at most one Default"):
+    with pytest.raises(MarkerNormalizationError, match="at most one fallback"):
         normalize_marker(
             marker(
                 MarkerKind.MAP,

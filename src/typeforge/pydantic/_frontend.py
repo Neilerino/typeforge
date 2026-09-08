@@ -307,7 +307,9 @@ class _AnnotationAdapter:
         default: s.Expression[RuntimeType] | None = None
         for entry in arguments[1:]:
             if default is not None:
-                raise invalid(value, "Map entries cannot follow Default")
+                raise invalid(
+                    value, "Map fallback must be last; no branch may follow it"
+                )
 
             adapted = self._map_entry(entry, expression=value, subject=subject)
             if isinstance(adapted, s.CaseExpression):
@@ -440,8 +442,8 @@ class _AnnotationAdapter:
 
         raise invalid(
             expression,
-            "Map entries must be Case[test, output] followed by "
-            "an optional Default[output]",
+            "Map entries must use selector: output followed by "
+            "an optional fallback (...: output)",
         )
 
     def _case_test(

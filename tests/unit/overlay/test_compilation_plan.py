@@ -451,7 +451,7 @@ def test_scoped_method_does_not_replace_a_same_named_record_consumer() -> None:
 @mark.parametrize(
     ("annotation", "message"),
     [
-        ("Map[int]", "Map requires a subject and at least one Case or Default"),
+        ("Map[int]", "Map requires a subject and at least one branch"),
         ("Each[int, str]", "Each requires one type argument"),
     ],
 )

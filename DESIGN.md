@@ -129,6 +129,11 @@ subject. Alias type parameters retain their existing identity-based bindings.
 Literal normalization is shared with construction. Neither frontend stores
 implicit predicates in shared semantic data or changes union matching policies.
 
+Pydantic diagnostic display reconstructs slice branches from canonical typing
+arguments without expanding aliases or interpreting Literal/Annotated payloads.
+Issue data, codes, phases, and validation locations stay unchanged; display does
+not add authored-state storage to the runtime constructor or semantic evaluator.
+
 ## Library and project output
 
 Published library stubs must be deterministic from library source and configuration. Consumer call sites must never influence them, and consumers should not need to run the Typeforge compiler.

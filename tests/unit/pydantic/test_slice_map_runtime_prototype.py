@@ -237,8 +237,8 @@ def test_selected_annotations_stay_with_pydantic() -> None:
         (Map[str, int:bytes], "map_no_match"),
         (Map[int, int:Never], "expected_type"),
         (Map[Input, list[int] : bytes], "unsupported_runtime_pattern"),
-        (Map[int, ...:str, int:bytes], "cannot follow Default"),
-        (Map[int, ...:str, ...:bytes], "cannot follow Default"),
+        (Map[int, ...:str, int:bytes], "fallback must be last"),
+        (Map[int, ...:str, ...:bytes], "fallback must be last"),
     ],
 )
 def test_existing_failure_policies_still_apply(

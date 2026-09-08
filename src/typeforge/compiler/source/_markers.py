@@ -33,7 +33,7 @@ MARKER_SIGNATURES = {
     MarkerKind.MAP: MarkerArity(
         2,
         None,
-        "a subject and at least one Case or Default",
+        "a subject and at least one branch",
     ),
     MarkerKind.CASE: MarkerArity(2, 2, "two type arguments"),
     MarkerKind.DEFAULT: MarkerArity(1, 1, "one type argument"),
@@ -271,21 +271,21 @@ def _normalize_map(
         if not isinstance(expression, MarkerTypeExpression):
             raise MarkerNormalizationError(
                 expression.source,
-                "Map entries must be Case[Test, Output] or Default[Output]",
+                "Map entries must use selector: output or ...: output syntax",
             )
 
         entry = normalize_marker(expression)
         if not isinstance(entry, CaseMarker | DefaultMarker):
             raise MarkerNormalizationError(
                 expression.source,
-                "Map entries must be Case[Test, Output] or Default[Output]",
+                "Map entries must use selector: output or ...: output syntax",
             )
 
         if isinstance(entry, DefaultMarker):
             if default_seen:
                 raise MarkerNormalizationError(
                     expression.source,
-                    "Map may contain at most one Default",
+                    "Map may contain at most one fallback (...: output)",
                 )
 
             default_seen = True

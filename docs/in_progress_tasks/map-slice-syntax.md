@@ -3,9 +3,10 @@
 Status: In progress — feasibility POC, authoring contract, union investigation,
 public runtime construction, source normalization, predicate alias binding,
 inline checker projection, callable publication, Pydantic integration, and field
-composition complete. Diagnostics, cutover, and remaining semantic gates are open.
+composition and diagnostic/tooling integration complete. The authoring cutover
+and remaining semantic gates are open.
 
-Next slice: 10 — diagnostics and authoring-tool compatibility. Confirmed contract:
+Next slice: 11 — documentation/caller migration and authoring cutover. Confirmed contract:
 None and empty endpoints are equivalent; old authoring is removed at cutover;
 string selectors require Literal until tooling supports bare strings.
 
@@ -66,7 +67,7 @@ Annotation normalization must not add work to ordinary application call paths.
 - [x] **07 — Complete callable and published-stub integration.**
 - [x] **08 — Complete Pydantic integration and runtime dispatch.**
 - [x] **09 — Preserve existing field-mapping composition.**
-- [ ] **10 — Complete diagnostics and authoring-tool compatibility.**
+- [x] **10 — Complete diagnostics and authoring-tool compatibility.**
 - [ ] **11 — Migrate documentation and callers; retire prototype code.**
 
 Mark a slice complete only when its acceptance criteria and required checks pass.
@@ -582,7 +583,28 @@ static/runtime differences follow the recorded contract.
 point to authored expressions and preserve whether the failure is definite,
 speculative, or an unsupported representation. Formatting must retain grouping.
 
-Evidence/commit: pending.
+Evidence: [12 diagnostic regressions](../../tests/unit/test_slice_diagnostics.py)
+and [four tooling probes](../../tests/unit/test_slice_tooling.py). Compiler/runtime
+branch messages now use the public syntax. Runtime issue display renders canonical
+Map data as slices while preserving aliases, literal/metadata payloads, issue
+codes/phases, subjects, and validation locations. Unicode spans inside nested
+union branches and authored literal expressions through predicate aliases remain
+covered. Existing message assertions were updated at their consumers.
+
+Python tokenization/parsing and Ruff formatting preserve the supported fixture's
+AST, including unions and empty endpoints. It passes the repository's Ruff rules.
+All three checkers reject the raw fixture, accept its Typeforge overlay, and
+reject a wrong implementation return. Bare strings still produce Ruff F821;
+Literal remains required. No lint configuration or line-length changes were made.
+See the [tooling guidance](map-slice-tooling.md) for versions and scope.
+
+**Union de-risking outcome:** grouping, source spans, runtime error locations,
+and presentation of nested annotations are covered. Existing semantic error and
+provenance boundaries remain unchanged; this slice does not resolve G1–G6.
+
+Validation: focused checks and full `make check` passed: pytest, Ruff lint/format,
+Flake8 block spacing, mypy, and Pyright.
+Commit: pending.
 
 ### 11 — Migrate documentation and callers; retire prototype code
 

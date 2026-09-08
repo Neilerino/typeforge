@@ -360,6 +360,12 @@ unions and union capture patterns remain rejected. See the
 [field support boundary](map-slice-union-findings.md#slice-09-field-composition-boundary)
 for metadata policy, speculative field layouts, and inherited-callable limits.
 
+Slice 10's [tooling guidance](map-slice-tooling.md) records supported formatting,
+Python/Ruff/checker probes, and diagnostic presentation. Runtime errors display
+normalized Maps using slice notation without reconstructing exact authored text.
+Compiler source errors retain authored expressions and available spans; runtime
+errors retain their original codes, phases, and validation locations.
+
 ## Union investigation and implementation handoff
 
 Slice 02's [findings and executable matrix](map-slice-union-findings.md) now
