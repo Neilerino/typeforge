@@ -1,15 +1,15 @@
-# Typeforge Pydantic Integration
+# Typeforge Pydantic integration
 
-Status: Initial implementation complete; follow-ups remain
-Audience: Typeforge maintainers and contributors  
-Scope: Pydantic v2 integration
+This document describes the implemented runtime integration and where to change
+it. Public syntax and cross-consumer limitations live in
+[CONTEXT.md](../CONTEXT.md); shared architecture and result boundaries live in
+[DESIGN.md](../DESIGN.md#pydantic-runtime-integration).
 
-## Summary
+## Public boundary
 
-The Pydantic integration gives Typeforge type expressions runtime meaning. A
-user wraps an expression in `Schema[...]`; Typeforge interprets that expression
-while Pydantic builds its core schema and returns validation and serialization
-logic that Pydantic can compile.
+`typeforge.pydantic.Schema[T]` asks Pydantic to validate the evaluated output of
+a Typeforge expression. It returns the ordinary validated value; there is no
+Schema wrapper instance. Both model fields and `TypeAdapter` use the same hook.
 
 ```python
 from typing import Literal, TypedDict
@@ -21,666 +21,220 @@ from typeforge.pydantic import Schema
 
 class User(TypedDict):
     name: str
-    email: str
     password: str
 
 
 type Public[T] = MapFields[
     T,
-    Map[
-        Key,
-        Literal["password"] : Drop,
-        ... : Field[Key, Value],
-    ],
+    Map[Key, Literal["password"]: Drop, ...: Field[Key, Value]],
 ]
 
 
 class Request(BaseModel):
     user: Schema[Public[User]]
+
+
+request = Request(user={"name": "Ada", "password": "secret"})
+assert request.user == {"name": "Ada"}
 ```
 
-For this example, the static compiler exposes `Request.user` as the generated
-`Public_User` `TypedDict`. At runtime, the Pydantic integration produces the
-equivalent typed-dictionary core schema. Successful validation returns an
-ordinary dictionary; `Schema` is not a value wrapper.
+`Schema` is an `Annotated` alias with stateless metadata. The metadata hook
+compiles the source supplied by Pydantic on each build, specialization, or
+rebuild. Pydantic owns generic model lifecycle, leaf validation, constraints,
+serializers, and compiled-schema reuse. Typeforge does not infer static generic
+arguments from incoming values or cache CoreSchema dictionaries globally.
 
-The integration supports two kinds of evaluation:
+## Implementation ownership
 
-1. Schema-time evaluation resolves expressions whose inputs are already known.
-   This adds no Typeforge-specific Python call to individual validations.
-2. Value-time evaluation permits expressions to inspect an incoming value.
-   Typeforge should prefer native Pydantic core-schema constructs, but it may
-   use callable discriminators or validators when they materially improve the
-   authoring experience.
+All runtime modules below are in
+[src/typeforge/pydantic](../src/typeforge/pydantic).
 
-The public boundary name is `Schema`. Value-time execution uses the explicit
-`Input` controller described below.
+| Module | Responsibility |
+| --- | --- |
+| [`_annotation.py`](../src/typeforge/pydantic/_annotation.py) | Public Schema alias, hook, and presentation of typed failures as Pydantic exceptions. |
+| [`_compile.py`](../src/typeforge/pydantic/_compile.py) | Adapt, evaluate, translate outcomes, emit, and recover permitted generic fallback failures. |
+| [`_frontend.py`](../src/typeforge/pydantic/_frontend.py) | Recognize canonical markers, bind aliases and type parameters, preserve metadata and authored origins. |
+| [`_type_system.py`](../src/typeforge/pydantic/_type_system.py) | Runtime type operations for shared evaluation, including generic substitutions. |
+| [`_records.py`](../src/typeforge/pydantic/_records.py) | Reflect TypedDict fields and modifiers into shared record data. |
+| [`_policy.py`](../src/typeforge/pydantic/_policy.py) | No-match acceptance, generic fallback precedence, and admissible Input tests. |
+| [`_evaluation.py`](../src/typeforge/pydantic/_evaluation.py) | Translate semantic outcomes into runtime schema outputs or authored integration issues. |
+| [`_emission.py`](../src/typeforge/pydantic/_emission.py) | Delegate resolved types, emit synthesized records, and build rejecting generic fallback schemas. |
+| [`_deferred.py`](../src/typeforge/pydantic/_deferred.py) | Carry shared deferred plans in runtime annotations and emit dispatch, validation, and serialization schemas. |
+| [`_observation.py`](../src/typeforge/pydantic/_observation.py) | Observe raw values and classify supported runtime tests without owning Map ordering. |
+| [`_errors.py`](../src/typeforge/pydantic/_errors.py), [`_display.py`](../src/typeforge/pydantic/_display.py) | Structured issues and slice-based diagnostic display. |
+| [`_markers.py`](../src/typeforge/pydantic/_markers.py) | Inert Input marker, independent of schema compilation. |
 
-## Implementation status
+[`semantics`](../src/typeforge/semantics) owns expression traversal, ordered Map
+selection, predicate short-circuiting, captures, field transformations, and
+deferred selection. The integration composes its evaluator with a runtime
+TypeSystem, Pydantic policy, and deferred-type adapter. There is no second
+Pydantic expression evaluator or separate hierarchy of planner strategies.
 
-The initial integration implements:
+## Schema construction
 
-- the optional `typeforge.pydantic` package and `Schema[T]` boundary;
-- schema-time `Equal`, `Assignable`, `All`, `Any`, `Not`, and `Map`;
-- structural schema-time `Map` patterns with `Value` capture;
-- `TypedDict` `MapFields`, including renaming, optional, readonly, and dropped
-  fields;
-- strict raw-input dispatch with `Input` for value-time `Map`;
-- Pydantic validation, serialization, JSON Schema, stable synthesized record
-  definitions, and `Doc` descriptions;
-- static compiler and overlay erasure of `Schema`, including value-time output
-  unions; and
-- dependency isolation: base Typeforge does not import Pydantic.
+The public Map constructor has already normalized slice branches into private
+Map/Case/Default aliases before the runtime frontend receives them. Recognition
+uses marker identity. The frontend expands Typeforge aliases, applies bindings,
+and retains origins for diagnostics. Unary selector predicates bind to the
+enclosing Map subject, including through predicate aliases and compounds.
+Nested Maps establish their own subject.
 
-Current follow-ups are intentionally explicit:
+Ordinary recursive aliases are delegated to Pydantic. Recursive aliases
+containing Typeforge operators fail with `alias_cycle`; they do not produce
+recursive synthesized records. Unresolved annotation names retain Pydantic's
+rebuild behavior.
 
-- recursive aliases containing Typeforge operators report a schema-generation
-  error; ordinary recursive aliases are delegated to Pydantic;
-- static record materialization currently requires a named generic
-  `MapFields` alias, while runtime validation also accepts the inline form;
-- value-time generic pattern capture and nested field access are not defined;
-- validation-mode JSON Schema for value-time dispatch is deliberately `{}`
-  until its raw input language can be represented faithfully;
-- compiler record evaluation now uses the shared interface in
-  `typeforge.semantics`, while runtime adapter migration remains incomplete; and
-- plan explanation, benchmarks, wrap-validator fallback cases, and a
-  `BaseModel` record adapter remain follow-up work.
+For a resolved expression, shared evaluation produces a runtime type or record
+shape. Emission continues the current Pydantic handler for the root annotation
+so surrounding middleware survives. Nested fields and deferred outputs use
+`handler.generate_schema`. Schema-time transformations add no Typeforge
+validation callbacks; output types may still have their own Pydantic validators.
 
-## Goals
+Unparameterized generics use defaults, then constraints, then bounds, then Any.
+The frontend preserves generic provenance separately from the resulting runtime
+type. A no-match or unsupported-record failure caused by permitted generic
+fallback can produce a rejecting field schema, allowing the generic model to
+exist and a concrete specialization to rebuild successfully. This recovery does
+not hide unrelated concrete failures.
 
-- Let Pydantic models and `TypeAdapter` consume Typeforge type expressions.
-- Preserve one meaning for an expression across static compilation and runtime
-  schema construction.
-- Compile recognizable expressions to native `pydantic-core` schemas.
-- Permit Python-backed runtime expressions when native schemas cannot express
-  the desired behavior cleanly.
-- Support Pydantic validation, serialization, and JSON Schema generation.
-- Keep the core Typeforge marker layer dependency-free and inert.
-- Preserve Pydantic metadata and behavior on ordinary leaf types by delegating
-  their schema construction back to Pydantic.
-- Make the selected execution strategy inspectable and testable.
-- Represent expected integration failures with typed results internally, then
-  raise a Pydantic-compatible exception at the extension boundary.
+A reached no-match is rejected by Pydantic policy. Speculative no-match paths
+contribute no possible output and are accepted during exploration. Explicitly
+selecting Never is a separate emission error because Never has no values.
 
-## Non-goals
+## Deferred Input selection
 
-- Reimplement Pydantic's type coercion or ordinary validation rules.
-- Make Typeforge a general-purpose expression language for arbitrary Python
-  business logic.
-- Silently treat every annotated class as the same kind of record.
-- Guarantee that every Typeforge callable relationship has useful model-field
-  semantics. `Each` and `Collect`, for example, are initially out of scope.
-- Mutate authored annotations or model classes after Pydantic has compiled them.
-- Require Pydantic for users who only use Typeforge's static compiler.
-
-## Terminology
-
-- **Type expression**: A Typeforge expression such as `Map[...]` or
-  `MapFields[...]`.
-- **Schema boundary**: The outer `Schema[...]` annotation that opts an expression
-  into Pydantic integration.
-- **Schema-time evaluation**: Evaluation performed while Pydantic constructs a
-  model or `TypeAdapter` schema.
-- **Value-time evaluation**: Evaluation that depends on an incoming Python or
-  JSON value and therefore runs during validation.
-- **Execution plan**: A backend-neutral description of how an evaluated
-  expression will be implemented.
-- **Record adapter**: An explicit adapter for one record family, such as
-  `TypedDict` or `BaseModel`.
-
-## Public API
-
-### `Schema`
-
-The integration is imported explicitly:
-
-```python
-from typeforge.pydantic import Schema
-```
-
-It can be used in a model field or with `TypeAdapter`:
-
-```python
-from pydantic import BaseModel, TypeAdapter
-from typeforge import Map
-from typeforge.pydantic import Schema
-
-
-type Wire[T] = Map[
-    T,
-    bytes : str,
-    ... : T,
-]
-
-
-class Envelope(BaseModel):
-    value: Schema[Wire[bytes]]
-
-
-wire_adapter = TypeAdapter(Schema[Wire[bytes]])
-```
-
-`Schema[T]` means: interpret `T` as a Typeforge expression, construct the
-corresponding Pydantic core schema, and expose the expression's resolved output
-type to static consumers.
-
-The preferred implementation shape is an `Annotated` alias with private
-metadata:
-
-```python
-type Schema[T] = Annotated[T, _SchemaMetadata()]
-```
-
-This gives ordinary type checkers the best available fallback while allowing
-`_SchemaMetadata` to implement `__get_pydantic_core_schema__`. A prototype must
-verify that supported Pydantic and Python versions preserve the parameterized
-PEP 695 alias long enough for the metadata hook to inspect it. If Pydantic
-expands the inner alias before the hook receives it, the fallback design is a
-generic marker class whose hook reads `get_args(source_type)`.
-
-### Value-time input
-
-Value-time evaluation uses the explicit `Input` controller:
+`Input` makes selection depend on the raw value supplied for validation:
 
 ```python
 from uuid import UUID
 
+from pydantic import TypeAdapter
 from typeforge import Map
 from typeforge.pydantic import Input, Schema
 
+type Identifier = Schema[Map[Input, int: int, str: UUID]]
 
-type Identifier = Schema[
-    Map[
-        Input,
-        int : int,
-        str : UUID,
-    ]
-]
+adapter = TypeAdapter(Identifier)
+text = "550e8400-e29b-41d4-a716-446655440000"
+assert adapter.validate_python(text) == UUID(text)
+assert adapter.validate_python(42) == 42
 ```
 
-This example intends to preserve integer inputs and parse string inputs as
-UUIDs. Its output type is `int | UUID`.
+Selection precedes coercion. Exact `int` excludes bool; Assignable predicates can
+accept subclasses. Literals compare both type and value. Input union selectors
+offer alternatives, and predicate compounds retain shared short-circuit rules.
+JSON validation observes decoded values before output validation. Parameterized
+runtime patterns such as `list[int]` and `list[Value]` are rejected; dispatch
+does not inspect container contents to infer generic arguments.
 
-`Input` observes the raw Python value before branch validation. Python and JSON
-inputs use the Python type produced by `pydantic-core` at the dispatch boundary.
-`int: output` means `type(value) is int`, so `bool` does not match `int` and
-case selection never performs coercion. Branches are ordered and the first exact
-match wins; the selected output schema then applies normal Pydantic validation.
-Generic value-time patterns and nested field access remain undefined and fail
-rather than silently changing the static meanings of `Equal` or `Assignable`.
+The shared DeferredMap retains branch order and field/capture context.
+`DeferredAnnotations` carries that plan through ordinary type construction,
+metadata, and transformed fields, preparing its output schemas at build time.
+At validation, a callable discriminator resumes shared selection using
+`RawInput`. A native tagged union validates exactly the selected output.
+Output validation failure cannot retry a later case or the default.
 
-## Semantic model
+A wrap validator removes the private branch index from Pydantic error locations.
+No-match and reached predicate failures use `typeforge_*` validation codes and
+preserve the original input. Unexpected validator exceptions propagate.
 
-The static compiler and Pydantic integration must not implement separate
-meanings for Typeforge operators. They should share a semantic expression model
-and evaluator.
+Serialization classifies the validated output by output type; it does not rerun
+raw-input selection. The first matching output classifier wins, with index zero
+as the fallback when none matches. There is no retained branch history or
+schema-build rejection for ambiguous serializers. Outputs with indistinguishable
+runtime types therefore cannot reliably retain different branch serializers.
 
-The compiler lowers source expressions through `compiler/_semantic_lowering.py`
-and implements backend-specific type operations in `compiler/_type_system.py`.
-The remaining runtime migration should preserve the same separation of concerns:
-
-1. Frontends parse source or runtime typing objects.
-2. A shared evaluator resolves Typeforge relationships.
-3. Backends emit stubs, overlays, or Pydantic schemas.
-
-A possible package shape is:
-
-```text
-src/typeforge/
-    semantics/
-        domain/
-            assertions.py
-            exceptions.py
-            models.py
-        evaluation.py
-        protocols.py
-    pydantic/
-        __init__.py
-        annotation.py
-        frontend.py
-        planning.py
-        emitter.py
-        records.py
-        errors.py
-```
-
-This layout is provisional. The important boundary is that Pydantic-specific
-objects do not enter the shared semantic model.
-
-### Type-system protocol
-
-The evaluator needs operations whose implementation differs between source
-analysis and runtime reflection. A generic protocol can provide them:
-
-```python
-class TypeSystem[T](Protocol):
-    def equal(self, left: T, right: T) -> Result[bool, EvaluationError]: ...
-
-    def assignable(self, source: T, target: T) -> Result[bool, EvaluationError]: ...
-
-    def union(self, members: tuple[T, ...]) -> Result[T, EvaluationError]: ...
-
-    def record(
-        self,
-        value: T,
-    ) -> Result[RecordShape[T], RecordError]: ...
-```
-
-The exact protocol will evolve, but it should operate on immutable Typeforge
-data and return typed failures. Source analysis can use checker-neutral type
-references. Runtime evaluation can use handles to actual Python typing objects.
-
-### Record shapes
-
-Record data remains explicit and family-aware:
-
-```python
-@dataclass(frozen=True, slots=True)
-class RecordShape[T]:
-    family: RecordFamily
-    name: str | None
-    fields: tuple[RecordField[T], ...]
-
-
-@dataclass(frozen=True, slots=True)
-class RecordField[T]:
-    name: str
-    value: T
-    required: bool
-    readonly: bool
-```
-
-`RecordFamily` prevents a transformed `TypedDict` from accidentally inheriting
-Pydantic-model construction semantics, or vice versa.
-
-## Runtime frontend
-
-The runtime frontend receives the expression inside `Schema[...]` and converts
-Python typing objects into the semantic expression model. It must understand:
-
-- Typeforge's marker aliases by object identity, not only by their names;
-- PEP 695 `TypeAliasType` objects;
-- parameterized user aliases and type-parameter substitution;
-- `Annotated`, including preservation of non-Typeforge metadata;
-- unions, literals, generic applications, and forward references;
-- nested and recursive aliases;
-- Typeforge aliases re-exported from other modules.
-
-For example, resolving `Public[User]` requires binding `T` to `User`, expanding
-the alias value, and retaining `User` as a runtime type reference while parsing
-the `MapFields` expression.
-
-Runtime parsing must be cycle-aware. Recursive aliases should produce explicit
-semantic references rather than recurse indefinitely. Those references later
-become Pydantic definition references where supported.
-
-The parser returns a typed error for malformed or unsupported expressions. It
-must not fall back to the inert runtime value of a Typeforge marker, because
-doing so could silently turn a validation schema into `object`.
-
-## Evaluation and planning
-
-Evaluation produces either a resolved type/record or a plan that still depends
-on the incoming value. Planning then selects the least expensive faithful
-Pydantic implementation.
-
-The planner uses the following preference order:
-
-1. **Resolved schema**: The expression is completely resolved at schema build.
-2. **Native core schema**: The behavior maps directly to a Pydantic schema node.
-3. **Callable discriminator**: Python selects a branch and `pydantic-core`
-   validates the selected branch.
-4. **Before, after, or plain validator**: A one-direction transformation fits a
-   more specific validator kind.
-5. **Wrap validator**: General fallback requiring access to both the input and
-   nested validation.
-
-This is an optimization hierarchy, not a prohibition. A wrap validator is a
-valid implementation when it provides useful behavior that cannot be expressed
-faithfully with a cheaper plan.
-
-Possible immutable planning data includes:
-
-```python
-@dataclass(frozen=True, slots=True)
-class ResolvedPlan[T]:
-    output: T
-
-
-@dataclass(frozen=True, slots=True)
-class UnionPlan[T]:
-    choices: tuple[T, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class DispatchPlan[T]:
-    cases: tuple[DispatchCase[T], ...]
-    strategy: DispatchStrategy
-
-
-type ValidationPlan[T] = ResolvedPlan[T] | UnionPlan[T] | DispatchPlan[T]
-```
-
-Planning data should not contain Pydantic core-schema dictionaries. That keeps
-planning testable without Pydantic and lets future integrations consume the same
-semantic result.
-
-## Pydantic schema emission
-
-The emitter translates a validation plan into `pydantic_core.CoreSchema`.
-
-### Ordinary types
-
-Ordinary leaf types are delegated to `handler.generate_schema(type)` rather
-than reimplemented. This preserves Pydantic support for models, dataclasses,
-constraints, custom types, recursive definitions, and other `Annotated`
-metadata.
-
-The integration should construct core schemas directly only for shapes that do
-not already exist as a concrete Python type, such as a `MapFields` result.
-
-### `Map`
-
-When its subject is concrete, `Map` evaluates its cases once and emits the
+Deferred dispatch currently exposes `{}` in both validation-mode and
+serialization-mode JSON Schema. It does not publish a precise accepted-input
+schema or an output union, even though runtime serializers delegate to the
 selected output schema.
 
-For a value-time subject, cases remain ordered. The initial recommended runtime
-semantics are strict, pre-coercion matching so that selecting a case does not
-itself mutate the input. The selected output schema then performs normal
-Pydantic validation and coercion. This recommendation remains open until the
-`Input` design is accepted.
-
-The implemented backend uses a Python before-validator to attach an internal
-case tag, a native tagged union for branch validation, and an after-validator to
-remove the internal envelope. Serialization classifies the validated output
-separately, avoiding the ambiguity between a raw input type and another case's
-output type. A wrap validator remains an accepted future fallback when a
-condition cannot be represented faithfully with this plan.
-
-The static output type of a value-time `Map` is the union of all reachable case
-outputs and its default. An omitted default makes unmatched input a validation
-error; it must not silently validate as `object`.
-
-### Unions
-
-Typeforge unions should preserve Pydantic's normal union behavior unless a
-Typeforge expression promises ordered first-match behavior. Ordered `Map` cases
-and Pydantic smart unions are not interchangeable.
-
-If Typeforge can recognize a literal discriminator in record alternatives, it
-may emit a tagged union directly. Otherwise it emits a normal or left-to-right
-union according to the expression's declared semantics.
-
-### `MapFields`
-
-The first implementation supports `TypedDict` input records. It emits a native
-typed-dictionary schema containing transformed fields:
-
-- `Field` emits a required field;
-- `OptionalField` emits `required=False`;
-- `Drop` omits the field;
-- `ReadonlyField` has the same validation behavior as a required field and
-  carries static or serialization metadata where meaningful;
-- renamed fields use their transformed names;
-- transformed field values are recursively evaluated and emitted.
-
-The output value is a dictionary. The schema should use a deterministic name or
-reference derived from the alias and concrete input record so that JSON Schema
-definitions are stable.
-
-Pydantic `BaseModel` transformation is a separate record adapter. It must define
-how field validators, model validators, serializers, computed fields, aliases,
-defaults, private attributes, model configuration, and output class identity
-behave. Until that adapter exists, `MapFields[SomeBaseModel, ...]` fails during
-schema construction rather than pretending the model is a `TypedDict`.
-
-### Unsupported callable relationships
-
-`Each` and `Collect` describe relationships across callable arguments. Using
-them directly inside a model field initially produces a typed schema-generation
-error. A future `validate_call` integration can define their runtime meaning
-separately.
-
-## Serialization and JSON Schema
-
-`Schema[...]` represents a complete Pydantic schema, not validation alone.
-
-Resolved ordinary types inherit their serializer and JSON Schema behavior from
-Pydantic. Synthesized record schemas use the same transformed shape for
-validation and serialization unless an operator explicitly specifies otherwise.
-
-`Doc` metadata should become a JSON Schema description on the resolved type or
-field. Named aliases should produce deterministic `$defs` entries rather than
-copying large schemas at every use site. Recursive expressions should use
-definition references.
-
-Value-time dispatch must also define serialization behavior. The preferred
-strategy is to let each selected output schema serialize its validated output.
-If output branches overlap such that a serializer cannot identify the branch,
-schema construction should either require an explicit discriminator or report
-an ambiguity.
-
-Validation-mode and serialization-mode JSON schemas may differ when Python
-validators accept a broader input than the output type. The integration should
-provide input schema metadata when it can describe that input honestly. It must
-not claim a narrower JSON input schema merely because the output is narrow.
-
-## Static compiler integration
-
-The source compiler treats `Schema[T]` as a transparent integration boundary
-whose static type is the evaluated output of `T`.
-
-For schema-time expressions, this is the same result used by the runtime
-evaluator. For value-time expressions, the output is the union of all reachable
-branches. Generated library stubs contain only standard typing constructs and
-must not require Typeforge or Pydantic integration markers unless the public API
-already requires Pydantic.
-
-The overlay and stub emitter should remove `Schema[...]` after specializing the
-inner expression. This prevents users from seeing a fictitious wrapper object
-and keeps constructor, attribute, and return types aligned with actual runtime
-values.
-
-The compiler must verify that its output type agrees with the runtime plan. A
-useful internal contract test is:
-
-```text
-source expression
-    -> static semantic evaluation -> emitted standard type
-    -> runtime semantic evaluation -> plan output type
-
-assert normalized static type == normalized runtime output type
-```
-
-## Error handling
-
-Internal APIs return typed errors. Suggested categories include:
-
-- `RuntimeExpressionError`: malformed aliases, unresolved forward references,
-  unsupported runtime typing objects, or recursive expansion failures;
-- `EvaluationError`: invalid arity, unbound `Key`, `Value`, or runtime input,
-  incompatible condition operands, and unreachable or duplicate cases;
-- `RecordAdapterError`: unsupported record family or unsupported field feature;
-- `PlanningError`: behavior cannot be represented by an enabled execution
-  strategy;
-- `SchemaEmissionError`: failure while delegating to or constructing a Pydantic
-  core schema;
-- `SerializationAmbiguityError`: output branches cannot be serialized
-  consistently.
-
-The `__get_pydantic_core_schema__` hook is an API boundary where exceptions are
-expected. It converts a typed Typeforge error into a concise Pydantic-compatible
-schema-generation exception. The message should include:
-
-- the authored expression;
-- the failing operator;
-- whether failure occurred during parsing, evaluation, planning, or emission;
-- a suggested correction when one is known.
-
-Per-value predicate failures become ordinary Pydantic validation errors with
-stable Typeforge error codes and useful locations.
-
-## Caching and performance
-
-Pydantic compiles a model's core schema when the model is built and compiles a
-`TypeAdapter` when the adapter is instantiated. Typeforge should avoid adding
-work after that point unless the expression is intentionally value-dependent.
-
-Safe cache candidates include:
-
-- parsed runtime aliases keyed by the parameterized alias object;
-- normalized semantic expressions;
-- schema-time evaluation results;
-- immutable execution plans.
-
-Core-schema dictionaries should not be cached globally across Pydantic handlers.
-Handler context, definitions, configuration, and surrounding `Annotated`
-metadata can affect emission. Pydantic remains responsible for caching compiled
-validators and serializers.
-
-Value-time plans should document their expected Python call count:
-
-- resolved or native plan: zero Typeforge Python calls per validation;
-- tagged input dispatch: two validation calls plus core validation;
-- before/after/plain validator: normally one call;
-- wrap validator: one or more calls depending on nested handler use.
-
-`typeforge explain` should eventually expose this information:
-
-```text
-Schema: Identifier
-Plan: tagged input dispatch
-Cases: int -> int, str -> UUID
-Typeforge Python calls per validation: 2
-Branch validation: pydantic-core
-Output: int | UUID
-```
-
-Performance tests must separate schema-build cost from steady-state validation
-cost. Benchmarks should compare Typeforge schemas with equivalent hand-written
-Pydantic types rather than asserting an absolute timing threshold.
-
-## Dependency and compatibility policy
-
-Pydantic is an optional dependency. Importing `typeforge` must not import
-Pydantic or `pydantic-core`. Importing `typeforge.pydantic` without the optional
-dependency should fail with a focused installation message.
-
-The integration targets Pydantic v2. The supported minimum version should be
-chosen after the initial alias-preservation and core-schema prototypes. CI
-should test the minimum supported version and the newest compatible v2 release.
-
-The integration uses public custom-schema hooks and core-schema constructors. It
-must not depend on Pydantic's private `GenerateSchema` implementation. Because
-the core-schema extension surface can evolve between releases, compatibility
-code belongs behind a small Typeforge-owned emitter interface.
-
-## Testing strategy
-
-### Unit tests
-
-- Runtime parsing of every Typeforge marker.
-- PEP 695 generic alias expansion and substitution.
-- Nested aliases, `Annotated` metadata, forward references, and recursion.
-- Shared evaluator behavior for `Equal`, `Assignable`, and `Map`.
-- Execution-plan selection independent of Pydantic.
-- Typed error values for invalid and unsupported expressions.
-
-### Static/runtime contract tests
-
-- The compiler's resolved output matches the runtime plan's output.
-- A `Schema[...]` wrapper disappears from generated stubs and overlays.
-- Value-time branch unions are complete and contain no unreachable outputs.
-- Record transforms agree on required, optional, readonly, renamed, and dropped
-  fields.
-
-### Pydantic integration tests
-
-- `BaseModel` field validation from Python and JSON.
-- Reusable `TypeAdapter` validation and serialization.
-- Native, callable-discriminator, and wrap-validator plans.
-- Pydantic leaf metadata such as constraints and custom types.
-- Validation-error paths and stable Typeforge error codes.
-- JSON Schema in validation and serialization modes.
-- Recursive types and `$defs` reuse.
-- Model rebuilds and forward-reference resolution.
-
-### Performance tests
-
-- Schema-build overhead for representative expressions.
-- Steady-state native plan versus an equivalent hand-written annotation.
-- Callable-discriminator overhead versus a hand-written discriminator.
-- Wrap-validator overhead versus a hand-written wrap validator.
-- Large `MapFields` schemas and repeated alias reuse.
-
-## Delivery sequence
-
-1. Prototype `Schema[...]` with PEP 695 aliases on the supported Python and
-   Pydantic versions.
-2. Extract or introduce the shared semantic expression model and evaluator.
-3. Implement the runtime typing frontend for schema-time `Map`.
-4. Emit ordinary resolved types through the Pydantic handler.
-5. Add static compiler handling that erases `Schema[...]`.
-6. Implement the `TypedDict` `MapFields` adapter.
-7. Add JSON Schema naming, documentation, and recursive references.
-8. Specify and implement the value-time controller and matching semantics.
-9. Add callable-discriminator and wrap-validator planning.
-10. Add explanation output and representative benchmarks.
-11. Design `BaseModel` record transformation as a separate follow-up.
-
-Each step should leave a usable vertical slice. Value-time execution should not
-block shipping schema-time expression support.
-
-## Open questions
-
-1. Is `Schema[T]` implemented as an `Annotated` alias or a generic marker class?
-2. Is `Input` the right public name for value-time input?
-3. Does runtime case matching use exact type, `isinstance`, structural matching,
-   or an explicit family of predicates?
-4. How are raw JSON values represented to runtime predicates before Python-mode
-   coercion?
-5. Should callable-discriminator and wrap plans be automatic, explicitly opted
-   into, or configurable per project?
-6. How should users request strict versus coercive matching?
-7. What is the fallback behavior for ambiguous or overlapping runtime cases?
-8. Should `Schema` also be usable outside Pydantic as a general runtime-schema
-   boundary in the future, or is it intentionally Pydantic-specific?
-9. How should Pydantic `Field` metadata compose with field metadata produced by
-   `MapFields`?
-10. What is the exact runtime meaning of `ReadonlyField` during serialization
-    and assignment validation?
-11. Can recursive synthesized record schemas always receive stable references
-    without relying on Pydantic internals?
-12. What subset of `BaseModel` field and model behavior can a future record
-    adapter preserve honestly?
-
-## Decisions
-
-### Accepted
-
-- The public integration boundary is named `Schema`, not `Validated`.
-- `Schema[...]` returns the resolved value; it does not construct a wrapper
-  instance.
-- Python-backed value-time evaluation is allowed when it provides useful
-  expressiveness.
-- The planner prefers cheaper native schemas when they preserve the same
-  semantics.
-- Record families require explicit adapters.
-- Pydantic remains an optional dependency.
-
-### Proposed
-
-- Use `Input` as an explicit value-time controller.
-- Prefer strict, pre-coercion matching for runtime `Map` cases.
-- Prefer callable tagged-union discriminators over full wrap validators for
-  branch selection.
-- Support `TypedDict` record transforms before `BaseModel` transforms.
-- Add execution-plan details to `typeforge explain`.
-
-### Rejected
-
-- `Validated` as the public boundary name, because it describes a state rather
-  than the schema-construction operation.
-- A blanket prohibition on wrap validators.
-- Treating Pydantic models as typed dictionaries during `MapFields` evaluation.
-- Silently accepting unresolved marker fallbacks such as `object`.
+## Records and metadata
+
+TypedDict is the supported MapFields record family. Reflection handles generic
+bindings, inheritance, requiredness, readonly flags, and Annotated metadata.
+Shared field operators replace source flags: Field is required/writable,
+OptionalField is optional/writable, and ReadonlyField is required/readonly.
+Drop removes a field, and renamed outputs validate under the new name.
+
+Emission produces a native typed-dictionary schema returning a dictionary,
+ignoring extra inputs. Readonly fields add JSON Schema `readOnly` metadata;
+they do not make the resulting dictionary immutable. Nested values delegate to
+Pydantic, preserving constraints and serializers. Doc metadata supplies JSON
+Schema descriptions. Pydantic's alias machinery owns definition references and
+build-local reuse, including repeated synthesized record aliases.
+
+Ordinary BaseModel and dataclass leaves retain Pydantic behavior, but they are
+not MapFields record operands. Record unions and unions of structural capture
+patterns remain unsupported. Each/Collect callable relationships have no
+model-field validation meaning.
+
+## Compiler boundary
+
+The compiler's [semantic adapter](../src/typeforge/compiler/semantic_adapter)
+lowers source expressions to the shared evaluator without importing or executing
+application code. It treats Schema as a boundary whose emitted type is its
+evaluated output; deferred Input uses a possible-output bound.
+
+Sharing evaluation does not establish identical selection in every consumer.
+Source and runtime type adapters differ on union ordering, alias identity, Any
+unions, and field discovery. Callable overload specialization has its own
+limits. Before extending those cases, consult
+[G1–G6](../CONTEXT.md#union-support-and-open-decisions) and the
+[union matrix](../tests/unit/test_slice_union_matrix.py). These differences need
+explicit decisions and derisking before their limitation tests change.
+
+Neither compiler implementation nor runtime integration imports the other.
+Static integration diagnostics and compiler plugin loading remain separate work.
+
+## Failures and dependency isolation
+
+Internal integration boundaries return typed SchemaIssue failures, including
+MapNoMatchIssue, UnsupportedRecordIssue, and UnresolvedAnnotationIssue. Shared
+SemanticIssue and MapNoMatch outcomes are translated once using frontend origins.
+Private helpers may raise modeled exceptions inside a declared result boundary;
+unexpected failures propagate.
+
+The Schema hook raises PydanticUndefinedAnnotation for unresolved names and
+PydanticSchemaGenerationError for other schema issues. Diagnostic display
+reconstructs slice notation without expanding alias bodies or interpreting
+Literal and Annotated payloads. Codes, phases, and authored locations remain
+independent of display formatting.
+
+Pydantic is optional. Base Typeforge imports do not load it; the integration's
+import guard supplies an installation message only for missing Pydantic or
+pydantic-core modules. Supported versions are declared in
+[pyproject.toml](../pyproject.toml). The
+[CI workflow](../.github/workflows/tests.yml) installs the locked environment
+with all extras and runs `make check`; it does not currently test minimum and
+latest dependency versions separately.
+
+## Verification and follow-up work
+
+Run `make check` for repository validation. For runtime changes, start with
+`make check src/typeforge/pydantic tests/unit/pydantic`.
+
+Use these contracts when changing a responsibility:
+
+- [Runtime pipeline](../tests/unit/pydantic/test_runtime_pipeline.py): no-match,
+  generic fallback, callback-free resolved emission, and unexpected failures.
+- [Aliases and structures](../tests/unit/pydantic/test_aliases_and_structures.py):
+  binding, captures, cycles, metadata, and rebuild isolation.
+- [Deferred pipeline](../tests/unit/pydantic/test_deferred_pipeline.py): raw
+  selection, short-circuiting, output failure, error paths, and serialization.
+- [MapFields](../tests/unit/pydantic/test_map_fields.py) and
+  [JSON Schema](../tests/unit/pydantic/test_json_schema.py): transformed records,
+  metadata, definition reuse, and ordinary recursive aliases.
+- [Slice integration](../tests/unit/pydantic/test_slice_integration.py) and
+  [diagnostics](../tests/unit/test_slice_diagnostics.py): public spelling and
+  authored error presentation.
+
+Follow-up designs remain necessary for BaseModel record transforms, recursive
+Typeforge aliases, callable validation, precise deferred JSON Schema, and
+serialization that distinguishes overlapping outputs. A BaseModel adapter must
+specify validator, serializer, default, alias, configuration, and class-identity
+behavior before treating models as transformable records.
+
+A minimum/latest Pydantic compatibility matrix, explanation output, and
+schema-build versus steady-state benchmarks are also future work. These are
+not implemented planner features or prerequisites for unrelated feature work.

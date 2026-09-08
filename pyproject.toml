@@ -25,11 +25,6 @@ mypy = [
 pyrefly = [
     "pyrefly>=1.1,<2",
 ]
-compiler = [
-    "griffe>=2.1,<3",
-    "libcst>=1.8,<2",
-    "stubpy>=0.4,<0.5",
-]
 
 [dependency-groups]
 dev = [
@@ -57,7 +52,6 @@ python_version = "3.14"
 plugins = ["returns.contrib.mypy.returns_plugin"]
 exclude = ["tests/.*/fixtures/"]
 mypy_path = [
-    "typings",
     "examples/prototype/.typeforge/stubs",
     "examples/prototype/src",
 ]
@@ -70,14 +64,13 @@ venvPath = "."
 venv = ".venv"
 extraPaths = [
     "src",
-    "typings",
     "examples/prototype/.typeforge/stubs",
     "examples/prototype/src",
 ]
 
 [tool.pyrefly]
 python-version = "3.14"
-search-path = ["src", "typings"]
+search-path = ["src"]
 project-includes = ["src/**"]
 project-excludes = [".venv/**", ".typeforge/**", "dist/**"]
 
