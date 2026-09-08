@@ -11,8 +11,6 @@ from pydantic import (
 )
 from pydantic import Field as PydanticField
 from typeforge import (
-    Case,
-    Default,
     Doc,
     Drop,
     Equal,
@@ -37,12 +35,9 @@ def test_record_transforms_validate_rename_drop_and_preserve_leaf_constraints() 
         T,
         Map[
             Key,
-            Case[Equal[Key, Literal["password"]], Drop],
-            Case[
-                Equal[Key, Literal["name"]],
-                OptionalField[Literal["display_name"], Value],
-            ],
-            Default[Field[Key, Value]],
+            Equal[Key, Literal["password"]] : Drop,
+            Equal[Key, Literal["name"]] : OptionalField[Literal["display_name"], Value],
+            ... : Field[Key, Value],
         ],
     ]
 
@@ -61,7 +56,9 @@ def test_record_metadata_and_references_survive_repeated_fields_and_rebuild() ->
     class User(TypedDict):
         name: str
 
-    type Public[T] = Annotated[MapFields[T, Field[Key, Value]], Doc("Public record")]
+    type Public[T] = Annotated[
+        MapFields[T, Map[Key, ... : Field[Key, Value]]], Doc("Public record")
+    ]
 
     class Pair(BaseModel):
         first: Schema[Public[User]]
@@ -87,7 +84,7 @@ def test_generic_record_fields_allow_origins_and_independent_specializations() -
         label: str
 
     class Payload[T](BaseModel):
-        value: Schema[MapFields[T, Field[Key, Value]]]
+        value: Schema[MapFields[T, Map[Key, ... : Field[Key, Value]]]]
 
     assert Payload[Left].model_validate({"value": {"count": "3"}}).model_dump() == {
         "value": {"count": 3}
@@ -107,7 +104,7 @@ def test_generic_typed_dict_fields_bind_before_structural_transforms() -> None:
         values: list[T]
 
     type Converted[T] = MapFields[
-        Items[T], Field[Key, Map[Value, Case[list[Value], set[Value]]]]
+        Items[T], Field[Key, Map[Value, list[Value] : set[Value]]]
     ]
 
     class Payload[T](BaseModel):
@@ -154,9 +151,7 @@ def test_a_map_can_select_an_annotated_record() -> None:
 
     type Selected = Map[
         int,
-        Case[
-            int, Annotated[MapFields[User, Field[Key, Value]], Doc("Selected record")]
-        ],
+        int : Annotated[MapFields[User, Field[Key, Value]], Doc("Selected record")],
     ]
     adapter = TypeAdapter[object](Schema[Selected])
     assert adapter.validate_python({"name": "Ada"}) == {"name": "Ada"}
@@ -257,17 +252,17 @@ def test_partial_generic_records_and_defaults_follow_pydantic_lifecycle() -> Non
         count: int
 
     class Parent[T, U](BaseModel):
-        value: Schema[MapFields[T, Field[Key, Value]]]
+        value: Schema[MapFields[T, Map[Key, ... : Field[Key, Value]]]]
         other: U
 
     class Child[U](Parent[User, U]):
         pass
 
     class Defaulted[T = User](BaseModel):
-        value: Schema[MapFields[T, Field[Key, Value]]]
+        value: Schema[MapFields[T, Map[Key, ... : Field[Key, Value]]]]
 
     class Bound[T: User](BaseModel):
-        value: Schema[MapFields[T, Field[Key, Value]]]
+        value: Schema[MapFields[T, Map[Key, ... : Field[Key, Value]]]]
 
     assert Child[str].model_validate_json(
         '{"value":{"count":"3"},"other":"x"}'
@@ -287,9 +282,7 @@ def test_inherited_generic_typed_dict_arguments_bind_before_field_mapping() -> N
     class Child[U](Base[int]):
         second: list[U]
 
-    type Selected[T] = MapFields[
-        T, Field[Key, Map[Value, Case[list[Value], set[Value]]]]
-    ]
+    type Selected[T] = MapFields[T, Field[Key, Map[Value, list[Value] : set[Value]]]]
     result = TypeAdapter[object](Schema[Selected[Child[str]]]).validate_python(
         {"first": ["3"], "second": ["x"]}
     )

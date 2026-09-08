@@ -326,9 +326,39 @@ specialized callable interfaces retain their existing portable output contract.
 Overlays retain the existing possible-output fallback policy. Slice 02 exercises
 union bounds in named-alias overlays. Slice 06 adds inline projection evidence for
 the same conservative fallback policy, methods, nested annotations, and union
-outputs in all three checkers. Schema selection remains separate, and G7's
-remaining publication/runtime obligations stay with 07/08.
+outputs in all three checkers. Slice 07 adds published-consumer evidence for
+literal and predicate selectors, aliases, captured union outputs, and finite
+Each/Collect arities. Slice 08 promotes the union matrix to public construction
+and verifies runtime models, dispatch, and serialization. G7's integration
+evidence is complete; Schema selection remains separate from callable policy.
 Do not replace the bound with Any or silently narrow it to one branch.
+
+Callable precision is bounded by existing specialization and checker overload
+matching. Even with no fallback branch, an unmatched callable argument can receive
+the aggregate output bound rather than Never. A concrete union subject at a
+callable boundary is rejected without a controlling type parameter. This differs
+from Schema's concrete evaluation. G1/G2/G4 remain explicitly constrained by the
+[slice 07 publication boundary](map-slice-union-findings.md#slice-07-callable-publication-boundary);
+the syntax migration does not promise cross-consumer selection for those forms.
+
+Runtime union support preserves existing policy: static bare selectors operate
+on distributed subject members, unary predicates bind the whole subject, and
+Input union tests observe alternatives without retrying output validation.
+Ordinary aliases retain identity in static runtime matching, while Input tests
+unwrap aliases. Output aliases remain delegated to Pydantic. Runtime union
+construction absorbs Any. G1/G3/G4's migration disposition is preservation with
+the explicit [runtime support boundary](map-slice-union-findings.md#slice-08-runtime-integration-boundary),
+not semantic convergence. Transparent static union-alias matching and portable
+Any-containing union selection are outside this migration's support claims.
+
+Slice 09 preserves existing field-operator rules: Field is required and writable,
+OptionalField is optional and writable, and ReadonlyField is required and readonly.
+These modifiers replace source flags. Nested scalar Value Maps, union output
+types, and unchanged union fields have cross-consumer evidence. G5's nested
+mapping over union-valued fields remains explicitly constrained, and G6's record
+unions and union capture patterns remain rejected. See the
+[field support boundary](map-slice-union-findings.md#slice-09-field-composition-boundary)
+for metadata policy, speculative field layouts, and inherited-callable limits.
 
 ## Union investigation and implementation handoff
 

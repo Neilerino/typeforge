@@ -12,13 +12,13 @@ from pydantic import (
     TypeAdapter,
     ValidationError,
 )
-from typeforge import All, Assignable, Case, Default, Equal, Key, Map, Not
+from typeforge import All, Assignable, Equal, Key, Map, Not
 from typeforge.pydantic import Schema
 
 
 def test_generic_no_default_map_specializes_and_rejects_unmatched_any() -> None:
     class Payload[T](BaseModel):
-        value: Schema[Map[T, Case[int, str], Case[bytes, int]]]
+        value: Schema[Map[T, int:str, bytes:int]]
 
     assert Payload[int].model_validate({"value": "3"}).value == "3"
     assert Payload[bytes].model_validate({"value": "3"}).value == 3
@@ -37,16 +37,16 @@ def test_generic_no_default_map_specializes_and_rejects_unmatched_any() -> None:
 
 def test_fallback_bounds_defaults_and_constraints_select_map_outputs() -> None:
     class Bound[T: int](BaseModel):
-        value: Schema[Map[T, Case[int, str], Default[bytes]]]
+        value: Schema[Map[T, int:str, ...:bytes]]
 
     class Defaulted[T = int](BaseModel):
-        value: Schema[Map[T, Case[int, str], Default[bytes]]]
+        value: Schema[Map[T, int:str, ...:bytes]]
 
     class Constrained[T: (int, bytes)](BaseModel):
-        value: Schema[Map[T, Case[int, str], Case[bytes, float], Default[bool]]]
+        value: Schema[Map[T, int:str, bytes:float, ...:bool]]
 
     class DefaultBeforeBound[T: int = bool](BaseModel):
-        value: Schema[Map[T, Case[bool, str], Case[int, bytes]]]
+        value: Schema[Map[T, bool:str, int:bytes]]
 
     assert Bound.model_validate({"value": "3"}).value == "3"
     assert Defaulted.model_validate({"value": "3"}).value == "3"
@@ -58,10 +58,10 @@ def test_fallback_bounds_defaults_and_constraints_select_map_outputs() -> None:
 
 def test_any_fallback_follows_exact_cases_and_authored_default() -> None:
     class Payload[T](BaseModel):
-        value: Schema[Map[T, Case[int, str], Default[bytes]]]
+        value: Schema[Map[T, int:str, ...:bytes]]
 
     class ExplicitAny[T](BaseModel):
-        value: Schema[Map[T, Case[int, bytes], Case[Any, str]]]
+        value: Schema[Map[T, int:bytes, Any:str]]
 
     assert Payload.model_validate({"value": "3"}).value == b"3"
     assert Payload[Any].model_validate({"value": "3"}).value == b"3"
@@ -74,7 +74,7 @@ def test_partial_inheritance_and_specializations_keep_field_schemas_isolated(
     first: type,
 ) -> None:
     class Payload[T, U](BaseModel):
-        value: Schema[Map[T, Case[int, str], Case[bytes, int]]]
+        value: Schema[Map[T, int:str, bytes:int]]
         items: list[Schema[U]]
 
     class Partial[U](Payload[int, U]):
@@ -114,7 +114,7 @@ def test_generic_output_does_not_defer_an_unrelated_concrete_no_match() -> None:
     with pytest.raises(PydanticSchemaGenerationError, match=r"\[map_no_match\]"):
 
         class Payload[T](BaseModel):
-            value: Schema[Map[Any, Case[int, T]]]
+            value: Schema[Map[Any, int:T]]
 
 
 def test_selected_typevar_retains_pydantic_model_bound_serialization() -> None:
@@ -125,7 +125,7 @@ def test_selected_typevar_retains_pydantic_model_bound_serialization() -> None:
         extra: int
 
     class Payload[T: Detail](BaseModel):
-        value: Schema[Map[T, Case[Equal[T, T], T]]]
+        value: Schema[Map[T, Equal[T, T] : T]]
 
     detail = Extra(label="x", extra=3)
     assert Payload.model_validate({"value": detail}).model_dump() == {
@@ -138,7 +138,7 @@ def test_selected_typevar_retains_pydantic_model_bound_serialization() -> None:
 
 @pytest.mark.parametrize(
     "expression",
-    [Map[Any, Case[int, str]], Map[int, Case[int, Map[Any, Case[bytes, str]]]]],
+    [Map[Any, int:str], Map[int, int : Map[Any, bytes:str]]],
 )
 def test_direct_and_nested_no_match_report_authored_map(expression: object) -> None:
     with pytest.raises(
@@ -147,9 +147,7 @@ def test_direct_and_nested_no_match_report_authored_map(expression: object) -> N
         TypeAdapter[object](Schema[expression])
 
 
-@pytest.mark.parametrize(
-    "expression", [Map[int, Case[int, Never]], Map[Any, Default[Never]]]
-)
+@pytest.mark.parametrize("expression", [Map[int, int:Never], Map[Any, ...:Never]])
 def test_selected_never_is_not_misreported_as_no_match(expression: object) -> None:
     with pytest.raises(PydanticSchemaGenerationError) as captured:
         TypeAdapter[object](Schema[expression])
@@ -160,9 +158,7 @@ def test_selected_never_is_not_misreported_as_no_match(expression: object) -> No
 
 def test_no_match_stops_evaluation_before_later_operand_failure() -> None:
     with pytest.raises(PydanticSchemaGenerationError, match=r"\[map_no_match\]"):
-        TypeAdapter[object](
-            Schema[Map[int, Case[Equal[Map[Any, Case[int, str]], Key], str]]]
-        )
+        TypeAdapter[object](Schema[Map[int, Equal[Map[Any, int:str], Key] : str]])
 
 
 def test_conditions_short_circuit_and_union_subjects_share_evaluation() -> None:
@@ -170,8 +166,8 @@ def test_conditions_short_circuit_and_union_subjects_share_evaluation() -> None:
         Schema[
             Map[
                 int | bytes,
-                Case[All[Assignable[int, object], Not[Equal[int, bytes]]], str],
-                Case[Equal[Key, Key], Never],
+                All[Assignable[int, object], Not[Equal[int, bytes]]] : str,
+                Equal[Key, Key] : Never,
             ]
         ]
     )
@@ -198,7 +194,7 @@ def test_ordinary_types_and_metadata_delegate_without_added_validation_callbacks
         return False
 
     assert not has_callback(adapter.core_schema)
-    selected = TypeAdapter[object](Schema[Map[int, Case[int, list[int]]]])
+    selected = TypeAdapter[object](Schema[Map[int, int : list[int]]])
     assert not has_callback(selected.core_schema)
 
     calls: list[str] = []
@@ -213,7 +209,7 @@ def test_ordinary_types_and_metadata_delegate_without_added_validation_callbacks
 
     wrapped = TypeAdapter[object](
         Annotated[
-            Schema[Annotated[Map[int, Case[int, int]], AfterValidator(inner)]],
+            Schema[Annotated[Map[int, int:int], AfterValidator(inner)]],
             AfterValidator(outer),
         ]
     )
@@ -242,12 +238,12 @@ def test_unexpected_schema_hook_failure_propagates_with_identity() -> None:
 
 
 def test_resolved_structural_maps_need_no_validation_callbacks() -> None:
-    adapter = TypeAdapter[object](Schema[Map[int, Case[int, list[int]]]])
+    adapter = TypeAdapter[object](Schema[Map[int, int : list[int]]])
     assert adapter.validate_python(["3"]) == [3]
 
     from typeforge import Value
 
-    type Selected[T] = Map[T, Case[list[Value], tuple[Value, ...]]]
+    type Selected[T] = Map[T, list[Value] : tuple[Value, ...]]
     structural = TypeAdapter[object](Schema[Selected[list[int]]])
     assert structural.validate_python(["3"]) == (3,)
     assert "function-" not in repr(structural.core_schema)

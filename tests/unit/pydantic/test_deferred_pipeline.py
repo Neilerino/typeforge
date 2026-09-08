@@ -17,8 +17,6 @@ from pydantic import (
 from typeforge import (
     All,
     Assignable,
-    Case,
-    Default,
     Equal,
     Field,
     Key,
@@ -33,7 +31,7 @@ from typeforge.pydantic import Input, Schema
 
 
 def test_deferred_selection_uses_raw_type_and_only_selected_output() -> None:
-    adapter = TypeAdapter(Schema[Map[Input, Case[str, int], Case[int, float]]])
+    adapter = TypeAdapter(Schema[Map[Input, str:int, int:float]])
     assert adapter.validate_python("3") == 3
     assert type(adapter.validate_python(3)) is float
     assert adapter.validate_json('"3"') == 3
@@ -57,9 +55,9 @@ def test_selected_failure_never_runs_later_outputs_and_has_authored_location() -
 
     type Selected = Map[
         Input,
-        Case[str, Annotated[int, AfterValidator(first)]],
-        Case[str, Annotated[str, AfterValidator(later)]],
-        Default[Annotated[str, AfterValidator(later)]],
+        str : Annotated[int, AfterValidator(first)],
+        str : Annotated[str, AfterValidator(later)],
+        ... : Annotated[str, AfterValidator(later)],
     ]
 
     class Payload(BaseModel):
@@ -80,8 +78,8 @@ def test_selected_failure_never_runs_later_outputs_and_has_authored_location() -
 def test_reached_predicate_failure_is_not_a_mismatch() -> None:
     type Selected = Map[
         Input,
-        Case[All[Equal[Input, int], Equal[Key, Key]], bytes],
-        Default[str],
+        All[Equal[Input, int], Equal[Key, Key]] : bytes,
+        ...:str,
     ]
     adapter = TypeAdapter(Schema[Selected])
     assert adapter.validate_python("text") == "text"
@@ -97,9 +95,9 @@ def test_predicate_order_and_nested_short_circuiting() -> None:
         Schema[
             Map[
                 Input,
-                Case[Assignable[Input, int], int],
-                Case[AnyCondition[Not[Equal[Input, int]], Equal[Key, Key]], str],
-                Case[Equal[Key, Key], bytes],
+                Assignable[Input, int] : int,
+                AnyCondition[Not[Equal[Input, int]], Equal[Key, Key]] : str,
+                Equal[Key, Key] : bytes,
             ]
         ]
     )
@@ -112,8 +110,8 @@ def test_union_tests_short_circuit_shared_predicates() -> None:
         Schema[
             Map[
                 Input,
-                Case[int | Equal[Key, Key], int],
-                Default[str],
+                int | Equal[Key, Key] : int,
+                ...:str,
             ]
         ]
     )
@@ -127,7 +125,7 @@ def test_structural_capture_remains_available_to_deferred_selection_and_output()
 ):
     type Selected = Map[
         list[int],
-        Case[list[Value], Map[Input, Case[Value, str], Default[Value]]],
+        list[Value] : Map[Input, Value:str, ...:Value],
     ]
     adapter = TypeAdapter(Schema[Selected])
     assert adapter.validate_python("3") == 3
@@ -143,7 +141,7 @@ class Code(IntEnum):
 def test_literal_matching_distinguishes_equal_values_with_different_types(
     raw: object,
 ) -> None:
-    adapter = TypeAdapter(Schema[Map[Input, Case[Literal[1], int]]])
+    adapter = TypeAdapter(Schema[Map[Input, Literal[1] : int]])
     assert adapter.validate_python(1) == 1
     with pytest.raises(ValidationError, match="typeforge_map_no_match"):
         adapter.validate_python(raw)
@@ -154,8 +152,8 @@ def test_enum_literals_and_input_catch_all() -> None:
         Schema[
             Map[
                 Input,
-                Case[Literal[Code.ONE], int],
-                Case[Input, str],
+                Literal[Code.ONE] : int,
+                Input:str,
             ]
         ]
     )
@@ -170,7 +168,7 @@ def test_union_annotated_and_ordinary_alias_tests() -> None:
         raise AssertionError("matching must not run annotation validators")
 
     type Raw = Annotated[int | str, AfterValidator(forbidden)]
-    adapter = TypeAdapter(Schema[Map[Input, Case[Raw, int]]])
+    adapter = TypeAdapter(Schema[Map[Input, Raw:int]])
     assert adapter.validate_python("3") == 3
     assert adapter.validate_python(3) == 3
     with pytest.raises(ValidationError, match="typeforge_map_no_match"):
@@ -192,7 +190,7 @@ def test_parameterized_runtime_patterns_fail_during_construction(
     with pytest.raises(
         PydanticSchemaGenerationError, match="unsupported_runtime_pattern"
     ):
-        TypeAdapter(Schema[Map[Input, Case[pattern, str]]])
+        TypeAdapter(Schema[Map[Input, pattern:str]])
 
 
 def test_aliases_do_not_hide_unsupported_patterns() -> None:
@@ -200,18 +198,18 @@ def test_aliases_do_not_hide_unsupported_patterns() -> None:
     with pytest.raises(
         PydanticSchemaGenerationError, match="unsupported_runtime_pattern"
     ):
-        TypeAdapter(Schema[Map[Input, Case[Hidden, str]]])
+        TypeAdapter(Schema[Map[Input, Hidden:str]])
 
 
 def test_generic_alias_tests_use_existing_binding_inside_unions() -> None:
     type Raw[T] = Annotated[T, "metadata"]
-    adapter = TypeAdapter(Schema[Map[Input, Case[Raw[int] | str, int]]])
+    adapter = TypeAdapter(Schema[Map[Input, Raw[int] | str : int]])
     assert adapter.validate_python(3) == 3
     assert adapter.validate_python("3") == 3
     with pytest.raises(
         PydanticSchemaGenerationError, match="unsupported_runtime_pattern"
     ):
-        TypeAdapter(Schema[Map[Input, Case[Raw[list[int]] | str, int]]])
+        TypeAdapter(Schema[Map[Input, Raw[list[int]] | str : int]])
 
 
 def test_empty_deferred_map_is_an_uninhabited_validator() -> None:
@@ -224,14 +222,14 @@ def test_empty_deferred_map_is_an_uninhabited_validator() -> None:
 
 def test_unbound_capture_is_invalid_without_inspecting_input_values() -> None:
     with pytest.raises(PydanticSchemaGenerationError, match="unbound_value"):
-        TypeAdapter(Schema[Map[Input, Case[Value, str]]])
+        TypeAdapter(Schema[Map[Input, Value:str]])
 
 
 def test_nested_maps_observe_same_raw_value_and_container_items_observe_each_item() -> (
     None
 ):
-    type Inner = Map[Input, Case[str, int], Default[float]]
-    type Outer = Map[Input, Case[str, Inner], Default[float]]
+    type Inner = Map[Input, str:int, ...:float]
+    type Outer = Map[Input, str:Inner, ...:float]
     adapter = TypeAdapter(Schema[list[Outer]])
     assert adapter.validate_python(["3", 3]) == [3, 3.0]
     assert adapter.validate_json('["3", 3]') == [3, 3.0]
@@ -253,8 +251,8 @@ def test_input_inside_annotated_output_and_record_field_preserves_context() -> N
             Annotated[
                 Map[
                     Input,
-                    Case[Equal[Input, Value], Value],
-                    Default[bytes],
+                    Equal[Input, Value] : Value,
+                    ...:bytes,
                 ],
                 AfterValidator(lambda value: value),
             ],
@@ -273,7 +271,7 @@ def test_input_inside_annotated_output_and_record_field_preserves_context() -> N
 
 def test_generic_static_fallback_is_independent_of_input() -> None:
     class Payload[T](BaseModel):
-        value: Schema[Map[Input, Case[str, Map[T, Case[int, int], Default[bytes]]]]]
+        value: Schema[Map[Input, str : Map[T, int:int, ...:bytes]]]
 
     assert Payload(value="3").value == b"3"
     assert Payload[Any](value="3").value == b"3"
@@ -288,21 +286,13 @@ def test_serialization_uses_output_types_and_never_redispatches_coerced_input() 
         Schema[
             Map[
                 Input,
-                Case[
-                    str,
-                    Annotated[
-                        int,
-                        PlainSerializer(lambda value: f"int:{value}", return_type=str),
-                    ],
-                ],
-                Case[
+                str : Annotated[
                     int,
-                    Annotated[
-                        float,
-                        PlainSerializer(
-                            lambda value: f"float:{value}", return_type=str
-                        ),
-                    ],
+                    PlainSerializer(lambda value: f"int:{value}", return_type=str),
+                ],
+                int : Annotated[
+                    float,
+                    PlainSerializer(lambda value: f"float:{value}", return_type=str),
                 ],
             ]
         ]
@@ -318,7 +308,7 @@ def test_serialization_uses_output_types_and_never_redispatches_coerced_input() 
 
 
 def test_uuid_output_serialization_and_default() -> None:
-    adapter = TypeAdapter(Schema[Map[Input, Case[str, UUID], Default[int]]])
+    adapter = TypeAdapter(Schema[Map[Input, str:UUID, ...:int]])
     text = "550e8400-e29b-41d4-a716-446655440000"
     output = adapter.validate_json(f'"{text}"')
     assert output == UUID(text)
@@ -333,8 +323,8 @@ def test_model_outputs_preserve_references_middleware_and_error_details() -> Non
         count: int = PydanticField(gt=0)
 
     class Payload(BaseModel):
-        first: Schema[Map[Input, Case[dict, Child], Default[int]]]
-        second: Schema[Map[Input, Case[dict, Child], Default[int]]]
+        first: Schema[Map[Input, dict:Child, ...:int]]
+        second: Schema[Map[Input, dict:Child, ...:int]]
 
     payload = Payload(first={"count": "3"}, second=4)
     assert payload.model_dump() == {"first": {"count": 3}, "second": 4}
@@ -359,7 +349,7 @@ def test_unexpected_output_failure_propagates_identity() -> None:
         raise expected
 
     adapter = TypeAdapter(
-        Schema[Map[Input, Case[str, Annotated[int, AfterValidator(fail)]]]]
+        Schema[Map[Input, str : Annotated[int, AfterValidator(fail)]]]
     )
     with pytest.raises(RuntimeError) as failure:
         adapter.validate_python("3")

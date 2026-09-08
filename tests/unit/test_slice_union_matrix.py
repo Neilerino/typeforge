@@ -1,6 +1,7 @@
-"""Slice 02 evidence; expected limitations are characterized, not implemented.
+"""Slice 02 evidence promoted to the public constructor in slice 08.
 
 Case IDs correspond to docs/in_progress_tasks/map-slice-union-findings.md.
+Expected semantic limitations remain characterizations, not fixes.
 """
 
 import json
@@ -20,9 +21,9 @@ from pydantic import (
     ValidationError,
 )
 from typeforge import Case
-from typeforge import Map as CanonicalMap
+from typeforge import Map as SliceMap
 from typeforge import semantics as s
-from typeforge._slice_map_prototype import Map as SliceMap
+from typeforge._markers import Map as CanonicalMap
 from typeforge.compiler.pipeline import generate_module
 from typeforge.compiler.semantic_adapter import (
     COMPILER_TYPE_SYSTEM,
@@ -316,7 +317,9 @@ def test_union_static_schema_output(case: UnionCase, tmp_path: Path) -> None:
 def test_union_runtime_schema_output(case: UnionCase) -> None:
     # Both spellings must see the same authored alias identities.
     namespace: dict[str, object] = {"__name__": __name__}
-    exec(IMPORTS + case.setup, namespace)
+    exec(IMPORTS, namespace)
+    namespace["Map"] = CanonicalMap
+    exec(case.setup, namespace)
     canonical: object = eval(case.canonical, namespace)
     namespace["Map"] = SliceMap
     sliced: object = eval(case.sliced, namespace)

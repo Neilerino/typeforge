@@ -127,6 +127,19 @@ whereas `Schema[Map[...]]` uses evaluated selection. Projection preserves author
 files and diagnostic locations. Raw slices require Typeforge processing before
 ordinary type checking.
 
+Published stubs support slice-authored callable relationships and existing finite
+`Each`/`Collect` captures. Consumers use ordinary mypy, Pyright, or Pyrefly without
+running Typeforge. For example, `Map[T, int: str | None, ...: bytes]` gives an
+integer call `str | None`; calls outside that overload retain `str | None | bytes`.
+Relationship aliases themselves publish as `object`. Capture precision is limited
+by the configured maximum arity; calls beyond it use the existing aggregate bound.
+
+Callable overloads follow checker subtype matching, so exact selectors cannot
+exclude subtypes such as `bool` from `int`. Union selectors, reordered union
+equality, and selection involving `Any` do not have a portable cross-consumer
+guarantee. See the [callable support limits](docs/in_progress_tasks/map-slice-union-findings.md#slice-07-callable-publication-boundary)
+before relying on these forms to reproduce `Schema` selection.
+
 The syntax migration is in progress. Existing Case/Default
 examples below remain valid during the repository migration and will be removed
 at the coordinated cutover. See the
@@ -274,6 +287,15 @@ expressions add no Typeforge Python calls during validation. Expressions
 using `typeforge.pydantic.Input` intentionally dispatch on each raw input value
 before letting the selected Pydantic schema validate it.
 
+Slice Maps also compose inside `MapFields`, using `Key` for field names and
+`Value` for field types. Explicit field operators replace the source modifiers:
+`Field` makes a field required and writable, `OptionalField` makes it optional
+and writable, and `ReadonlyField` makes it required and readonly. Pydantic retains
+field constraints and record metadata; generated TypedDicts use the compiler's
+existing base-type projection for Annotated fields. Nested Maps over union-valued
+fields still differ between compiler materialization and runtime evaluation;
+see the [field support limits](docs/in_progress_tasks/map-slice-union-findings.md#slice-09-field-composition-boundary).
+
 ### Generic model fields
 
 `Schema` works on ordinary generic `BaseModel` fields, including nested containers
@@ -282,12 +304,12 @@ field configuration, validators, serializers, and `model_rebuild()`:
 
 ```python
 from pydantic import BaseModel
-from typeforge import Case, Map
+from typeforge import Map
 from typeforge.pydantic import Schema
 
 
 class Payload[T](BaseModel):
-    value: Schema[Map[T, Case[int, str], Case[bytes, int]]]
+    value: Schema[Map[T, int: str, bytes: int]]
 
 
 assert Payload[int](value="3").value == "3"
@@ -315,11 +337,11 @@ An explicitly selected `Never` output also rejects schema construction, with
 
 ```python
 from pydantic import TypeAdapter
-from typeforge import Case, Default, Map
+from typeforge import Map
 from typeforge.pydantic import Input, Schema
 
 
-adapter = TypeAdapter(Schema[Map[Input, Case[str, int], Default[float]]])
+adapter = TypeAdapter(Schema[Map[Input, str: int, ...: float]])
 assert adapter.validate_python("3") == 3
 assert type(adapter.validate_python(3)) is float
 ```
@@ -336,6 +358,14 @@ and `Not` predicates. Exact type tests distinguish `bool` from `int`; use
 `Assignable` to accept subclasses. Literals compare both type and value:
 `Literal[1]` does not match `True`, `1.0`, or an integer enum member. Annotation
 validators are not executed to choose a case.
+
+`None` and empty slice endpoints both mean the None type: `Map[Input, :,
+...: str]` accepts None or a string. Ordinary type aliases retain their identity
+in static runtime selection; Input tests unwrap them to observe their leaf types.
+Selected output aliases keep Pydantic's constraints and schema references.
+Union selectors therefore have consumer-specific behavior, and runtime union
+construction absorbs `typing.Any`. The [runtime union boundary](docs/in_progress_tasks/map-slice-union-findings.md#slice-08-runtime-integration-boundary)
+records the supported cases and remaining cross-consumer restrictions.
 
 Parameterized value-time patterns such as `list[int]` and `list[Value]` fail
 construction with `[unsupported_runtime_pattern]`, including under unions,

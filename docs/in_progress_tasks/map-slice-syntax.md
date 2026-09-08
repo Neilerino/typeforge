@@ -1,11 +1,11 @@
 # Map slice syntax migration
 
 Status: In progress — feasibility POC, authoring contract, union investigation,
-public runtime construction, source normalization, predicate alias binding, and
-inline checker projection complete. Remaining
-integration and union gates remain open.
+public runtime construction, source normalization, predicate alias binding,
+inline checker projection, callable publication, Pydantic integration, and field
+composition complete. Diagnostics, cutover, and remaining semantic gates are open.
 
-Next slice: 07 — callable and published-stub integration. Confirmed contract:
+Next slice: 10 — diagnostics and authoring-tool compatibility. Confirmed contract:
 None and empty endpoints are equivalent; old authoring is removed at cutover;
 string selectors require Literal until tooling supports bare strings.
 
@@ -63,9 +63,9 @@ Annotation normalization must not add work to ordinary application call paths.
 - [x] **04 — Normalize source slices into existing compiler data.**
 - [x] **05 — Bind predicates through aliases and nested scopes.**
 - [x] **06 — Project inline annotations for checker overlays.**
-- [ ] **07 — Complete callable and published-stub integration.**
-- [ ] **08 — Complete Pydantic integration and runtime dispatch.**
-- [ ] **09 — Preserve existing field-mapping composition.**
+- [x] **07 — Complete callable and published-stub integration.**
+- [x] **08 — Complete Pydantic integration and runtime dispatch.**
+- [x] **09 — Preserve existing field-mapping composition.**
 - [ ] **10 — Complete diagnostics and authoring-tool compatibility.**
 - [ ] **11 — Migrate documentation and callers; retire prototype code.**
 
@@ -451,7 +451,27 @@ not just emitted-text comparisons.
 Resolve or explicitly constrain G1/G2/G4; the slice 02 overloads are checker-valid
 but do not always agree with static Schema selection.
 
-Evidence/commit: pending.
+Evidence: [Production publication regressions](../../tests/unit/compiler/pipeline/test_slice_publication.py),
+13 passing cases, including six real-checker cases across two finite frontiers.
+Consumers check generated stubs after removing authored source; an incorrect
+assert_type must fail. Coverage includes exact/literal selectors, assignability,
+compounds and predicate aliases, defaults, union outputs, finite structural
+captures, complete interfaces, deterministic publication, and typed unsupported
+relationship failures. Published aliases and overlay bounds retain their distinct
+policies. Existing compiler stages handle these forms without a production change.
+
+**Union de-risking outcome:** G1/G2/G4 are explicitly constrained by the
+[publication boundary](map-slice-union-findings.md#slice-07-callable-publication-boundary).
+Positive evidence covers union outputs, captured unions, union-argument aggregate
+bounds, and configured finite captures. Cross-consumer selector equivalence,
+order-independent equality, Any selection, and unbounded captures remain gated.
+The Assignable/isinstance verification limit and compound predicate candidate
+precision remain with the separate callable semantics cutover.
+
+Validation: focused publication, source POC, inline overlay, and union matrix
+checks passed. Full `make check` passed: pytest, Ruff lint/format, Flake8 block
+spacing, mypy, and Pyright.
+Commit: pending.
 
 ### 08 — Complete Pydantic integration and runtime dispatch
 
@@ -472,7 +492,25 @@ union output schemas, validation ambiguity, and serialization. Preserve possible
 output provenance and do not infer authored static type arguments from values.
 Resolve G1/G3/G4 and promote G7 evidence through the public constructor.
 
-Evidence/commit: pending.
+Evidence: [Runtime lifecycle](../../tests/unit/pydantic/test_runtime_pipeline.py)
+and [deferred dispatch](../../tests/unit/pydantic/test_deferred_pipeline.py)
+regressions now author public slices, retaining their prior acceptance assertions.
+The [85-case union matrix](../../tests/unit/test_slice_union_matrix.py) uses the
+public constructor rather than the prototype. [Nine additional cases](../../tests/unit/pydantic/test_slice_integration.py)
+cover empty/None endpoints, Literal selectors, output metadata and references,
+and ordinary alias roles. The focused suite has 136 cases. No production change
+was required; existing frontend normalization and shared evaluation handle them.
+
+**Union de-risking outcome:** G7's runtime promotion is complete. G1/G3/G4 retain
+existing policy with the explicit [runtime support boundary](map-slice-union-findings.md#slice-08-runtime-integration-boundary).
+Bare selectors, whole-subject predicates, and Input observation keep distinct
+roles. Transparent static alias matching and Any-containing union selection
+remain outside cross-consumer guarantees. No semantic convergence is claimed;
+the broader differences remain follow-ups. Field distribution stays with 09.
+
+Validation: focused runtime/union checks passed. Full `make check` passed:
+pytest, Ruff lint/format, Flake8 block spacing, mypy, and Pyright.
+Commit: pending.
 
 ### 09 — Preserve existing field-mapping composition
 
@@ -494,7 +532,32 @@ or support for speculative field results and record-union operands.
 G5 records a concrete compiler/runtime distribution mismatch; G6 records existing
 record-union and union-capture restrictions. Neither is fixed by the POC.
 
-Evidence/commit: pending.
+Evidence: [13 field integration cases](../../tests/unit/test_slice_fields.py)
+cover canonical/slice publication parity, runtime values and schemas, key versus
+Literal value roles, predicate aliases, dropping, renaming, explicit modifiers,
+union outputs, typed failures, and indeterminate field-layout rejection. All three
+checkers accept generated field types and reject readonly mutation. Existing
+[record](../../tests/unit/pydantic/test_records.py) and
+[field](../../tests/unit/pydantic/test_map_fields.py) suites now use slices for
+their Map relationships, preserving metadata, rebuild, and failure assertions.
+No production changes were required.
+
+**Union de-risking outcome:** plain union-valued fields and union outputs have
+positive runtime and checker evidence. G5's nested field-union distribution
+mismatch is explicitly constrained, not fixed; G6 retains record-union and union
+capture-pattern rejection. Deferred and indeterminate field layouts remain
+unsupported. See the [field support boundary](map-slice-union-findings.md#slice-09-field-composition-boundary).
+
+Metadata follows existing consumer policy: the compiler projects Annotated field
+types to their base type, while Pydantic retains constraints and record metadata.
+An inherited-record callable probe also exposed existing broader-first overload
+ordering rejected by mypy; generated record-type checks exclude that unrelated
+callable and do not establish inherited dispatch precision. The follow-up is
+recorded alongside G5/G6.
+
+Validation: focused field/runtime/union checks passed. Full `make check` passed:
+pytest, Ruff lint/format, Flake8 block spacing, mypy, and Pyright.
+Commit: pending.
 
 ### 10 — Complete diagnostics and authoring-tool compatibility
 

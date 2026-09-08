@@ -5,8 +5,6 @@ import pytest
 from pydantic import BaseModel, TypeAdapter, ValidationError
 from pydantic import Field as PydanticField
 from typeforge import (
-    Case,
-    Default,
     Drop,
     Equal,
     Field,
@@ -30,12 +28,10 @@ type Public[T] = MapFields[
     T,
     Map[
         Key,
-        Case[Equal[Key, Literal["password"]], Drop],
-        Default[
-            Field[
-                Key,
-                Map[Value, Case[int, str], Default[Value]],
-            ]
+        Equal[Key, Literal["password"]] : Drop,
+        ... : Field[
+            Key,
+            Map[Value, int:str, ...:Value],
         ],
     ],
 ]
@@ -67,11 +63,8 @@ def test_map_fields_can_rename_and_make_fields_optional() -> None:
         T,
         Map[
             Key,
-            Case[
-                Equal[Key, Literal["name"]],
-                OptionalField[Literal["display_name"], Value],
-            ],
-            Default[Drop],
+            Equal[Key, Literal["name"]] : OptionalField[Literal["display_name"], Value],
+            ...:Drop,
         ],
     ]
     adapter = TypeAdapter(Schema[Renamed[User]])
@@ -101,7 +94,7 @@ def test_map_fields_preserves_constrained_leaf_metadata() -> None:
     class Payload(TypedDict):
         count: Annotated[int, PydanticField(gt=0)]
 
-    type Copy[T] = MapFields[T, Field[Key, Value]]
+    type Copy[T] = MapFields[T, Map[Key, ... : Field[Key, Value]]]
     adapter = TypeAdapter(Schema[Copy[Payload]])
 
     assert adapter.validate_python({"count": "2"}) == {"count": 2}

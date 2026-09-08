@@ -22,6 +22,16 @@ Some of these rules overlap shared evaluation; others describe the finite
 relationships Python typing can express. Characterize that distinction before
 moving code. The completed Schema cutover did not unify callable evaluation.
 
+Slice-syntax integration now has [published-consumer regressions](../../tests/unit/compiler/pipeline/test_slice_publication.py)
+covering finite captures and all three checkers. Two precision cases belong here:
+`All[Assignable[int], Not[Equal[bool]]]` produces a bool specialization and an
+aggregate bound for ordinary integers; Assignable plus an isinstance guard may
+require the fallback output on the guarded return. The latter is characterized in
+[overlay tests](../../tests/unit/overlay/test_inline_maps.py). Both already occur
+with canonical authoring. Candidate discovery, subtype overlap, and verification
+flow need an agreed contract before either is changed. Unbounded `list[Value]`
+callable outputs still fail emission, independently of supported finite captures.
+
 ## Intended outcome
 
 Shared semantics determines the meaning of callable Map expressions for the

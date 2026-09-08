@@ -140,6 +140,118 @@ the direct-boundary probe. Static field evidence here deliberately uses the
 existing record-alias materialization path. Runtime supports the exercised
 TypedDict expression. Neither result broadens record-family support.
 
+## Slice 07 callable publication boundary
+
+[Production publication regressions](../../tests/unit/compiler/pipeline/test_slice_publication.py)
+exercise generated interfaces with mypy, Pyright, and Pyrefly at maximum arities
+two and three. The consumer runs against the `.pyi` after the authored `.py` is
+removed. Generated imports require no Typeforge markers. Both accepted inferred
+types and an intentionally incorrect assert_type are checked, with explicit
+Pyrefly configuration so its unconfigured basic preset cannot hide the failure.
+
+The fixture preserves constants, TypedDicts, dataclasses, generic functions, and
+methods alongside slice relationships. Exact/literal selectors, predicate aliases,
+All/Any/Not, generic defaults, and omitted defaults use existing specialization.
+An `Option[Value]: Value | None` alias composed with Each/Collect preserves captured
+union outputs. Raising the configured frontier changes a three-argument call from
+`tuple[object, ...]` to `tuple[int, str, bytes]`; changing consumer calls does not
+change the generated stub. Published aliases remain object, while overlays retain
+their output union.
+
+These are bounded support claims. G1/G2/G4 are **constrained, not resolved**:
+
+| Gate / form | Slice 07 boundary |
+| --- | --- |
+| G1: union selectors and whole-subject predicates | Existing checker-valid overload behavior remains characterized by the slice 02 checker matrix. Do not promise equality with Schema selection. Callable overload subtype matching cannot express exact exclusion of bool from int. |
+| G2: reordered union equality | Union-valued outputs and captures have positive evidence. Order-independent union comparison and equivalent branch selection across consumers remain outside the supported guarantee; no equality implementation changes here. |
+| G4: Any in selection | Do not rely on Any-containing subject/selector unions for portable selection. U24/U25 remain the static/runtime witnesses; this slice does not reinterpret Any or use it to replace a relationship bound. |
+| Concrete union callable subject | `Map[int | str, int: bytes]` at a callable return boundary fails with MISSING_CONTROLLER. Generic-controller calls with union arguments retain the existing conservative overload result. |
+| Predicate overlap and fallback | `All[Assignable[int], Not[Equal[bool]]]` gives int arguments an aggregate `str | bytes` bound and bool arguments bytes in the exercised fixture. This is existing candidate discovery behavior, not general predicate precision. |
+| Verification guards | Slice 06's Assignable/isinstance precision limitation remains. Exact Equal/type guard checks pass; do not infer equivalent flow precision from publication success. |
+| Unbounded structural callable outputs | `list[Value]: tuple[Value, ...]` still returns EmissionError rather than a partial interface. Finite Each/Collect evidence does not extend this boundary. |
+
+Duplicate selectors, missing controllers, unsupported predicate controller
+positions, and Each on an ordinary parameter return typed failures through both
+compilation and publication. These existing rejection rules are unchanged. The
+union restrictions above are documented support limits, not new parser errors.
+Broader callable behavior remains with the
+[callable semantics cutover](../ideas/callable-map-semantics-cutover.md).
+
+## Slice 08 runtime integration boundary
+
+The 85-case union matrix now uses public Map construction and canonical internal
+markers directly; it no longer imports the prototype. The expected U-row results
+are unchanged. This promotes generic discovery/substitution, union ambiguity,
+validation/serialization, and deferred-bound evidence through production
+construction, completing G7's runtime work.
+
+The [runtime lifecycle suite](../../tests/unit/pydantic/test_runtime_pipeline.py)
+and [deferred dispatch suite](../../tests/unit/pydantic/test_deferred_pipeline.py)
+now author slices. They retain their prior assertions for generic fallback order,
+partial inheritance, sibling specialization, rebuilds, field diagnostics,
+no-match versus explicit Never, callback absence for resolved transformations,
+short-circuiting, unsupported patterns, and unexpected failure propagation.
+Selected output failures never run later validators. Serialization chooses from
+output types without treating coerced results as fresh Input.
+
+[Nine additional boundary cases](../../tests/unit/pydantic/test_slice_integration.py)
+verify None/empty endpoint equivalence, unary None predicates, Literal string
+selectors, ordinary alias roles, selected metadata, and schema-reference parity
+with canonical construction. Schema wrapper references remain distinct from
+ordinary alias references, as owned by Pydantic.
+
+G1/G3/G4's migration disposition preserves existing policies with explicit
+consumer restrictions. It does not resolve the broader semantic differences:
+
+| Gate | Runtime rule retained and support boundary |
+| --- | --- |
+| G1 — Union selection | Bare static selectors match each distributed subject member. Unary predicates compare the whole subject. Input union selectors observe leaf alternatives; Equal still compares types and Assignable admits subtypes. U01/U05–11/U26 and dispatch tests cover these roles. Do not promise one selector has identical meaning in Schema, Input, and callable overloads. |
+| G3 — Alias transparency | Static runtime matching retains ordinary alias identity. `Map[Numbers, Numbers: bytes]` can match the same alias, but `Numbers = int | str` is not a transparent union subject or Assignable target there. Input tests unwrap ordinary aliases and reject hidden parameterized patterns. Output aliases retain Pydantic metadata and references. U16/U18/U29 remain explicitly outside cross-consumer equivalence; alias transparency changes are deferred. Existing Typeforge-operator alias expansion, binding, and cycle errors remain covered by slice 05. |
+| G4 — Any unions | Runtime construction absorbs Any and applies later selection to that result, as U24/U25 demonstrate. Generic defaults, constraints, bounds, and Any fallbacks remain independent of submitted values. Do not promise cross-consumer selection for Any-containing unions; the compiler's retained member paths remain different. |
+| G7 — Public integration | Complete for the tested construction, substitution, overlay, publication, and runtime paths. No raw slice survives into semantic evaluation, and no additional evaluator or validation callback was needed. |
+
+These restrictions limit support claims rather than introducing new rejection
+logic. The migration preserves the existing data and evaluator behavior. G2's
+compiler equality issue, G5's field distribution, and G6's unsupported structures
+remain with their recorded owners; passing runtime tests does not clear them.
+
+## Slice 09 field composition boundary
+
+[Field integration evidence](../../tests/unit/test_slice_fields.py) compares the
+same inherited TypedDict transform through published stubs and runtime Schema.
+Slices and canonical branches agree on dropping password, renaming name through
+a unary predicate alias, making that output optional, and selecting a readonly
+`str | None` output for a scalar integer field. Literal-valued union fields stay
+typing values rather than becoming field names. Plain Field makes inherited
+optional/readonly inputs required and writable; this is existing operator policy.
+
+Mypy, Pyright, and Pyrefly accept the generated record types and their union
+annotations, permit writable-field mutation, and reject readonly-field mutation.
+The checker fixture deliberately excludes generic callable dispatch across both
+base and derived records: existing source-order overload construction places the
+base first, and mypy reports `overload-cannot-match` for the derived overload.
+Canonical and slice publication preserve the same ordering. This remains a
+callable specialization follow-up, not a claim established by field-type checks.
+
+Runtime record and field suites now exercise public slices, including nested
+error locations, generic record specialization, record Doc metadata, leaf
+constraints, shared references, and rebuilds. Compiler Annotated field metadata
+remains transparent: the source parser strips it and emits the base typing type.
+Pydantic retains it for validation and schema generation. Metadata preservation
+claims follow these existing consumer policies.
+
+| Gate / composition | Slice 09 disposition |
+| --- | --- |
+| G5 — Nested Map over union-valued Value | Explicitly constrained. The compiler's `build_record_shapes` stores field annotations as opaque NamedType values, so the existing witness emits float while runtime Schema distributes to bytes or float. Fixing structural field discovery and its downstream matching effects needs a separate compiler change; do not document this composition as cross-consumer equivalent. |
+| Union output or unchanged union field | Supported by the exercised fixture in both consumers and all three checkers. This does not require rediscovering or distributing a field's input type. |
+| G6 — Record unions and unions of capture patterns | Continue to fail. The public union matrix retains both-spelling errors; additional tests reject ordinary classes and parameterized dict records. No record-family or capture-pattern expansion is included. |
+| Speculative field layouts | Deferred Input cannot choose a field versus Drop: both consumers reject construction with their existing typed errors. A source-normalized transform over an unresolved type parameter also fails shared evaluation rather than becoming a definite record, for both spellings. |
+| Duplicate names / non-field outputs | Both boundaries reject them. Compiler failures retain the authored alias name and expression; Pydantic retains its domain error code. Diagnostic presentation changes remain with slice 10. |
+
+G5 remains a semantic follow-up under this explicit support restriction; G6's
+rejections are retained. No production evaluator, field defaults, or record model
+changed in this slice.
+
 ## Supported evidence, restrictions, and follow-up gates
 
 The following forms have useful positive evidence: explicit branches over concrete
