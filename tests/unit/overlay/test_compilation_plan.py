@@ -26,10 +26,9 @@ from typeforge.overlay import OverlayError, OverlayErrorCode, transform_source
 
 
 def test_same_named_relationship_aliases_preserve_first_binding_projection() -> None:
-    source = dedent("""\
-        from typeforge import Case, Default, Map
-        type Selected[T] = Map[T, Case[int, bytes], Default[str]]
-        type Selected[T] = Map[T, Case[int, float], Default[None]]
+    source = dedent("""        from typeforge import Map
+        type Selected[T] = Map[T, int : bytes, ... : str]
+        type Selected[T] = Map[T, int : float, ... : None]
         type Selected[T] = T
         """)
 
@@ -40,8 +39,7 @@ def test_same_named_relationship_aliases_preserve_first_binding_projection() -> 
     )
     document = transform_source(source, Path("aliases.py")).unwrap()
 
-    assert document.generated_text == dedent("""\
-        from typeforge import Case, Default, Map
+    assert document.generated_text == dedent("""        from typeforge import Map
         type Selected[T] = bytes | str
         type Selected[T] = bytes | str
         type Selected[T] = T
@@ -49,18 +47,17 @@ def test_same_named_relationship_aliases_preserve_first_binding_projection() -> 
 
 
 def test_reusable_relationships_preserve_alias_names_and_schema_branches() -> None:
-    source = dedent("""\
-        from typing import TypedDict
-        from typeforge import Case, Default, Field, Key, Map, MapFields, Value
+    source = dedent("""        from typing import TypedDict
+        from typeforge import Field, Key, Map, MapFields, Value
         from typeforge.pydantic import Schema
         class Payload(TypedDict):
             value: int
         type Copy[T] = MapFields[T, Field[Key, Value]]
-        type Wire[T] = Map[T, Case[int, bytes], Default[str]]
-        type Named[T] = Map[T, Case[int, Wire[T]], Default[None]]
-        type Record[T] = Map[T, Case[int, Copy[Payload]], Default[None]]
-        type Explicit[T] = Map[T, Case[int, Copy_Payload], Default[None]]
-        type Wrapped[T] = Schema[Map[T, Case[int, bytes], Default[str]]]
+        type Wire[T] = Map[T, int : bytes, ... : str]
+        type Named[T] = Map[T, int : Wire[T], ... : None]
+        type Record[T] = Map[T, int : Copy[Payload], ... : None]
+        type Explicit[T] = Map[T, int : Copy_Payload, ... : None]
+        type Wrapped[T] = Schema[Map[T, int : bytes, ... : str]]
         """)
 
     plan = compile_source(source, Path("relationships.py"), maximum_arity=1).unwrap()
@@ -98,11 +95,11 @@ def test_reusable_relationships_preserve_alias_names_and_schema_branches() -> No
     expected = source
     for authored, projected in (
         ("MapFields[T, Field[Key, Value]]", "object"),
-        ("Schema[Map[T, Case[int, bytes], Default[str]]]", "bytes | str"),
-        ("Map[T, Case[int, bytes], Default[str]]", "bytes | str"),
-        ("Map[T, Case[int, Wire[T]], Default[None]]", "Wire[T] | None"),
-        ("Map[T, Case[int, Copy[Payload]], Default[None]]", "Copy[Payload] | None"),
-        ("Map[T, Case[int, Copy_Payload], Default[None]]", "Copy_Payload | None"),
+        ("Schema[Map[T, int : bytes, ... : str]]", "bytes | str"),
+        ("Map[T, int : bytes, ... : str]", "bytes | str"),
+        ("Map[T, int : Wire[T], ... : None]", "Wire[T] | None"),
+        ("Map[T, int : Copy[Payload], ... : None]", "Copy[Payload] | None"),
+        ("Map[T, int : Copy_Payload, ... : None]", "Copy_Payload | None"),
     ):
         expected = expected.replace(authored, projected)
 
@@ -117,8 +114,8 @@ def test_reusable_relationships_preserve_alias_names_and_schema_branches() -> No
         ("MapFields[T, Field[Key, Value]]", "object"),
         ("Schema[int]", "int"),
         ("list[Schema[int]]", "list[int]"),
-        ("Map[T, Case[int, bytes], Default[str]]", "bytes | str"),
-        ("Schema[Map[T, Case[int, bytes], Default[str]]]", "bytes | str"),
+        ("Map[T, int : bytes, ... : str]", "bytes | str"),
+        ("Schema[Map[T, int : bytes, ... : str]]", "bytes | str"),
     ),
     ids=(
         "each-fallback",
@@ -134,7 +131,7 @@ def test_alias_projection_uses_current_alias_origins_and_preserves_source_mappin
     authored_value: str, projected_value: str
 ) -> None:
     source = dedent(f"""\
-        from typeforge import Case, Collect, Default, Each, Field, Key
+        from typeforge import Collect, Each, Field, Key
         from typeforge import Map, MapFields, Value
         from typeforge.pydantic import Schema
 
@@ -202,10 +199,9 @@ def test_overlay_preserves_compilation_failure_before_generating_overloads(
 
 
 def test_alias_generated_overloads_have_origins_for_functions_and_methods() -> None:
-    source = dedent("""\
-        from typeforge import Case, Default, Map
+    source = dedent("""        from typeforge import Map
 
-        type Encoded[T] = Map[T, Case[int, bytes], Default[str]]
+        type Encoded[T] = Map[T, int : bytes, ... : str]
 
         def encode[T](value: T) -> Encoded[T]: ...
 

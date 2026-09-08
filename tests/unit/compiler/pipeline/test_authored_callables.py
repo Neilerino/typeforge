@@ -103,10 +103,9 @@ def test_identity_overlay_keeps_descriptions_even_without_generated_edits() -> N
 
 
 def test_alias_generated_overloads_do_not_broaden_diagnostic_selection() -> None:
-    source = dedent("""\
-        from typeforge import Map, Case, Default
+    source = dedent("""        from typeforge import Map
 
-        type Converted[T] = Map[T, Case[int, str], Default[bytes]]
+        type Converted[T] = Map[T, int : str, ... : bytes]
         def convert[T](value: T) -> Converted[T]: ...
         """)
     plan = compile_source(source, Path("aliases.py"), maximum_arity=1).unwrap()

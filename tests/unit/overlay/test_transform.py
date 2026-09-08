@@ -80,12 +80,13 @@ def test_enriched_method_is_inserted_inside_its_owning_class() -> None:
 
 
 def test_map_aliases_are_expanded_before_overlay_lowering() -> None:
-    source = (
-        "from typeforge import Case, Default, Map\n\n"
-        "type Encoded[T] = Map[T, Case[int, bytes], Default[str]]\n\n"
-        "def encode[T](value: T) -> Encoded[T]:\n"
-        "    return str(value)\n"
-    )
+    source = """from typeforge import Map
+
+type Encoded[T] = Map[T, int : bytes, ... : str]
+
+def encode[T](value: T) -> Encoded[T]:
+    return str(value)
+"""
 
     transformed = transform_source(source, Path("encoding.py"), maximum_arity=1)
 
@@ -221,36 +222,42 @@ def test_mypy_consumes_same_file_method_overlay(tmp_path: Path) -> None:
 
 
 def test_mypy_consumes_bounded_structural_map_overlay(tmp_path: Path) -> None:
-    source = (
-        "from dataclasses import dataclass\n"
-        "from typing import Protocol, assert_type\n"
-        "from typeforge import Case, Collect, Default, Each, Map, Value\n\n"
-        "class Component(Protocol):\n"
-        "    def __hash__(self) -> int: ...\n\n"
-        "@dataclass(frozen=True)\n"
-        "class Option[T: Component]:\n"
-        "    value: T\n\n"
-        "type QueryResult[T] = Map[\n"
-        "    T, Case[Option[Value], Value | None], Default[T]\n"
-        "]\n\n"
-        "class World:\n"
-        "    def query[T](\n"
-        "        self, *components: Each[type[T]]\n"
-        "    ) -> Collect[QueryResult[T]]:\n"
-        "        raise NotImplementedError\n\n"
-        "@dataclass(frozen=True)\n"
-        "class Position:\n"
-        "    x: float\n\n"
-        "@dataclass(frozen=True)\n"
-        "class Velocity:\n"
-        "    dx: float\n\n"
-        "world = World()\n"
-        "assert_type(world.query(Position, Velocity), tuple[Position, Velocity])\n"
-        "assert_type(\n"
-        "    world.query(Position, Option[Velocity]),\n"
-        "    tuple[Position, Velocity | None],\n"
-        ")\n"
-    )
+    source = """from dataclasses import dataclass
+from typing import Protocol, assert_type
+from typeforge import Collect, Each, Map, Value
+
+class Component(Protocol):
+    def __hash__(self) -> int: ...
+
+@dataclass(frozen=True)
+class Option[T: Component]:
+    value: T
+
+type QueryResult[T] = Map[
+    T, Option[Value] : Value | None, ... : T
+]
+
+class World:
+    def query[T](
+        self, *components: Each[type[T]]
+    ) -> Collect[QueryResult[T]]:
+        raise NotImplementedError
+
+@dataclass(frozen=True)
+class Position:
+    x: float
+
+@dataclass(frozen=True)
+class Velocity:
+    dx: float
+
+world = World()
+assert_type(world.query(Position, Velocity), tuple[Position, Velocity])
+assert_type(
+    world.query(Position, Option[Velocity]),
+    tuple[Position, Velocity | None],
+)
+"""
     transformed = transform_source(source, tmp_path / "ecs.py", maximum_arity=2)
     assert isinstance(transformed, Success)
     assert "query[T1: Component]" in transformed.unwrap().generated_text
@@ -279,22 +286,26 @@ def test_schema_boundaries_are_erased_from_model_fields_in_overlay() -> None:
     source = (
         "from pydantic import BaseModel\n"
         "from typing import TypedDict\n"
-        "from typeforge import (\n"
-        "    Case, Default, Equal, Field, Key, Map, MapFields, Value,\n"
-        ")\n"
-        "from typeforge.pydantic import Schema\n\n"
-        "type Wire[T] = Map[T, Case[bytes, str], Default[int]]\n\n"
+        "from typeforge import Equal, Field, Key, Map, "
+        "MapFields, Value\n"
+        "from typeforge.pydantic import Schema\n"
+        "\n"
+        "type Wire[T] = Map[T, bytes : str, ... : int]\n"
+        "\n"
         "class User(TypedDict):\n"
-        "    name: str\n\n"
-        "type Public[T] = MapFields[T, Field[Key, Value]]\n\n"
+        "    name: str\n"
+        "\n"
+        "type Public[T] = MapFields[T, Field[Key, Value]]\n"
+        "\n"
         "class Payload(BaseModel):\n"
         "    wire: Schema[Wire[bytes]]\n"
-        "    direct: Schema[Map["
-        "int, Case[Equal[int, int], str], Default[bytes]]]\n"
-        "    public: Schema[Public[User]]\n\n"
-        "    def parse(self, value: Schema[Wire[bytes]]) "
-        "-> Schema[Map["
-        "int, Case[Equal[int, int], str], Default[bytes]]]: ...\n"
+        "    direct: Schema[Map[int, Equal[int, int] : str, ..."
+        " : bytes]]\n"
+        "    public: Schema[Public[User]]\n"
+        "\n"
+        "    def parse(self, value: Schema[Wire[bytes]]) -> "
+        "Schema[Map[int, Equal[int, int] : str, ... : bytes]]: "
+        "...\n"
     )
 
     transformed = transform_source(source, Path("models.py"))

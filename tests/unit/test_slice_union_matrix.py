@@ -1,6 +1,7 @@
 """Slice 02 evidence promoted to the public constructor in slice 08.
 
-Case IDs correspond to docs/in_progress_tasks/map-slice-union-findings.md.
+U01 through U31 retain the migration's behavioral witnesses; CONTEXT.md records the
+union support boundaries and open decisions.
 Expected semantic limitations remain characterizations, not fixes.
 """
 
@@ -20,9 +21,9 @@ from pydantic import (
     TypeAdapter,
     ValidationError,
 )
-from typeforge import Case
 from typeforge import Map as SliceMap
 from typeforge import semantics as s
+from typeforge._markers import Case
 from typeforge._markers import Map as CanonicalMap
 from typeforge.compiler.pipeline import generate_module
 from typeforge.compiler.semantic_adapter import (
@@ -36,9 +37,9 @@ from typeforge.overlay import transform_source
 from typeforge.pydantic import Schema
 from typeforge.pydantic._frontend import adapt_annotation
 
-IMPORTS = """\
-from typing import Annotated, Any, Literal, Never, TypeVar, TypedDict
-from typeforge import Map, Case, Default, Equal, Assignable, All, Not, Value
+IMPORTS = """from typing import Annotated, Any, Literal, Never, TypeVar, TypedDict
+from typeforge import Map, Equal, Assignable, All, Not, Value
+from typeforge._markers import Case, Default, Map as CanonicalMap
 from typeforge import Any as AnyCondition
 from typeforge import MapFields, Field, Key, Drop
 from typeforge.pydantic import Schema, Input
@@ -60,29 +61,31 @@ CASES = (
     UnionCase(
         "U01-subject-distribution",
         "Map[int | str, int: bytes, str: float]",
-        "Map[int | str, Case[int, bytes], Case[str, float]]",
+        "CanonicalMap[int | str, Case[int, bytes], Case[str, float]]",
         "bytes | float",
         "bytes | float",
     ),
     UnionCase(
         "U02-subject-default",
         "Map[int | str, int: bytes, ...: float]",
-        "Map[int | str, Case[int, bytes], Default[float]]",
+        "CanonicalMap[int | str, Case[int, bytes], Default[float]]",
         "bytes | float",
         "bytes | float",
     ),
     UnionCase(
         "U03-subject-order",
         "Map[int | str, Assignable[object]: bytes, int: str, ...: float]",
-        "Map[int | str, Case[Assignable[int | str, object], bytes], "
-        "Case[int, str], Default[float]]",
+        (
+            "CanonicalMap[int | str, Case[Assignable[int | str, "
+            "object], bytes], Case[int, str], Default[float]]"
+        ),
         "bytes",
         "bytes",
     ),
     UnionCase(
         "U04-unmatched-member",
         "Map[int | str, int: bytes]",
-        "Map[int | str, Case[int, bytes]]",
+        "CanonicalMap[int | str, Case[int, bytes]]",
         "bytes",
         "bytes",
         runtime_error="map_no_match",
@@ -90,85 +93,93 @@ CASES = (
     UnionCase(
         "U05-union-selector-single-subject",
         "Map[int, int | str: bytes, ...: float]",
-        "Map[int, Case[int | str, bytes], Default[float]]",
+        "CanonicalMap[int, Case[int | str, bytes], Default[float]]",
         "float",
         "float",
     ),
     UnionCase(
         "U06-union-selector-union-subject",
         "Map[int | str, int | str: bytes, ...: float]",
-        "Map[int | str, Case[int | str, bytes], Default[float]]",
+        "CanonicalMap[int | str, Case[int | str, bytes], Default[float]]",
         "float",
         "float",
     ),
     UnionCase(
         "U07-equal-whole-subject",
         "Map[int | str, Equal[int]: bytes, ...: float]",
-        "Map[int | str, Case[Equal[int | str, int], bytes], Default[float]]",
+        "CanonicalMap[int | str, Case[Equal[int | str, int], bytes], Default[float]]",
         "float",
         "float",
     ),
     UnionCase(
         "U08-equal-whole-union",
         "Map[int | str, Equal[str | int]: bytes, ...: float]",
-        "Map[int | str, Case[Equal[int | str, str | int], bytes], Default[float]]",
+        (
+            "CanonicalMap[int | str, Case[Equal[int | str, str | "
+            "int], bytes], Default[float]]"
+        ),
         "float",
         "bytes",
     ),
     UnionCase(
         "U09-assignable-union-target",
         "Map[int, Assignable[int | str]: bytes, ...: float]",
-        "Map[int, Case[Assignable[int, int | str], bytes], Default[float]]",
+        "CanonicalMap[int, Case[Assignable[int, int | str], bytes], Default[float]]",
         "bytes",
         "bytes",
     ),
     UnionCase(
         "U10-assignable-all-subject-members",
         "Map[int | str, Assignable[int]: bytes, ...: float]",
-        "Map[int | str, Case[Assignable[int | str, int], bytes], Default[float]]",
+        (
+            "CanonicalMap[int | str, Case[Assignable[int | str, "
+            "int], bytes], Default[float]]"
+        ),
         "float",
         "float",
     ),
     UnionCase(
         "U11-compound-union-predicate",
         "Map[int, All[Assignable[int | str], Not[Equal[str]]]: bytes, ...: float]",
-        "Map[int, Case[All[Assignable[int, int | str], Not[Equal[int, str]]], "
-        "bytes], Default[float]]",
+        (
+            "CanonicalMap[int, Case[All[Assignable[int, int | str],"
+            " Not[Equal[int, str]]], bytes], Default[float]]"
+        ),
         "bytes",
         "bytes",
     ),
     UnionCase(
         "U12-union-output",
         "Map[int, int: str | None, ...: bytes]",
-        "Map[int, Case[int, str | None], Default[bytes]]",
+        "CanonicalMap[int, Case[int, str | None], Default[bytes]]",
         "str | None",
         "str | None",
     ),
     UnionCase(
         "U13-nested-union-output",
         "Map[int, int: list[str | None]]",
-        "Map[int, Case[int, list[str | None]]]",
+        "CanonicalMap[int, Case[int, list[str | None]]]",
         "list[str | None]",
         "list[str | None]",
     ),
     UnionCase(
         "U14-map-under-union",
         "Map[int, int: str, ...: bytes] | None",
-        "Map[int, Case[int, str], Default[bytes]] | None",
+        "CanonicalMap[int, Case[int, str], Default[bytes]] | None",
         "str | None",
         "str | None",
     ),
     UnionCase(
         "U15-map-under-nested-union",
         "list[Map[int, int: str] | None]",
-        "list[Map[int, Case[int, str]] | None]",
+        "list[CanonicalMap[int, Case[int, str]] | None]",
         "list[str | None]",
         "list[str | None]",
     ),
     UnionCase(
         "U16-alias-union-subject",
         "Map[Numbers, int: bytes, ...: float]",
-        "Map[Numbers, Case[int, bytes], Default[float]]",
+        "CanonicalMap[Numbers, Case[int, bytes], Default[float]]",
         "bytes | float",
         "float",
         setup="type Numbers = int | str\n",
@@ -176,7 +187,7 @@ CASES = (
     UnionCase(
         "U17-alias-union-selector",
         "Map[int, Numbers: bytes, ...: float]",
-        "Map[int, Case[Numbers, bytes], Default[float]]",
+        "CanonicalMap[int, Case[Numbers, bytes], Default[float]]",
         "float",
         "float",
         setup="type Numbers = int | str\n",
@@ -184,7 +195,7 @@ CASES = (
     UnionCase(
         "U18-alias-predicate-target",
         "Map[int, Assignable[Numbers]: bytes, ...: float]",
-        "Map[int, Case[Assignable[int, Numbers], bytes], Default[float]]",
+        "CanonicalMap[int, Case[Assignable[int, Numbers], bytes], Default[float]]",
         "bytes",
         "float",
         setup="type Numbers = int | str\n",
@@ -192,36 +203,39 @@ CASES = (
     UnionCase(
         "U19-captured-union-output",
         "Map[list[int | str], list[Value]: tuple[Value | None, ...]]",
-        "Map[list[int | str], Case[list[Value], tuple[Value | None, ...]]]",
+        "CanonicalMap[list[int | str], Case[list[Value], tuple[Value | None, ...]]]",
         "tuple[int | str | None, ...]",
         "tuple[int | str | None, ...]",
     ),
     UnionCase(
         "U20-capture-drives-distribution",
         "Map[list[int | str], list[Value]: Map[Value, int: bytes, ...: float]]",
-        "Map[list[int | str], Case[list[Value], "
-        "Map[Value, Case[int, bytes], Default[float]]]]",
+        (
+            "CanonicalMap[list[int | str], Case[list[Value], "
+            "CanonicalMap[Value, Case[int, bytes], "
+            "Default[float]]]]"
+        ),
         "bytes | float",
         "bytes | float",
     ),
     UnionCase(
         "U21-never-branch-with-valid-member",
         "Map[int | str, int: Never, ...: bytes]",
-        "Map[int | str, Case[int, Never], Default[bytes]]",
+        "CanonicalMap[int | str, Case[int, Never], Default[bytes]]",
         "bytes",
         "bytes",
     ),
     UnionCase(
         "U22-never-under-output-union",
         "Map[int, int: Never] | str",
-        "Map[int, Case[int, Never]] | str",
+        "CanonicalMap[int, Case[int, Never]] | str",
         "str",
         "str",
     ),
     UnionCase(
         "U23-no-match-under-output-union",
         "Map[int, str: bytes] | float",
-        "Map[int, Case[str, bytes]] | float",
+        "CanonicalMap[int, Case[str, bytes]] | float",
         "float",
         "float",
         runtime_error="map_no_match",
@@ -229,43 +243,45 @@ CASES = (
     UnionCase(
         "U24-any-union-subject",
         "Map[Any | int, int: str, ...: bytes]",
-        "Map[Any | int, Case[int, str], Default[bytes]]",
+        "CanonicalMap[Any | int, Case[int, str], Default[bytes]]",
         "bytes | str",
         "bytes",
     ),
     UnionCase(
         "U25-any-union-output",
         "Map[int, int: Any | str]",
-        "Map[int, Case[int, Any | str]]",
+        "CanonicalMap[int, Case[int, Any | str]]",
         "Any | str",
         "Any",
     ),
     UnionCase(
         "U26-input-union-bound",
         "Map[Input, int | str: bytes, ...: float]",
-        "Map[Input, Case[int | str, bytes], Default[float]]",
+        "CanonicalMap[Input, Case[int | str, bytes], Default[float]]",
         "bytes | float",
         "object",
     ),
     UnionCase(
         "U27-distributed-deferred-bounds",
         "Map[int | str, int: Map[Input, int: bytes, ...: float], ...: bytes]",
-        "Map[int | str, Case[int, Map[Input, Case[int, bytes], "
-        "Default[float]]], Default[bytes]]",
+        (
+            "CanonicalMap[int | str, Case[int, CanonicalMap[Input, "
+            "Case[int, bytes], Default[float]]], Default[bytes]]"
+        ),
         "bytes | float",
         "object",
     ),
     UnionCase(
         "U28-annotated-union-output",
         'Map[int, int: Annotated[str | None, "description"]]',
-        'Map[int, Case[int, Annotated[str | None, "description"]]]',
+        'CanonicalMap[int, Case[int, Annotated[str | None, "description"]]]',
         "str | None",
         "str | None",
     ),
     UnionCase(
         "U29-alias-whole-union-match",
         "Map[Numbers, Numbers: bytes, ...: float]",
-        "Map[Numbers, Case[Numbers, bytes], Default[float]]",
+        "CanonicalMap[Numbers, Case[Numbers, bytes], Default[float]]",
         "float",
         "bytes",
         setup="type Numbers = int | str\n",
@@ -273,14 +289,17 @@ CASES = (
     UnionCase(
         "U30-equal-same-order-union",
         "Map[int | str, Equal[int | str]: bytes, ...: float]",
-        "Map[int | str, Case[Equal[int | str, int | str], bytes], Default[float]]",
+        (
+            "CanonicalMap[int | str, Case[Equal[int | str, int | "
+            "str], bytes], Default[float]]"
+        ),
         "bytes",
         "bytes",
     ),
     UnionCase(
         "U31-alias-union-output",
         "Map[int, int: Maybe[str]]",
-        "Map[int, Case[int, Maybe[str]]]",
+        "CanonicalMap[int, Case[int, Maybe[str]]]",
         "str | None",
         "Maybe[str]",
         setup="type Maybe[T] = T | None\n",
@@ -348,7 +367,10 @@ def test_input_union_selection_validation_and_serialization(sliced: bool) -> Non
     annotation = runtime_expression(
         "Map[Input, int | str: int | None, str: str, ...: bool]"
         if sliced
-        else "Map[Input, Case[int | str, int | None], Case[str, str], Default[bool]]",
+        else (
+            "CanonicalMap[Input, Case[int | str, int | None], "
+            "Case[str, str], Default[bool]]"
+        ),
         sliced=sliced,
     )
     adapter = TypeAdapter(Schema[annotation])
@@ -416,18 +438,22 @@ def test_union_parameters_discover_substitute_and_rebuild() -> None:
 @pytest.mark.parametrize(
     ("sliced", "canonical", "indeterminate"),
     [
-        ("Map[int, int: str | bytes]", "Map[int, Case[int, str | bytes]]", False),
+        (
+            "Map[int, int: str | bytes]",
+            "CanonicalMap[int, Case[int, str | bytes]]",
+            False,
+        ),
         (
             "Map[T, int: str, ...: bytes]",
-            "Map[T, Case[int, str], Default[bytes]]",
+            "CanonicalMap[T, Case[int, str], Default[bytes]]",
             True,
         ),
         (
             "Map[T | int, int: str, ...: bytes]",
-            "Map[T | int, Case[int, str], Default[bytes]]",
+            "CanonicalMap[T | int, Case[int, str], Default[bytes]]",
             True,
         ),
-        ("Map[T, int: str]", "Map[T, Case[int, str]]", True),
+        ("Map[T, int: str]", "CanonicalMap[T, Case[int, str]]", True),
     ],
 )
 def test_source_union_selection_retains_provenance(
@@ -475,7 +501,7 @@ def test_selected_union_uses_pydantic_ambiguity_rules(sliced: bool) -> None:
     annotation = runtime_expression(
         "Map[Input, str: int | str, ...: bytes]"
         if sliced
-        else "Map[Input, Case[str, int | str], Default[bytes]]",
+        else "CanonicalMap[Input, Case[str, int | str], Default[bytes]]",
         sliced=sliced,
     )
     adapter = TypeAdapter(Schema[annotation])
@@ -503,8 +529,11 @@ def test_union_field_values_through_existing_materialization(
         'MapFields[T, Map[Key, Literal["value"]: Field[Key, '
         "Map[Value, int: bytes, ...: float]], ...: Field[Key, Value]]]"
         if sliced
-        else 'MapFields[T, Map[Key, Case[Literal["value"], Field[Key, '
-        "Map[Value, Case[int, bytes], Default[float]]]], Default[Field[Key, Value]]]]"
+        else (
+            'MapFields[T, CanonicalMap[Key, Case[Literal["value"], '
+            "Field[Key, CanonicalMap[Value, Case[int, bytes], "
+            "Default[float]]]], Default[Field[Key, Value]]]]"
+        )
     )
     path = tmp_path / "fields.py"
     path.write_text(
@@ -537,12 +566,15 @@ def test_record_union_and_union_capture_patterns_remain_unsupported(
     record_expression = (
         "MapFields[Row | Other, Map[Key, ...: Field[Key, Value]]]"
         if sliced
-        else "MapFields[Row | Other, Map[Key, Default[Field[Key, Value]]]]"
+        else "MapFields[Row | Other, CanonicalMap[Key, Default[Field[Key, Value]]]]"
     )
     capture_expression = (
         "Map[list[int], list[Value] | set[Value]: Value, ...: bytes]"
         if sliced
-        else "Map[list[int], Case[list[Value] | set[Value], Value], Default[bytes]]"
+        else (
+            "CanonicalMap[list[int], Case[list[Value] | set[Value],"
+            " Value], Default[bytes]]"
+        )
     )
     path = tmp_path / "unsupported.py"
     for expression, runtime_error, static_error in (
@@ -570,9 +602,9 @@ def test_real_checkers_observe_union_callable_contracts(
     checker: str,
     projection: str,
 ) -> None:
-    source = """\
-from typing import assert_type
-from typeforge import Map, Assignable, Equal, Case, Default
+    source = """from typing import assert_type
+from typeforge import Map, Assignable, Equal
+from typeforge._markers import Case, Default, Map as CanonicalMap
 type Encoded[T] = Map[T, int: str | None, ...: bytes]
 type Chosen[T] = Map[T, int | str: bytes, ...: float]
 type Compatible[T] = Map[T, Assignable[int | str]: bytes, ...: float]
@@ -597,19 +629,19 @@ def inspect(value: int | str) -> None:
     canonical = (
         source.replace(
             "Map[T, int: str | None, ...: bytes]",
-            "Map[T, Case[int, str | None], Default[bytes]]",
+            "CanonicalMap[T, Case[int, str | None], Default[bytes]]",
         )
         .replace(
             "Map[T, int | str: bytes, ...: float]",
-            "Map[T, Case[int | str, bytes], Default[float]]",
+            "CanonicalMap[T, Case[int | str, bytes], Default[float]]",
         )
         .replace(
             "Map[T, Assignable[int | str]: bytes, ...: float]",
-            "Map[T, Case[Assignable[T, int | str], bytes], Default[float]]",
+            "CanonicalMap[T, Case[Assignable[T, int | str], bytes], Default[float]]",
         )
         .replace(
             "Map[T, Equal[int | str]: bytes, ...: float]",
-            "Map[T, Case[Equal[T, int | str], bytes], Default[float]]",
+            "CanonicalMap[T, Case[Equal[T, int | str], bytes], Default[float]]",
         )
     )
     path = tmp_path / "library.py"

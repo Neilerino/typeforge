@@ -12,9 +12,8 @@ from typeforge.compiler.stub_ir import TypeName
 
 
 def test_completed_plan_projects_guarded_return_without_compiler_work() -> None:
-    source = dedent("""\
-        from typeforge import Case, Default, Map
-        def convert[T](value: T) -> Map[T, Case[int, str], Default[bytes]]:
+    source = dedent("""        from typeforge import Map
+        def convert[T](value: T) -> Map[T, int : str, ... : bytes]:
             if type(value) is int:
                 return value
             raise RuntimeError
@@ -55,21 +54,24 @@ def test_completed_plan_projects_guarded_return_without_compiler_work() -> None:
     assert document.path == path
     assert document.version == 7
     assert document.authored_text == source
-    assert document.generated_text == dedent("""\
-        from typing import TYPE_CHECKING, overload  # typeforge: overlay-import
-        from typeforge import Case, Default, Map
-        if TYPE_CHECKING:  # typeforge: overlay
-            @overload
-            def convert(value: int) -> str: ...
-            @overload
-            def convert[T](value: T) -> str | bytes: ...
-        # typeforge: overlay-end
-        def convert[T](value: T) -> str | bytes:
-            if type(value) is int:
-                __typeforge_return_1: str = value
-                return value
-            raise RuntimeError
-        """)
+    assert document.generated_text == dedent(
+        "        from typing import TYPE_CHECKING, overload  # "
+        "typeforge: overlay-import\n"
+        "        from typeforge import Map\n"
+        "        if TYPE_CHECKING:  # typeforge: overlay\n"
+        "            @overload\n"
+        "            def convert(value: int) -> str: ...\n"
+        "            @overload\n"
+        "            def convert[T](value: T) -> str | bytes: "
+        "...\n"
+        "        # typeforge: overlay-end\n"
+        "        def convert[T](value: T) -> str | bytes:\n"
+        "            if type(value) is int:\n"
+        "                __typeforge_return_1: str = value\n"
+        "                return value\n"
+        "            raise RuntimeError\n"
+        "        "
+    )
     (check,) = tuple(mapping for mapping in document.mappings if mapping.provenance)
     assert check.origin is MappingKind.GENERATED
     assert check.authored.start.line == 3
@@ -83,7 +85,7 @@ def test_completed_plan_projects_guarded_return_without_compiler_work() -> None:
     )
     assert check.provenance == ReturnCheckProvenance(
         callable_name=("convert",),
-        return_annotation="Map[T, Case[int, str], Default[bytes]]",
+        return_annotation="Map[T, int : str, ... : bytes]",
         controller_parameter="value",
         narrowed_inputs=("int",),
         expected_types=("str",),
@@ -91,9 +93,8 @@ def test_completed_plan_projects_guarded_return_without_compiler_work() -> None:
 
 
 def test_transformation_compiles_and_parses_the_authored_module_once() -> None:
-    source = dedent("""\
-        from typeforge import Case, Map
-        def convert[T](value: T) -> Map[T, Case[int, str]]:
+    source = dedent("""        from typeforge import Map
+        def convert[T](value: T) -> Map[T, int : str]:
             if type(value) is int:
                 return value
             raise RuntimeError

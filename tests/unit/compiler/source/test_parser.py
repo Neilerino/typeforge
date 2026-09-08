@@ -191,7 +191,7 @@ def test_full_typeforge_syntax_is_recognized_in_type_aliases() -> None:
         MarkerKind.COLLECT,
     }
     assert module.aliases[0].type_parameters[0].name == "T"
-    assert module.aliases[0].span.start.line == 24
+    assert module.aliases[0].span.start.line == 22
 
 
 def test_typed_dict_fields_preserve_shape_modifiers() -> None:
@@ -211,7 +211,7 @@ def test_typed_dict_fields_preserve_shape_modifiers() -> None:
         ("retries", "int", False, False),
         ("owner", "str", False, True),
     )
-    assert typed_dict.fields[0].span.start.line == 53
+    assert typed_dict.fields[0].span.start.line == 48
     derived = result.unwrap().source.typed_dicts[1]
     assert derived.name == "ExtendedPayload"
     assert derived.bases == (("Payload",),)
@@ -243,12 +243,12 @@ def test_ordinary_classes_preserve_generic_structure_and_members() -> None:
 
 def test_qualified_pydantic_schema_is_a_distinct_source_boundary() -> None:
     result = parse_source(
-        "from typeforge.pydantic import Schema as RuntimeSchema\n"
-        "from typeforge import Case, Default, Equal, Map\n"
-        "class Model:\n"
-        "    value: RuntimeSchema[Map["
-        "int, Case[Equal[int, int], str], Default[bytes]]]\n"
-        "    ordinary: Schema[int]\n"
+        """from typeforge.pydantic import Schema as RuntimeSchema
+from typeforge import Equal, Map
+class Model:
+    value: RuntimeSchema[Map[int, Equal[int, int] : str, ... : bytes]]
+    ordinary: Schema[int]
+"""
     )
 
     assert isinstance(result, Success)

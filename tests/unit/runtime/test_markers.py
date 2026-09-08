@@ -8,9 +8,7 @@ from typeforge import (
     All,
     Any,
     Assignable,
-    Case,
     Collect,
-    Default,
     Doc,
     Drop,
     Each,
@@ -24,6 +22,7 @@ from typeforge import (
     ReadonlyField,
     Value,
 )
+from typeforge._markers import Case, Default
 
 
 def test_variadic_markers_preserve_arguments() -> None:
@@ -45,12 +44,12 @@ def test_condition_markers_preserve_arguments() -> None:
 
 
 def test_map_markers_preserve_arguments() -> None:
-    mapping = Map[int, Case[int, str], Default[bytes]]
+    mapping = Map[int, int:str, ...:bytes]
     assert get_args(mapping) == (int, Case[int, str], Default[bytes])
     conditional = Map[
         int,
-        Case[Assignable[int, object], str],
-        Default[bytes],
+        Assignable[int, object] : str,
+        ...:bytes,
     ]
     assert get_args(conditional) == (
         int,
@@ -78,8 +77,6 @@ def test_every_marker_carries_markdown_documentation() -> None:
         All,
         Any,
         Not,
-        Case,
-        Default,
         Map,
         MapFields,
         Field,

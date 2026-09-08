@@ -151,8 +151,7 @@ def test_qualified_maps_project_without_changing_value_slices(
 
 
 def test_assignability_guard_keeps_existing_conservative_verification() -> None:
-    source = """\
-from typeforge import Assignable, Case, Default, Map
+    source = """from typeforge import Assignable, Map
 def encode[T](value: T) -> MAPPING:
     if isinstance(value, int):
         return str(value)
@@ -161,7 +160,7 @@ def encode[T](value: T) -> MAPPING:
     signatures = []
     for mapping in (
         "Map[T, Assignable[int]: str | None, ...: bytes]",
-        "Map[T, Case[Assignable[T, int], str | None], Default[bytes]]",
+        "Map[T, Assignable[T, int] : str | None, ... : bytes]",
     ):
         plan = compile_source(
             source.replace("MAPPING", mapping), Path("assignable.py"), maximum_arity=2

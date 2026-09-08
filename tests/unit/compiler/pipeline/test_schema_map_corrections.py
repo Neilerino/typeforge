@@ -12,11 +12,11 @@ from typeforge.compiler.pipeline import generate_module
 def test_parameterized_types_remain_assignable_to_object(tmp_path: Path) -> None:
     path = tmp_path / "schemas.py"
     path.write_text(
-        "from typeforge import Map, Case, Default, Assignable\n"
-        "from typeforge.pydantic import Schema\n"
-        "class Payload:\n"
-        "    value: Schema[Map[int, Case[Assignable[list[int], object], str], "
-        "Default[bytes]]]\n"
+        """from typeforge import Map, Assignable
+from typeforge.pydantic import Schema
+class Payload:
+    value: Schema[Map[int, Assignable[list[int], object] : str, ... : bytes]]
+"""
     )
 
     assert generate_module(path, maximum_arity=1).unwrap().content == (
@@ -28,49 +28,47 @@ def test_parameterized_types_remain_assignable_to_object(tmp_path: Path) -> None
     ("expression", "expected"),
     [
         pytest.param(
-            "Map[T, Case[int, str], Default[bytes]]",
+            "Map[T, int : str, ... : bytes]",
             "str | bytes",
             id="C1-unknown-exact",
         ),
         pytest.param(
-            "Map[T, Case[U, str], Default[bytes]]",
+            "Map[T, U : str, ... : bytes]",
             "str | bytes",
             id="C2-different-symbols",
         ),
         pytest.param(
-            "Map[T, Case[Equal[T, T], str], Default[bytes]]",
+            "Map[T, Equal[T, T] : str, ... : bytes]",
             "str",
             id="C3-same-symbol-equal",
         ),
         pytest.param(
-            "Map[T, Case[Assignable[T, T], str], Default[bytes]]",
+            "Map[T, Assignable[T, T] : str, ... : bytes]",
             "str",
             id="C4-same-symbol-assignable",
         ),
         pytest.param(
-            "Map[list[T], Case[list[int], str], Default[bytes]]",
+            "Map[list[T], list[int] : str, ... : bytes]",
             "str | bytes",
             id="C5-unknown-subject-argument",
         ),
         pytest.param(
-            "Map[list[int], Case[list[T], str], Default[bytes]]",
+            "Map[list[int], list[T] : str, ... : bytes]",
             "str | bytes",
             id="C6-unknown-pattern-argument",
         ),
         pytest.param(
-            "Map[int, Case[Equal[tuple[int, T], tuple[str, int]], str], "
-            "Default[bytes]]",
+            "Map[int, Equal[tuple[int, T], tuple[str, int]] : str, ... : bytes]",
             "bytes",
             id="C7-known-argument-mismatch",
         ),
         pytest.param(
-            "Map[tuple[int, T], Case[tuple[Value, Value], Value], Default[bytes]]",
+            "Map[tuple[int, T], tuple[Value, Value] : Value, ... : bytes]",
             "int | bytes",
             id="C8-repeated-capture",
         ),
         pytest.param(
-            "Map[int, Case[Equal[Map[T, Case[T, int], Default[str]], int], bytes], "
-            "Default[float]]",
+            "Map[int, Equal[Map[T, T : int, ... : str], int] : bytes, ... : float]",
             "bytes",
             id="C9-nested-definite-predicate",
         ),
@@ -81,7 +79,7 @@ def test_generic_schema_corrections(
 ) -> None:
     path = tmp_path / "schemas.py"
     path.write_text(
-        "from typeforge import Map, Case, Default, Equal, Assignable, Value\n"
+        "from typeforge import Map, Equal, Assignable, Value\n"
         "from typeforge.pydantic import Schema\n"
         "class Payload[T, U]:\n"
         f"    value: Schema[{expression}]\n"
@@ -94,12 +92,13 @@ def test_generic_schema_corrections(
 def test_selected_alias_output_expands_nested_aliases(tmp_path: Path) -> None:
     path = tmp_path / "schemas.py"
     path.write_text(
-        "from typeforge import Map, Case, Default\n"
-        "from typeforge.pydantic import Schema\n"
-        "type Inner[A] = Map[A, Case[int, str], Default[bytes]]\n"
-        "type Outer[A] = Map[A, Case[int, Inner[A]], Default[float]]\n"
-        "class Payload:\n"
-        "    value: Schema[Outer[int]]\n"
+        """from typeforge import Map
+from typeforge.pydantic import Schema
+type Inner[A] = Map[A, int : str, ... : bytes]
+type Outer[A] = Map[A, int : Inner[A], ... : float]
+class Payload:
+    value: Schema[Outer[int]]
+"""
     )
 
     generated = generate_module(path, maximum_arity=1).unwrap()
@@ -113,13 +112,14 @@ def test_selected_alias_output_expands_nested_aliases(tmp_path: Path) -> None:
     ("aliases", "use", "cycle"),
     [
         (
-            "type First[A] = Map[A, Case[int, Second[A]], Default[A]]\n"
-            "type Second[A] = Map[A, Case[int, First[A]], Default[A]]\n",
+            """type First[A] = Map[A, int : Second[A], ... : A]
+type Second[A] = Map[A, int : First[A], ... : A]
+""",
             "First[int]",
             "First -> Second -> First",
         ),
         (
-            "type Loop[A] = Map[A, Case[int, Loop[A]], Default[A]]\n",
+            "type Loop[A] = Map[A, int : Loop[A], ... : A]\n",
             "Loop[int]",
             "Loop -> Loop",
         ),
@@ -131,7 +131,7 @@ def test_schema_alias_cycles_report_authored_paths(
 ) -> None:
     path = tmp_path / "schemas.py"
     path.write_text(
-        "from typeforge import Map, Case, Default\n"
+        "from typeforge import Map\n"
         "from typeforge.pydantic import Schema\n"
         f"{aliases}"
         f"class Payload:\n    value: Schema[{use}]\n"
@@ -146,12 +146,15 @@ def test_literal_type_output_in_a_transformed_schema_record(tmp_path: Path) -> N
     path = tmp_path / "schemas.py"
     path.write_text(
         "from typing import TypedDict, Literal\n"
-        "from typeforge import Map, MapFields, Case, Default, Field, Key, Value\n"
+        "from typeforge import Map, MapFields, Field, Key, "
+        "Value\n"
         "from typeforge.pydantic import Schema\n"
-        "class Record(TypedDict):\n    original: int\n"
-        "type Transform[T] = MapFields[T, Field[Key, Map[Value, "
-        'Case[int, Literal["accepted"]], Default[bytes]]]]\n'
-        "class Payload:\n    value: Schema[Transform[Record]]\n"
+        "class Record(TypedDict):\n"
+        "    original: int\n"
+        "type Transform[T] = MapFields[T, Field[Key, Map[Value,"
+        ' int : Literal["accepted"], ... : bytes]]]\n'
+        "class Payload:\n"
+        "    value: Schema[Transform[Record]]\n"
     )
 
     generated = generate_module(path, maximum_arity=1).unwrap()

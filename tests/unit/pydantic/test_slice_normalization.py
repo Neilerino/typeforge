@@ -1,4 +1,4 @@
-"""Executable evidence for the throwaway slice-syntax experiment."""
+"""Production regression coverage promoted from the slice-syntax experiment."""
 
 from types import NoneType
 from typing import Annotated, Literal, Never, TypeVar, get_args, get_origin
@@ -15,19 +15,18 @@ from pydantic import Field as PydanticField
 from typeforge import (
     All,
     Assignable,
-    Case,
-    Default,
     Drop,
     Equal,
     Field,
     Key,
+    Map,
     MapFields,
     Not,
     OptionalField,
     Value,
 )
+from typeforge._markers import Case, Default
 from typeforge._markers import Map as CanonicalMap
-from typeforge._slice_map_prototype import Map
 from typeforge.pydantic import Input, Schema
 from typeforge.pydantic._frontend import adapt_annotation
 
@@ -95,7 +94,7 @@ def test_eager_normalization_reuses_markers_and_preserves_substitution() -> None
             3,
         ),
         (
-            Map[Literal["text"], "text":str, ...:bytes],
+            Map[Literal["text"], Literal["text"] : str, ...:bytes],
             CanonicalMap[Literal["text"], Case[Literal["text"], str], Default[bytes]],
             "x",
             "x",
@@ -140,7 +139,7 @@ def test_eager_normalization_reuses_markers_and_preserves_substitution() -> None
         ),
     ],
 )
-def test_runtime_slice_and_existing_syntax_share_the_same_semantics(
+def test_public_slices_and_canonical_data_share_the_same_semantics(
     selected: object, canonical: object, raw: object, expected: object
 ) -> None:
     assert adapt_annotation(selected).unwrap().expression == (
@@ -210,8 +209,8 @@ def test_record_fields_and_nested_outputs_use_unchanged_runtime_frontend() -> No
         T,
         Map[
             Key,
-            "password":Drop,  # noqa: F821 - Ruff treats slice strings as forward refs.
-            "name" : OptionalField[Literal["display_name"], Value],  # noqa: F821
+            Literal["password"] : Drop,
+            Literal["name"] : OptionalField[Literal["display_name"], Value],
             ... : Field[Key, Value],
         ],
     ]
@@ -237,8 +236,6 @@ def test_selected_annotations_stay_with_pydantic() -> None:
         (Map[str, int:bytes], "map_no_match"),
         (Map[int, int:Never], "expected_type"),
         (Map[Input, list[int] : bytes], "unsupported_runtime_pattern"),
-        (Map[int, ...:str, int:bytes], "fallback must be last"),
-        (Map[int, ...:str, ...:bytes], "fallback must be last"),
     ],
 )
 def test_existing_failure_policies_still_apply(
@@ -246,15 +243,6 @@ def test_existing_failure_policies_still_apply(
 ) -> None:
     with pytest.raises(PydanticSchemaGenerationError, match=message):
         TypeAdapter(Schema[annotation])
-
-
-def test_none_endpoints_are_ambiguous_in_runtime_slices() -> None:
-    assert slice(None, str) == slice(None, str, None)
-    with pytest.raises(TypeError, match="None type"):
-        Map[int, int:None]
-
-    with pytest.raises(TypeError, match="slice step"):
-        Map[int, int:str:bytes]
 
 
 def test_none_type_is_an_unambiguous_runtime_alternative() -> None:

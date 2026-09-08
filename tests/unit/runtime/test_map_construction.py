@@ -6,7 +6,8 @@ from typing import Annotated, Literal, Never, TypeVar, get_args, get_origin
 import pytest
 
 from pydantic import BaseModel, PydanticSchemaGenerationError, TypeAdapter
-from typeforge import All, Assignable, Case, Default, Equal, Map, Not, Value
+from typeforge import All, Assignable, Equal, Map, Not, Value
+from typeforge._markers import Case, Default
 from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic import Schema
 
@@ -185,7 +186,3 @@ def test_construction_leaves_lazy_aliases_and_semantic_failures_unevaluated() ->
     assert get_args(annotation) == (int, Case[Lazy, Equal[int]], Default[Lazy])
     # Output predicates are not implicitly bound; only selector positions bind.
     assert get_args(get_args(annotation)[1])[1] == Equal[int]
-
-
-def test_legacy_branches_remain_during_the_coordinated_repository_migration() -> None:
-    assert Map[int, Case[int, str], Default[bytes]] == Map[int, int:str, ...:bytes]

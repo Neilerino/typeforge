@@ -10,12 +10,12 @@ from pydantic import (
     field_serializer,
     field_validator,
 )
-from typeforge import Case, Default, Map, Value
+from typeforge import Map, Value
 from typeforge.pydantic import Schema
 
 
 def test_generic_alias_fields_rebuild_and_keep_specializations_independent() -> None:
-    type Selected[T] = Map[T, Case[int, str], Default[bytes]]
+    type Selected[T] = Map[T, int:str, ...:bytes]
 
     class Payload[T](BaseModel):
         value: Schema[Selected[T]]
@@ -47,7 +47,7 @@ def test_generic_alias_fields_rebuild_and_keep_specializations_independent() -> 
 
 def test_partial_generic_inheritance_substitutes_nested_structural_fields() -> None:
     class Parent[T, U](BaseModel):
-        value: Schema[Map[list[T], Case[list[Value], set[Value]], Default[bytes]]]
+        value: Schema[Map[list[T], list[Value] : set[Value], ...:bytes]]
         other: list[Schema[U]]
 
     class Child[U](Parent[int, U]):
@@ -66,7 +66,7 @@ def test_traditional_generic_field_substitutes_typevars() -> None:
 
     # Keep the traditional spelling as an integration compatibility contract.
     class Payload(BaseModel, Generic[T]):
-        value: Schema[Map[T, Case[int, str], Default[bytes]]]
+        value: Schema[Map[T, int:str, ...:bytes]]
 
     assert Payload[int].model_validate({"value": "3"}).value == "3"
     assert Payload[bytes].model_validate({"value": "3"}).value == b"3"
@@ -127,7 +127,7 @@ def test_generic_field_preserves_model_configuration_and_field_middleware() -> N
     class Payload[T](BaseModel):
         model_config = ConfigDict(extra="forbid")
         value: Annotated[
-            Schema[Map[T, Case[int, int], Default[T]]],
+            Schema[Map[T, int:int, ...:T]],
             Field(gt=0, alias="amount"),
         ]
 
@@ -154,7 +154,7 @@ def test_generic_field_preserves_model_configuration_and_field_middleware() -> N
 
 def test_generic_no_default_map_specializes_and_rejects_unmatched_any() -> None:
     class Payload[T](BaseModel):
-        value: Schema[Map[T, Case[int, str], Case[bytes, int]]]
+        value: Schema[Map[T, int:str, bytes:int]]
 
     assert Payload[int].model_validate({"value": "3"}).value == "3"
     assert Payload[bytes].model_validate({"value": "3"}).value == 3
@@ -174,7 +174,7 @@ def test_generic_map_delegates_selected_model_output_to_pydantic() -> None:
         value: T
 
     class Payload[T](BaseModel):
-        value: Schema[Map[T, Case[int, Item[int]], Default[Item[T]]]]
+        value: Schema[Map[T, int : Item[int], ... : Item[T]]]
 
     integer = Payload[int].model_validate({"value": {"value": "3"}})
     text = Payload[str].model_validate({"value": {"value": "x"}})

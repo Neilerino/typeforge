@@ -766,12 +766,13 @@ def _parse_annotation(
             node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
         )
         marker = _marker_kind(constructor)
-        slice_map = marker is MarkerKind.MAP and any(
-            isinstance(item, ast.Slice) for item in slice_nodes
+        public_map = isinstance(node.value, ast.Name | ast.Attribute) and (
+            _resolve_name(_expression_name(node.value), bindings)
+            == ("typeforge", "Map")
         )
         argument_values: list[SourceTypeExpression] = []
         for slice_node in slice_nodes:
-            if slice_map:
+            if public_map:
                 if not argument_values and isinstance(slice_node, ast.Slice):
                     raise _AnnotationSyntaxError(
                         "Map requires a subject before its branches",
@@ -784,6 +785,12 @@ def _parse_annotation(
                 ):
                     raise _AnnotationSyntaxError(
                         "Map fallback must be last; no branch may follow it",
+                        _span(path, slice_node),
+                    )
+
+                if argument_values and not isinstance(slice_node, ast.Slice):
+                    raise _AnnotationSyntaxError(
+                        "Map entries must use selector: output or ...: output syntax",
                         _span(path, slice_node),
                     )
 
@@ -945,7 +952,12 @@ def _marker_kind(expression: SourceTypeExpression) -> MarkerKind | None:
     if qualified_name[:-1] not in {
         ("typeforge",),
         ("typeforge", "_markers"),
-        ("typeforge", "_slice_map_prototype"),
+    }:
+        return None
+
+    if qualified_name[:-1] == ("typeforge",) and qualified_name[-1] in {
+        "Case",
+        "Default",
     }:
         return None
 

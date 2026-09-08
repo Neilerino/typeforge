@@ -3,8 +3,9 @@ from typing import Annotated, TypeVar
 import pytest
 from returns.result import Failure
 
-from typeforge import Case, Default, Equal, Map
+from typeforge import Equal, Map
 from typeforge import semantics as s
+from typeforge._markers import Case, Default
 from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic._errors import SchemaIssue
 from typeforge.pydantic._frontend import adapt_annotation
@@ -14,8 +15,8 @@ from typeforge.pydantic._type_system import RUNTIME_TYPE_SYSTEM
 def test_nested_adaptation_preserves_authored_origins_and_opaque_metadata() -> None:
     metadata = object()
     predicate = Equal[int, int]
-    inner = Map[str, Case[str, bytes]]
-    outer = Map[int, Case[predicate, inner], Default[float]]
+    inner = Map[str, str:bytes]
+    outer = Map[int, predicate:inner, ...:float]
     source = Annotated[outer, metadata]
 
     adapted = adapt_annotation(source).unwrap()
@@ -33,7 +34,7 @@ def test_nested_adaptation_preserves_authored_origins_and_opaque_metadata() -> N
 
 
 def test_failed_and_repeated_adaptations_do_not_share_origins() -> None:
-    source = Map[int, Case[int, str]]
+    source = Map[int, int:str]
     first = adapt_annotation(source).unwrap()
     origins = dict(first.origins)
     invalid = CanonicalMap[int, Default[str], Case[int, bytes]]

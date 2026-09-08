@@ -121,7 +121,7 @@ def test_map_lowers_parameterized_case_roles_to_shared_semantics() -> None:
 
 
 def test_input_map_lowers_and_evaluates_to_a_deferred_map() -> None:
-    """`Map[Input, Case[int, int], ...]` lowers to deferred semantics."""
+    """`Map[Input, int : int, ...]` lowers to deferred semantics."""
     cases: tuple[CaseExpression[StaticType], ...] = (
         CaseExpression(
             TypeReference(NamedType("int")),

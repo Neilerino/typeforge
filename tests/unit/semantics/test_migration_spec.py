@@ -474,7 +474,7 @@ def test_map_without_a_match_resolves_to_never() -> None:
 
 
 def test_parameterized_map_semantics_are_shared_by_type_system_adapters() -> None:
-    """`Map[T, Case[list[Value], set[Value]], Default[T]]` is shared."""
+    """`Map[T, list[Value] : set[Value], ... : T]` is shared."""
     name_type_system = NameTypeSystem(
         parameterized_types=(
             ("list[int]", ParameterizedTypeShape("list", ("int",))),
@@ -654,7 +654,7 @@ def test_parameterized_type_adapter_failures_propagate_unchanged(
 
 
 def test_input_map_preserves_deferred_meaning_and_possible_output_type() -> None:
-    """`Map[Input, Case[int, int], Case[str, UUID], Default[bytes]]` defers."""
+    """`Map[Input, int : int, str : UUID, ... : bytes]` defers."""
     cases = (
         CaseExpression(TypeReference("int"), TypeReference("int")),
         CaseExpression(TypeReference("str"), TypeReference("UUID")),

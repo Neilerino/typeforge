@@ -12,9 +12,9 @@ from typeforge.compiler.pipeline import compile_source, generate_module
 from typeforge.compiler.source import MarkerKind, MarkerTypeExpression, parse_source
 from typeforge.overlay import transform_source
 
-IMPORTS = """\
-from typing import Literal, Never, TypedDict, Annotated
-from typeforge import Map, Case, Default, Equal, Assignable, All, Not
+IMPORTS = """from typing import Literal, Never, TypedDict, Annotated
+from typeforge import Map, Equal, Assignable, All, Not
+from typeforge._markers import Case, Default, Map as CanonicalMap
 from typeforge import MapFields, Field, OptionalField, Drop, Key, Value
 from typeforge.pydantic import Schema
 """
@@ -25,34 +25,36 @@ from typeforge.pydantic import Schema
     [
         (
             "Map[T, int: str, bytes: int, ...: T]",
-            "Map[T, Case[int, str], Case[bytes, int], Default[T]]",
+            "CanonicalMap[T, Case[int, str], Case[bytes, int], Default[T]]",
         ),
         (
             "Map[T, Assignable[int]: str, ...: bytes]",
-            "Map[T, Case[Assignable[T, int], str], Default[bytes]]",
+            "CanonicalMap[T, Case[Assignable[T, int], str], Default[bytes]]",
         ),
         (
             "Map[T, All[Assignable[int], Not[Equal[bool]]]: str, ...: bytes]",
-            "Map[T, Case[All[Assignable[T, int], Not[Equal[T, bool]]], str], "
-            "Default[bytes]]",
+            (
+                "CanonicalMap[T, Case[All[Assignable[T, int], "
+                "Not[Equal[T, bool]]], str], Default[bytes]]"
+            ),
         ),
         (
             "Map[T, True: str, ...: bytes]",
-            "Map[T, Case[Literal[True], str], Default[bytes]]",
+            "CanonicalMap[T, Case[Literal[True], str], Default[bytes]]",
         ),
         (
             'Map[T, Literal["text"]: str, ...: bytes]',
-            'Map[T, Case[Literal["text"], str], Default[bytes]]',
+            'CanonicalMap[T, Case[Literal["text"], str], Default[bytes]]',
         ),
         (
             "Map[T, -1: str, ...: bytes]",
-            "Map[T, Case[Literal[-1], str], Default[bytes]]",
+            "CanonicalMap[T, Case[Literal[-1], str], Default[bytes]]",
         ),
-        ("Map[T, int: str]", "Map[T, Case[int, str]]"),
-        ("Map[T, int: Never]", "Map[T, Case[int, Never]]"),
+        ("Map[T, int: str]", "CanonicalMap[T, Case[int, str]]"),
+        ("Map[T, int: Never]", "CanonicalMap[T, Case[int, Never]]"),
     ],
 )
-def test_slice_callables_emit_the_same_stubs_as_existing_syntax(
+def test_slice_callables_emit_the_same_stubs_as_canonical_data(
     tmp_path: Path, sliced: str, canonical: str
 ) -> None:
     path = tmp_path / "example.py"
@@ -67,24 +69,32 @@ def test_slice_callables_emit_the_same_stubs_as_existing_syntax(
 @pytest.mark.parametrize(
     ("sliced", "canonical"),
     [
-        ("Map[int, int: str, ...: bytes]", "Map[int, Case[int, str], Default[bytes]]"),
+        (
+            "Map[int, int: str, ...: bytes]",
+            "CanonicalMap[int, Case[int, str], Default[bytes]]",
+        ),
         (
             "Map[bool, Assignable[int]: str, ...: bytes]",
-            "Map[bool, Case[Assignable[bool, int], str], Default[bytes]]",
+            "CanonicalMap[bool, Case[Assignable[bool, int], str], Default[bytes]]",
         ),
         (
             'Map[Literal["text"], Literal["text"]: str, ...: bytes]',
-            'Map[Literal["text"], Case[Literal["text"], str], Default[bytes]]',
+            'CanonicalMap[Literal["text"], Case[Literal["text"], str], Default[bytes]]',
         ),
         (
             "Map[list[int], list[Value]: Map[Value, Equal[int]: str, ...: bytes]]",
-            "Map[list[int], Case[list[Value], Map[Value, "
-            "Case[Equal[Value, int], str], Default[bytes]]]]",
+            (
+                "CanonicalMap[list[int], Case[list[Value], "
+                "CanonicalMap[Value, Case[Equal[Value, int], str], "
+                "Default[bytes]]]]"
+            ),
         ),
         (
             "Map[int, int: Map[str, Assignable[str]: bytes, ...: float]]",
-            "Map[int, Case[int, Map[str, "
-            "Case[Assignable[str, str], bytes], Default[float]]]]",
+            (
+                "CanonicalMap[int, Case[int, CanonicalMap[str, "
+                "Case[Assignable[str, str], bytes], Default[float]]]]"
+            ),
         ),
     ],
 )
@@ -179,8 +189,10 @@ assert_type(encode(1), str)
         )
         path = tmp_path / "consumer.py"
         path.write_text(
-            "from typing import assert_type\nfrom example import encode\n"
-            "assert_type(encode(1), str)\n"
+            """from typing import assert_type
+from example import encode
+assert_type(encode(1), str)
+"""
         )
 
     command = [str(Path(executable).with_name(checker))]
@@ -235,7 +247,7 @@ def test_unbounded_structural_callable_has_the_same_existing_emission_limit(
     path = tmp_path / "example.py"
     for expression in (
         "Map[T, list[Value]: tuple[Value, ...], ...: bytes]",
-        "Map[T, Case[list[Value], tuple[Value, ...]], Default[bytes]]",
+        "CanonicalMap[T, Case[list[Value], tuple[Value, ...]], Default[bytes]]",
     ):
         path.write_text(IMPORTS + f"def f[T](x: T) -> {expression}: ...\n")
         result = generate_module(path, maximum_arity=2)
@@ -256,9 +268,10 @@ def f[T](x: T) -> Map[T, Numeric: str, ...: bytes]: ...
 def test_compilation_never_imports_or_executes_authored_code(tmp_path: Path) -> None:
     path = tmp_path / "not_executed.py"
     path.write_text(
-        "from typeforge import Map\n"
-        "_tripwire: int = 1 // 0\n"
-        "def f[T](x: T) -> Map[T, int: str, ...: T]: ...\n"
+        """from typeforge import Map
+_tripwire: int = 1 // 0
+def f[T](x: T) -> Map[T, int: str, ...: T]: ...
+"""
     )
     result = generate_module(path, maximum_arity=2).unwrap()
     assert "def f(x: int) -> str" in result.content

@@ -15,7 +15,7 @@ logic that Pydantic can compile.
 from typing import Literal, TypedDict
 
 from pydantic import BaseModel
-from typeforge import Case, Default, Drop, Equal, Field, Key, Map, MapFields, Value
+from typeforge import Drop, Field, Key, Map, MapFields, Value
 from typeforge.pydantic import Schema
 
 
@@ -29,8 +29,8 @@ type Public[T] = MapFields[
     T,
     Map[
         Key,
-        Case[Equal[Key, Literal["password"]], Drop],
-        Default[Field[Key, Value]],
+        Literal["password"] : Drop,
+        ... : Field[Key, Value],
     ],
 ]
 
@@ -142,14 +142,14 @@ It can be used in a model field or with `TypeAdapter`:
 
 ```python
 from pydantic import BaseModel, TypeAdapter
-from typeforge import Case, Default, Map
+from typeforge import Map
 from typeforge.pydantic import Schema
 
 
 type Wire[T] = Map[
     T,
-    Case[bytes, str],
-    Default[T],
+    bytes : str,
+    ... : T,
 ]
 
 
@@ -185,15 +185,15 @@ Value-time evaluation uses the explicit `Input` controller:
 ```python
 from uuid import UUID
 
-from typeforge import Case, Map
+from typeforge import Map
 from typeforge.pydantic import Input, Schema
 
 
 type Identifier = Schema[
     Map[
         Input,
-        Case[int, int],
-        Case[str, UUID],
+        int : int,
+        str : UUID,
     ]
 ]
 ```
@@ -203,8 +203,8 @@ UUIDs. Its output type is `int | UUID`.
 
 `Input` observes the raw Python value before branch validation. Python and JSON
 inputs use the Python type produced by `pydantic-core` at the dispatch boundary.
-`Case[int, ...]` means `type(value) is int`, so `bool` does not match `int` and
-case selection never performs coercion. Cases are ordered and the first exact
+`int: output` means `type(value) is int`, so `bool` does not match `int` and
+case selection never performs coercion. Branches are ordered and the first exact
 match wins; the selected output schema then applies normal Pydantic validation.
 Generic value-time patterns and nested field access remain undefined and fail
 rather than silently changing the static meanings of `Equal` or `Assignable`.

@@ -28,12 +28,14 @@ substitutes generic parameters. `_map` owns construction; it does not evaluate
 relationships or expand authored aliases. Frontends recognize canonical marker
 identity rather than the public constructor. The typing-only public export retains
 the conservative object alias; raw slices still require checker projection.
-Legacy branches remain for repository migration and are removed at the authoring
-cutover tracked in `docs/in_progress_tasks/map-slice-syntax.md`.
+Public subscriptions require slice branches; `Case` and `Default` are private
+data aliases. Compiler normalization and runtime frontend tests construct those
+internal aliases directly to verify representation parity and malformed-data
+failures. They are not a public compatibility path.
 
-`Map` is Typeforge's central input/output type machine. Its ordered `Case`
+`Map` is Typeforge's central input/output type machine. Its ordered `selector: output`
 branches accept either exact or structural type patterns or boolean predicates;
-the first matching pattern or true predicate selects the output. `Default`
+the first matching pattern or true predicate selects the output. `...: output`
 handles the unmatched path and omission means `Never`.
 
 Pattern and predicate cases share one ordering model. Structural patterns may

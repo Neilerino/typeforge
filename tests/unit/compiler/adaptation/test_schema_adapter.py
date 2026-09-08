@@ -35,7 +35,7 @@ def schema_source(
 ) -> tuple[SourceModule, SchemaTypeExpression]:
     source = (
         parse_source(
-            "from typeforge import Map, Case, Default, Value, Equal, Assignable\n"
+            "from typeforge import Map, Value, Equal, Assignable\n"
             "from typeforge import All, Any, Not, MapFields, Field, Key\n"
             "from typeforge.pydantic import Input, Schema\n"
             f"{aliases}\n"
@@ -53,8 +53,8 @@ def schema_source(
 def test_schema_adapter_evaluates_aliased_structural_outputs() -> None:
     source, boundary = schema_source(
         "Outer[list[int]]",
-        "type Inner[T] = Map[T, Case[list[Value], set[Value] | None]]\n"
-        "type Outer[T] = Map[T, Case[list[Value], Inner[T]]]",
+        """type Inner[T] = Map[T, list[Value] : set[Value] | None]
+type Outer[T] = Map[T, list[Value] : Inner[T]]""",
     )
 
     assert adapt_schema_expression(
@@ -69,17 +69,17 @@ def test_schema_adapter_evaluates_aliased_structural_outputs() -> None:
 @pytest.mark.parametrize(
     ("expression", "expected"),
     [
-        ("Map[T, Case[Equal[T, T], str], Default[bytes]]", TypeName("str")),
+        ("Map[T, Equal[T, T] : str, ... : bytes]", TypeName("str")),
         (
-            "Map[T, Case[Equal[T, int], str], Case[T, bytes], Default[float]]",
+            "Map[T, Equal[T, int] : str, T : bytes, ... : float]",
             UnionExpression((TypeName("str"), TypeName("bytes"))),
         ),
         (
-            "Map[tuple[int, T], Case[tuple[str, int], str], Default[bytes]]",
+            "Map[tuple[int, T], tuple[str, int] : str, ... : bytes]",
             TypeName("bytes"),
         ),
         (
-            "Map[list[T], Case[list[Value], set[Value]]]",
+            "Map[list[T], list[Value] : set[Value]]",
             TypeApplication(TypeName("set"), (TypeName("T"),)),
         ),
     ],
@@ -97,26 +97,25 @@ def test_schema_adapter_preserves_unresolved_generic_identity(
     ("expression", "expected"),
     [
         (
-            "Map[Input, Case[int, Map[Input, Case[int, str], Default[float]]], "
-            "Default[bytes]]",
+            "Map[Input, int : Map[Input, int : str, ... : float], ... : bytes]",
             UnionExpression((TypeName("str"), TypeName("float"), TypeName("bytes"))),
         ),
         (
-            "list[Map[int, Case[int, str]]]",
+            "list[Map[int, int : str]]",
             TypeApplication(TypeName("list"), (TypeName("str"),)),
         ),
         (
-            "Map[int, Case[int, list[Map[int, Case[int, str]]]]]",
+            "Map[int, int : list[Map[int, int : str]]]",
             TypeApplication(TypeName("list"), (TypeName("str"),)),
         ),
         (
-            "Map[int, Case[int, tuple[Map[Input, Case[int, str]]]]]",
+            "Map[int, int : tuple[Map[Input, int : str]]]",
             TypeApplication(TypeName("tuple"), (TypeName("str"),)),
         ),
-        ("Schema[Map[int, Case[int, str]]]", TypeName("str")),
-        ("Map[int, Case[int, Schema[str]]]", TypeName("str")),
+        ("Schema[Map[int, int : str]]", TypeName("str")),
+        ("Map[int, int : Schema[str]]", TypeName("str")),
         (
-            "tuple[*Map[int, Case[int, tuple[str, bytes]]]]",
+            "tuple[*Map[int, int : tuple[str, bytes]]]",
             TypeApplication(
                 TypeName("tuple"),
                 (
@@ -128,7 +127,7 @@ def test_schema_adapter_preserves_unresolved_generic_identity(
                 ),
             ),
         ),
-        ("Map[Input, Case[int, str], Default[Never]]", TypeName("str")),
+        ("Map[Input, int : str, ... : Never]", TypeName("str")),
     ],
 )
 def test_schema_adapter_composes_nested_types(
@@ -151,7 +150,7 @@ def test_schema_adapter_composes_nested_types(
             "MapFields[int, Field[Key, Value]]",
             "MapFields requires a supported record type",
         ),
-        ("Map[int, Case[int, Equal[int, int]]]", "Schema must evaluate to a type"),
+        ("Map[int, int : Equal[int, int]]", "Schema must evaluate to a type"),
     ],
 )
 def test_schema_failures_use_authored_diagnostics(
@@ -166,7 +165,7 @@ def test_schema_failures_use_authored_diagnostics(
 def test_equal_alias_results_keep_distinct_schema_roots_and_authored_origins() -> None:
     source, boundary = schema_source(
         "tuple[Schema[Alias[int]], Schema[Alias[int]]]",
-        "type Alias[T] = Map[T, Case[int, str]]",
+        "type Alias[T] = Map[T, int : str]",
     )
     origins: list[GeneratedElementOrigin[SourceSpan]] = []
     first = adapt_schema_expression(
@@ -201,9 +200,7 @@ def test_failed_schema_adaptation_does_not_publish_partial_origins() -> None:
 
 
 def test_schema_adapter_emits_supplied_record_references() -> None:
-    source, boundary = schema_source(
-        "Map[Input, Case[int, Payload], Default[list[Payload]]]"
-    )
+    source, boundary = schema_source("Map[Input, int : Payload, ... : list[Payload]]")
     payload = RecordShape[StaticType](
         family=RecordFamily.TYPED_DICT, name="Payload", fields=()
     )
@@ -237,7 +234,7 @@ def test_modeled_backend_failures_cross_the_authored_conversion_boundary(
 
     monkeypatch.setattr(CompilerTypeSystem, "equal", equal)
     source, boundary = schema_source(
-        "Map[int, Case[Equal[int, str], str], Case[Equal[bytes, float], bytes]]"
+        "Map[int, Equal[int, str] : str, Equal[bytes, float] : bytes]"
     )
 
     assert adapt_schema_expression(
@@ -255,7 +252,7 @@ def test_unexpected_backend_failures_propagate(monkeypatch: pytest.MonkeyPatch) 
         raise failure
 
     monkeypatch.setattr(CompilerTypeSystem, "equal", equal)
-    source, boundary = schema_source("Map[int, Case[int, str]]")
+    source, boundary = schema_source("Map[int, int : str]")
 
     with pytest.raises(RuntimeError) as caught:
         adapt_schema_expression(boundary, source.aliases, declaration="Selected")
@@ -265,7 +262,7 @@ def test_unexpected_backend_failures_propagate(monkeypatch: pytest.MonkeyPatch) 
 
 def test_aliased_failures_report_the_authored_use_site() -> None:
     source, boundary = schema_source(
-        "Broken[int]", "type Broken[T] = Map[T, Case[Value, Value]] | Input"
+        "Broken[int]", "type Broken[T] = Map[T, Value : Value] | Input"
     )
 
     assert adapt_schema_expression(
@@ -305,7 +302,7 @@ def test_union_normalization_preserves_inner_schema_origins(expression: str) -> 
 
 
 def test_input_nested_in_a_selected_type_still_requires_value_time_binding() -> None:
-    source, boundary = schema_source("Map[int, Case[int, tuple[Input]]]")
+    source, boundary = schema_source("Map[int, int : tuple[Input]]")
 
     assert adapt_schema_expression(
         boundary, source.aliases, declaration="Selected"

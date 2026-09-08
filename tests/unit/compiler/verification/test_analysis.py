@@ -18,9 +18,8 @@ def test_guarded_return_uses_retained_contract_and_authored_site(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     parsed = parse_source(
-        dedent("""\
-            from typeforge import Case, Default, Map
-            type Result[T] = Map[T, Case[int, str], Default[bytes]]
+        dedent("""            from typeforge import Map
+            type Result[T] = Map[T, int : str, ... : bytes]
             def convert[T](value: T) -> Result[T]:
                 if type(value) is int:
                     return value
@@ -59,9 +58,8 @@ def test_guarded_return_uses_retained_contract_and_authored_site(
 
 def test_bare_return_and_fallthrough_have_distinct_authored_sites() -> None:
     parsed = parse_source(
-        dedent("""\
-            from typeforge import Case, Default, Map
-            def convert[T](value: T) -> Map[T, Case[int, str], Default[bytes]]:
+        dedent("""            from typeforge import Map
+            def convert[T](value: T) -> Map[T, int : str, ... : bytes]:
                 if type(value) is int:
                     return
                 print(value)
@@ -98,8 +96,8 @@ def test_bare_return_and_fallthrough_have_distinct_authored_sites() -> None:
 )
 def test_unsupported_bodies_have_no_invented_obligations(body: str) -> None:
     parsed = parse_source(
-        "from typeforge import Case, Map\n"
-        "def convert[T](value: T) -> Map[T, Case[int, str]]:\n"
+        "from typeforge import Map\n"
+        "def convert[T](value: T) -> Map[T, int : str]:\n"
         f"    {body}\n"
     ).unwrap()
     module = adapt_source_module(parsed.source).unwrap()
@@ -124,8 +122,8 @@ def test_unsupported_bodies_have_no_invented_obligations(body: str) -> None:
 def test_unrecognized_flow_preserves_the_aggregate_check(body: str) -> None:
     indented_body = "\n".join(f"    {line}" for line in body.splitlines())
     parsed = parse_source(
-        "from typeforge import Case, Default, Map\n"
-        "def convert[T](value: T) -> Map[T, Case[int, str], Default[bytes]]:\n"
+        "from typeforge import Map\n"
+        "def convert[T](value: T) -> Map[T, int : str, ... : bytes]:\n"
         f"{indented_body}\n"
     ).unwrap()
     module = adapt_source_module(parsed.source).unwrap()

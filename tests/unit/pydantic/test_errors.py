@@ -1,19 +1,7 @@
 import pytest
 
 from pydantic import PydanticSchemaGenerationError, TypeAdapter
-from typeforge import (
-    All,
-    Any,
-    Case,
-    Default,
-    Each,
-    Equal,
-    Field,
-    Key,
-    Map,
-    MapFields,
-    Value,
-)
+from typeforge import All, Any, Each, Equal, Field, Key, Map, MapFields, Value
 from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic import Input, Schema
 
@@ -34,7 +22,7 @@ def test_nested_schema_failure_preserves_the_original_issue() -> None:
     with pytest.raises(
         PydanticSchemaGenerationError, match=r"unbound_key.*Key requires MapFields"
     ):
-        TypeAdapter(Schema[Map[int, Case[Equal[Key, Key], int], Default[str]]])
+        TypeAdapter(Schema[Map[int, Equal[Key, Key] : int, ...:str]])
 
 
 def test_schema_conditions_short_circuit_nested_failures() -> None:
@@ -42,8 +30,8 @@ def test_schema_conditions_short_circuit_nested_failures() -> None:
         Schema[
             Map[
                 int,
-                Case[All[Equal[int, str], Equal[Key, Key]], bytes],
-                Default[int],
+                All[Equal[int, str], Equal[Key, Key]] : bytes,
+                ...:int,
             ]
         ]
     )
@@ -51,8 +39,8 @@ def test_schema_conditions_short_circuit_nested_failures() -> None:
         Schema[
             Map[
                 int,
-                Case[Any[Equal[int, int], Equal[Key, Key]], int],
-                Default[bytes],
+                Any[Equal[int, int], Equal[Key, Key]] : int,
+                ...:bytes,
             ]
         ]
     )
@@ -108,14 +96,14 @@ def test_value_time_map_rejects_undefined_generic_patterns() -> None:
             r"Input does not support parameterized runtime patterns"
         ),
     ):
-        TypeAdapter(Schema[Map[Input, Case[list[int], str]]])
+        TypeAdapter(Schema[Map[Input, list[int] : str]])
 
 
 def test_recursive_typeforge_alias_fails_instead_of_delegating_inert_markers() -> None:
     type Recursive = Map[
         int,
-        Case[Equal[int, int], int | list[Recursive]],
-        Default[bytes],
+        Equal[int, int] : int | list[Recursive],
+        ...:bytes,
     ]
 
     with pytest.raises(

@@ -4,8 +4,6 @@ from typing import TypedDict as TD
 from typeforge import (
     All,
     Assignable,
-    Case,
-    Default,
     Drop,
     Equal,
     Field,
@@ -23,23 +21,20 @@ from typeforge import (
 
 type JsonValue[T] = Map[
     T,
-    Case[bytes, str],
-    Case[int, float],
-    Default[T],
+    bytes:str,
+    int:float,
+    ...:T,
 ]
 
 type PublicRecord[T] = MapFields[
     T,
     Map[
         Key,
-        Case[
-            AnyCondition[
-                Equal[Key, Literal["password"]],
-                Not[Assignable[Value, object]],
-            ],
-            Drop,
-        ],
-        Default[Field[Key, JsonValue[Value]]],
+        AnyCondition[
+            Equal[Key, Literal["password"]],
+            Not[Assignable[Value, object]],
+        ] : Drop,
+        ... : Field[Key, JsonValue[Value]],
     ],
 ]
 

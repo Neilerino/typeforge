@@ -55,34 +55,31 @@ def test_existing_each_collect_pipeline_remains_supported() -> None:
 def test_field_maps_can_drop_fields_and_change_modifiers(tmp_path: Path) -> None:
     source = tmp_path / "records.py"
     source.write_text(
-        """
-from typing import Literal, TypedDict
-from typeforge import (
-    Case, Default, Drop, Equal, Key, Map, MapFields, OptionalField,
-    ReadonlyField, Value
-)
-
-class Credentials(TypedDict):
-    password: str
-    token: str
-    attempts: int
-
-type Public[T] = MapFields[
-    T,
-    Map[
-        Key,
-        Case[Equal[Key, Literal[\"password\"]], Drop],
-        Case[
-            Equal[Key, Literal[\"token\"]],
-            ReadonlyField[Key, Value],
-        ],
-        Default[OptionalField[Key, Value]],
-    ],
-]
-
-def publicize[T](value: T) -> Public[T]:
-    raise NotImplementedError
-""".lstrip(),
+        (
+            "\n"
+            "from typing import Literal, TypedDict\n"
+            "from typeforge import Drop, Equal, Key, Map, "
+            "MapFields, OptionalField, ReadonlyField, Value\n"
+            "\n"
+            "class Credentials(TypedDict):\n"
+            "    password: str\n"
+            "    token: str\n"
+            "    attempts: int\n"
+            "\n"
+            "type Public[T] = MapFields[\n"
+            "    T,\n"
+            "    Map[\n"
+            "        Key,\n"
+            '        Equal[Key, Literal["password"]] : Drop,\n'
+            '        Equal[Key, Literal["token"]] : '
+            "ReadonlyField[Key, Value],\n"
+            "        ... : OptionalField[Key, Value],\n"
+            "    ],\n"
+            "]\n"
+            "\n"
+            "def publicize[T](value: T) -> Public[T]:\n"
+            "    raise NotImplementedError\n"
+        ).lstrip(),
         encoding="utf-8",
     )
 

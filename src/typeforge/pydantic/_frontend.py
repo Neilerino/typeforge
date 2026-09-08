@@ -16,9 +16,7 @@ from typing import (
 from typeforge import (
     All,
     Assignable,
-    Case,
     Collect,
-    Default,
     Drop,
     Each,
     Equal,
@@ -33,7 +31,7 @@ from typeforge import (
 from typeforge import Any as AnyCondition
 from typeforge import semantics as s
 from typeforge._map import normalize_selector_literal
-from typeforge._markers import Map
+from typeforge._markers import Case, Default, Map
 from typeforge.pydantic._errors import SchemaIssue, UnresolvedAnnotationIssue
 from typeforge.pydantic._markers import Input
 from typeforge.pydantic._type_system import (

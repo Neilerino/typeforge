@@ -26,19 +26,6 @@ CHECKERS = (
     ),
 )
 
-CONDITIONAL_MAP_CHECKERS = (
-    CheckerCommand(
-        "mypy",
-        (executable, "-m", "mypy"),
-        "conditional_map_fallback_mypy.py",
-    ),
-    CheckerCommand(
-        "pyright",
-        (executable, "-m", "pyright"),
-        "conditional_map_fallback_pyright.py",
-    ),
-)
-
 ECS_QUERY_CHECKERS = (
     CheckerCommand(
         "mypy",
@@ -55,22 +42,6 @@ ECS_QUERY_CHECKERS = (
 
 @pytest.mark.parametrize("checker", CHECKERS, ids=lambda checker: checker.name)
 def test_variadic_fallback(checker: CheckerCommand) -> None:
-    fixture = Path(__file__).parent / "fixtures" / checker.fixture_name
-    completed = run(
-        (*checker.arguments, str(fixture)),
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert_checker_succeeded(completed)
-
-
-@pytest.mark.parametrize(
-    "checker",
-    CONDITIONAL_MAP_CHECKERS,
-    ids=lambda checker: checker.name,
-)
-def test_conditional_map_fallback(checker: CheckerCommand) -> None:
     fixture = Path(__file__).parent / "fixtures" / checker.fixture_name
     completed = run(
         (*checker.arguments, str(fixture)),

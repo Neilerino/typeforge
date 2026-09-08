@@ -21,13 +21,16 @@ from typeforge.compiler.source import (
 def test_empty_output_normalizes_to_none_and_emits_the_same_interface(
     tmp_path: Path,
 ) -> None:
-    source = "from typeforge import Map, Case\nfrom typeforge.pydantic import Schema\n"
+    source = """from typeforge import Map
+from typeforge._markers import Case, Map as CanonicalMap
+from typeforge.pydantic import Schema
+"""
     path = tmp_path / "example.py"
     outputs: list[str] = []
     for expression in (
         "Map[int, int:]",
         "Map[int, int:None]",
-        "Map[int, Case[int, None]]",
+        "CanonicalMap[int, Case[int, None]]",
     ):
         text = source + f"class Payload:\n    value: Schema[{expression}]\n"
         path.write_text(text)
@@ -51,7 +54,11 @@ def test_empty_output_normalizes_to_none_and_emits_the_same_interface(
         ("Map[int, int:str:bytes]", "bytes", "step"),
         ("Map[int, ...:str, int:bytes]", "int:bytes", "fallback"),
         ("Map[int, ...:str, ...:bytes]", "...:bytes", "fallback"),
-        ("Map[int, ...:str, Case[int, bytes]]", "Case[int, bytes]", "fallback"),
+        (
+            "Map[int, ...:str, bytes]",
+            "bytes",
+            "fallback",
+        ),
         ('Map[str, "text": bytes]', '"text"', "Literal"),
         ('Map[str, All[Equal["text"]]: bytes]', '"text"', "Literal"),
         ("Map[int:str]", "int:str", "subject"),
@@ -63,9 +70,7 @@ def test_invalid_slice_syntax_returns_a_located_failure(
     message: str,
 ) -> None:
     path = Path("authored.py")
-    source = (
-        f"from typeforge import Map, Case, All, Equal\ntype Selected = {expression}\n"
-    )
+    source = f"from typeforge import Map, All, Equal\ntype Selected = {expression}\n"
     for result in (
         parse_source(source, path),
         compile_source(source, path, maximum_arity=2),
@@ -84,39 +89,42 @@ def test_invalid_slice_syntax_returns_a_located_failure(
 @pytest.mark.parametrize(
     ("sliced", "canonical", "expected"),
     [
-        ("Map[None, :str]", "Map[None, Case[None, str]]", "str"),
-        ("Map[None, :]", "Map[None, Case[None, None]]", "None"),
-        ("Map[int, ...:]", "Map[int, Default[None]]", "None"),
-        ("Map[int, ...:None]", "Map[int, Default[None]]", "None"),
-        ("Map[int, int:str:None]", "Map[int, Case[int, str]]", "str"),
-        ("Map[int, ...:str:None]", "Map[int, Default[str]]", "str"),
+        ("Map[None, :str]", "CanonicalMap[None, Case[None, str]]", "str"),
+        ("Map[None, :]", "CanonicalMap[None, Case[None, None]]", "None"),
+        ("Map[int, ...:]", "CanonicalMap[int, Default[None]]", "None"),
+        ("Map[int, ...:None]", "CanonicalMap[int, Default[None]]", "None"),
+        ("Map[int, int:str:None]", "CanonicalMap[int, Case[int, str]]", "str"),
+        ("Map[int, ...:str:None]", "CanonicalMap[int, Default[str]]", "str"),
         (
             'Map[Literal["text"], Equal[Literal["text"]]: str]',
-            'Map[Literal["text"], Case[Equal[Literal["text"], Literal["text"]], str]]',
+            (
+                'CanonicalMap[Literal["text"], '
+                'Case[Equal[Literal["text"], Literal["text"]], str]]'
+            ),
             "str",
         ),
         (
             "Map[Literal[-1], -1: bytes]",
-            "Map[Literal[-1], Case[Literal[-1], bytes]]",
+            "CanonicalMap[Literal[-1], Case[Literal[-1], bytes]]",
             "bytes",
         ),
         (
             "Map[Literal[True], True: str]",
-            "Map[Literal[True], Case[Literal[True], str]]",
+            "CanonicalMap[Literal[True], Case[Literal[True], str]]",
             "str",
         ),
         (
             "Map[Literal[b'x'], b'x': bytes]",
-            "Map[Literal[b'x'], Case[Literal[b'x'], bytes]]",
+            "CanonicalMap[Literal[b'x'], Case[Literal[b'x'], bytes]]",
             "bytes",
         ),
         (
             "Map[int, int:str, int:bytes]",
-            "Map[int, Case[int, str], Case[int, bytes]]",
+            "CanonicalMap[int, Case[int, str], Case[int, bytes]]",
             "str",
         ),
-        ("Map[str, int:bytes]", "Map[str, Case[int, bytes]]", "Never"),
-        ("Map[int, int:Never]", "Map[int, Case[int, Never]]", "Never"),
+        ("Map[str, int:bytes]", "CanonicalMap[str, Case[int, bytes]]", "Never"),
+        ("Map[int, int:Never]", "CanonicalMap[int, Case[int, Never]]", "Never"),
     ],
 )
 def test_source_spelling_preserves_canonical_interface(
@@ -125,11 +133,11 @@ def test_source_spelling_preserves_canonical_interface(
     canonical: str,
     expected: str,
 ) -> None:
-    imports = (
-        "from typing import Literal, Never\n"
-        "from typeforge import Map, Case, Default, Equal\n"
-        "from typeforge.pydantic import Schema\n"
-    )
+    imports = """from typing import Literal, Never
+from typeforge import Map, Equal
+from typeforge._markers import Case, Default, Map as CanonicalMap
+from typeforge.pydantic import Schema
+"""
     path = tmp_path / "example.py"
     outputs: list[str] = []
     for expression in (sliced, canonical):
@@ -245,7 +253,6 @@ def test_unicode_failure_locations_use_authored_utf8_columns() -> None:
     ("expression", "fragment", "message"),
     [
         ("Map[int]", "Map[int]", "at least one"),
-        ("Map[int, int:str, bytes]", "bytes", "Map entries"),
         (
             "Map[int, Equal[int, str, bytes]: float]",
             "Equal[int, str, bytes]",

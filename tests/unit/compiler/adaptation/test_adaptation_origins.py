@@ -72,7 +72,7 @@ def test_adapt_source_module_retains_target_neutral_alias_with_origin() -> None:
         qualified_name=("Encoded",),
         type_parameters=(TypeParameter("T", TypeParameterKind.TYPE_VAR, "T"),),
         value=MarkerTypeExpression(
-            "Map[T, Case[int, str], Default[bytes]]",
+            "Map[T, int : str, ... : bytes]",
             span,
             MarkerKind.MAP,
             (
@@ -153,14 +153,15 @@ def test_adapt_source_module_materializes_record_with_origin() -> None:
 def test_record_replacements_retain_current_authored_origins() -> None:
     source = (
         parse_source(
-            "from typing import TypedDict\n"
-            "from typeforge import Case, Collect, Each, Field, "
-            "Key, Map, MapFields, Value\n"
-            "class Payload(TypedDict):\n    value: int\n"
-            "type Copy[T] = MapFields[T, Field[Key, Value]]\n"
-            "type Encoded[T] = Map[T, Case[int, Copy[Payload]]]\n"
-            "def copy[T](value: T) -> Copy[T]: ...\n"
-            "def collect[*Ts](*values: Each[Ts]) -> Collect[Copy[Payload]]: ...\n",
+            """from typing import TypedDict
+from typeforge import Collect, Each, Field, Key, Map, MapFields, Value
+class Payload(TypedDict):
+    value: int
+type Copy[T] = MapFields[T, Field[Key, Value]]
+type Encoded[T] = Map[T, int : Copy[Payload]]
+def copy[T](value: T) -> Copy[T]: ...
+def collect[*Ts](*values: Each[Ts]) -> Collect[Copy[Payload]]: ...
+""",
             Path("records.py"),
         )
         .unwrap()

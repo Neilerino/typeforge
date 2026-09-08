@@ -26,14 +26,14 @@ class ReturnCheck:
 _PRELUDE = """
 from typing import Literal, TypeGuard
 
-from typeforge import Case, Default, Map
+from typeforge import Map
 
 
 type Result[T] = Map[
     T,
-    Case[int, str],
-    Case[float, bool],
-    Default[bytes],
+    int : str,
+    float : bool,
+    ... : bytes,
 ]
 
 
@@ -242,9 +242,9 @@ def test_literal_none_and_or_patterns_are_supported() -> None:
     body = """
     type LiteralResult[T] = Map[
         T,
-        Case[Literal["text"], str],
-        Case[None, bytes],
-        Default[bool],
+        Literal["text"] : str,
+        None : bytes,
+        ... : bool,
     ]
 
     def convert[T](value: T) -> LiteralResult[T]:
@@ -359,9 +359,9 @@ def test_exact_overlapping_cases_are_kept_distinct() -> None:
     body = """
     type Overlap[T] = Map[
         T,
-        Case[bool, bytes],
-        Case[int, str],
-        Default[float],
+        bool : bytes,
+        int : str,
+        ... : float,
     ]
 
     def convert[T](value: T) -> Overlap[T]:
@@ -383,9 +383,9 @@ def test_isinstance_accounts_for_subclasses_and_overlapping_cases() -> None:
     body = """
     type Overlap[T] = Map[
         T,
-        Case[bool, bytes],
-        Case[int, str],
-        Default[float],
+        bool : bytes,
+        int : str,
+        ... : float,
     ]
 
     def convert[T](value: T) -> Overlap[T]:
@@ -405,8 +405,8 @@ def test_isinstance_checks_the_original_no_default_example() -> None:
     body = """
     type Strict[T] = Map[
         T,
-        Case[int, str],
-        Case[float, bool],
+        int : str,
+        float : bool,
     ]
 
     def convert[T](value: T) -> Strict[T]:
@@ -426,7 +426,7 @@ def test_isinstance_checks_the_original_no_default_example() -> None:
 
 def test_default_can_preserve_the_controller_type() -> None:
     body = """
-    type Preserved[T] = Map[T, Case[int, str], Default[T]]
+    type Preserved[T] = Map[T, int : str, ... : T]
 
     def convert[T](value: T) -> Preserved[T]:
         if type(value) is int:
@@ -442,7 +442,7 @@ def test_default_can_preserve_the_controller_type() -> None:
 
 def test_missing_default_verifies_the_unhandled_path_as_never() -> None:
     body = """
-    type Strict[T] = Map[T, Case[int, str]]
+    type Strict[T] = Map[T, int : str]
 
     def convert[T](value: T) -> Strict[T]:
         if type(value) is int:
@@ -642,8 +642,8 @@ def test_direct_map_annotations_are_verified_without_an_alias() -> None:
     body = """
     def convert[T](value: T) -> Map[
         T,
-        Case[int, str],
-        Default[bytes],
+        int : str,
+        ... : bytes,
     ]:
         if type(value) is int:
             return flag()
@@ -664,8 +664,8 @@ def test_structural_capture_returns_degrade_without_losing_the_overlay() -> None
 
     type Unwrapped[T] = Map[
         T,
-        Case[Option[Value], Value],
-        Default[T],
+        Option[Value] : Value,
+        ... : T,
     ]
 
     def convert[T](value: T) -> Unwrapped[T]:
@@ -683,10 +683,10 @@ def test_structural_capture_returns_degrade_without_losing_the_overlay() -> None
 
 def test_conditional_aliases_are_verified_inside_implementations() -> None:
     body = """
-    from typeforge import Case, Default, Equal, Map
+    from typeforge import Equal, Map
 
     type Conditional[T] = Map[
-        T, Case[Equal[T, int], str], Default[bytes]
+        T, Equal[T, int] : str, ... : bytes
     ]
 
     def convert[T](value: T) -> Conditional[T]:
@@ -704,10 +704,10 @@ def test_conditional_aliases_are_verified_inside_implementations() -> None:
 
 def test_direct_conditional_annotations_are_verified() -> None:
     body = """
-    from typeforge import Case, Default, Equal, Map
+    from typeforge import Equal, Map
 
     def convert[T](value: T) -> Map[
-        T, Case[Equal[T, int], str], Default[bytes]
+        T, Equal[T, int] : str, ... : bytes
     ]:
         if type(value) is int:
             return flag()
@@ -756,9 +756,9 @@ def test_pyrefly_checks_nonliteral_and_awaited_expressions_in_memory(
 ) -> None:
     source = dedent(
         """
-        from typeforge import Case, Default, Map
+        from typeforge import Map
 
-        type Result[T] = Map[T, Case[int, str], Default[bytes]]
+        type Result[T] = Map[T, int : str, ... : bytes]
 
         def flag() -> bool:
             return True
@@ -824,9 +824,9 @@ def test_pyrefly_checks_nonliteral_and_awaited_expressions_in_memory(
 def test_mypy_checks_return_obligations_in_memory(tmp_path: Path) -> None:
     source = dedent(
         """
-        from typeforge import Case, Default, Map
+        from typeforge import Map
 
-        type Result[T] = Map[T, Case[int, str], Default[bytes]]
+        type Result[T] = Map[T, int : str, ... : bytes]
 
         def flag() -> bool:
             return True
@@ -862,12 +862,12 @@ def test_original_map_implementation_example_reports_only_invalid_branches(
 ) -> None:
     source = dedent(
         """
-        from typeforge import Case, Map
+        from typeforge import Map
 
         type TestMap[T] = Map[
             T,
-            Case[int, str],
-            Case[float, bool],
+            int : str,
+            float : bool,
         ]
 
         def test_func[T](arg: T) -> TestMap[T]:

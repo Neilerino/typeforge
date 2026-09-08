@@ -1,7 +1,7 @@
 """Construct canonical Map annotations before Python discovers type parameters."""
 
 from types import GenericAlias, NoneType
-from typing import Literal, TypeAliasType, cast, get_args, get_origin
+from typing import Literal, cast, get_args, get_origin
 
 from typeforge._markers import All, Assignable, Case, Default, Equal, Not
 from typeforge._markers import Any as AnyCondition
@@ -43,10 +43,6 @@ class Map:
                         (_bind_selector(branch.start, subject), output),
                     )
                 )
-            elif isinstance(get_origin(entry) or entry, TypeAliasType):
-                # Legacy Case/Default entries may be hidden behind aliases. Leave
-                # expansion to the frontend until their removal in slice 11.
-                normalized.append(entry)
             else:
                 raise TypeError("Map branches must use selector: output syntax")
 
@@ -64,7 +60,7 @@ def _bind_selector(selector: object, subject: object) -> object:
             origin, tuple(_bind_selector(argument, subject) for argument in arguments)
         )
 
-    # Alias expansion and binding through aliases belong to the frontend (slice 05).
+    # Alias expansion and binding through aliases belong to the frontend.
     return normalize_selector_literal(selector)
 
 

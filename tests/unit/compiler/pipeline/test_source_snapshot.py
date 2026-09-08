@@ -14,9 +14,8 @@ from typeforge.compiler.source import (
 
 
 def test_compilation_retains_the_exact_snapshot_from_one_parse() -> None:
-    source = dedent("""\
-        raise RuntimeError("authored code must never execute")
-        def choose[T](value: T) -> Map[T, Case[int, str], Default[bytes]]:
+    source = dedent("""        raise RuntimeError("authored code must never execute")
+        def choose[T](value: T) -> Map[T, int : str, ... : bytes]:
             return "café"
         """)
     path = Path("not-on-disk/snapshot.py")
@@ -76,10 +75,10 @@ def test_source_facts_locate_preamble_decorators_and_return_sites() -> None:
 
 
 def test_public_plan_contains_facts_but_no_python_syntax_nodes() -> None:
-    source = (
-        "from typeforge import Case, Map\n"
-        "def example[T](value: T) -> Map[T, Case[int, str]]:\n    return value\n"
-    )
+    source = """from typeforge import Map
+def example[T](value: T) -> Map[T, int : str]:
+    return value
+"""
     parsed = parse_source(source, path=Path("example.py")).unwrap()
     plan = compile_source(source, path=Path("example.py"), maximum_arity=2).unwrap()
 

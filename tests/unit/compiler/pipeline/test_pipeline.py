@@ -92,9 +92,9 @@ def test_nested_adaptation_failures_preserve_the_original_error(
 ) -> None:
     source = tmp_path / "invalid_condition.py"
     source.write_text(
-        "from typeforge import Case, Default, Equal, Map\n"
-        "def choose[T](value: T) -> "
-        "Map[T, Case[Equal[T, int, str], str], Default[bytes]]: ...\n",
+        """from typeforge import Equal, Map
+def choose[T](value: T) -> Map[T, Equal[T, int, str] : str, ... : bytes]: ...
+""",
         encoding="utf-8",
     )
 
@@ -315,31 +315,36 @@ def test_schema_boundaries_resolve_in_model_fields_and_generated_stubs(
 ) -> None:
     source = tmp_path / "models.py"
     source.write_text(
-        "from pydantic import BaseModel\n"
-        "from typing import TypedDict\n"
-        "from typeforge import (\n"
-        "    Case, Default, Equal, Field, Key, Map, MapFields, Value,\n"
-        ")\n"
-        "from typeforge.pydantic import Input, Schema\n\n"
-        "type Wire[T] = Map[T, Case[bytes, str], Default[int]]\n\n"
-        "class User(TypedDict):\n"
-        "    name: str\n\n"
-        "type Public[T] = MapFields[T, Field[Key, Value]]\n\n"
-        "class Payload(BaseModel):\n"
-        "    wire: Schema[Wire[bytes]]\n"
-        "    direct: Schema[Map["
-        "int, Case[Equal[int, int], str], Default[bytes]]]\n"
-        "    runtime: Schema[Map[Input, Case[int, int], Case[str, bytes]]]\n"
-        "    runtime_if: Schema[Map[Input, "
-        "Case[Equal[Input, str], int], Default[float]]]\n"
-        "    structural: Schema[Map["
-        "list[int], Case[list[Value], Value], Default[bytes]]]\n"
-        "    structural_output: Schema[Map["
-        "list[int], Case[list[Value], set[Value]], Default[bytes]]]\n"
-        "    nested_capture: Schema[Map["
-        "list[int], Case[list[Value], Map[Value, Case[int, str], Default[bytes]]], "
-        "Default[float]]]\n"
-        "    public: Schema[Public[User]]\n",
+        (
+            "from pydantic import BaseModel\n"
+            "from typing import TypedDict\n"
+            "from typeforge import Equal, Field, Key, Map, "
+            "MapFields, Value\n"
+            "from typeforge.pydantic import Input, Schema\n"
+            "\n"
+            "type Wire[T] = Map[T, bytes : str, ... : int]\n"
+            "\n"
+            "class User(TypedDict):\n"
+            "    name: str\n"
+            "\n"
+            "type Public[T] = MapFields[T, Field[Key, Value]]\n"
+            "\n"
+            "class Payload(BaseModel):\n"
+            "    wire: Schema[Wire[bytes]]\n"
+            "    direct: Schema[Map[int, Equal[int, int] : str, ..."
+            " : bytes]]\n"
+            "    runtime: Schema[Map[Input, int : int, str : "
+            "bytes]]\n"
+            "    runtime_if: Schema[Map[Input, Equal[Input, str] : "
+            "int, ... : float]]\n"
+            "    structural: Schema[Map[list[int], list[Value] : "
+            "Value, ... : bytes]]\n"
+            "    structural_output: Schema[Map[list[int], "
+            "list[Value] : set[Value], ... : bytes]]\n"
+            "    nested_capture: Schema[Map[list[int], list[Value] "
+            ": Map[Value, int : str, ... : bytes], ... : float]]\n"
+            "    public: Schema[Public[User]]\n"
+        ),
         encoding="utf-8",
     )
 

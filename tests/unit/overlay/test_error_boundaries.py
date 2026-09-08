@@ -11,10 +11,9 @@ from typeforge.overlay import OverlayError, OverlayErrorCode, project_overlay
 
 
 def test_emission_failure_is_translated_once_and_stops_later_declarations() -> None:
-    source = dedent("""\
-        from typeforge import Case, Map
-        type First[T] = Map[T, Case[int, str]]
-        type Second[T] = Map[T, Case[int, bytes]]
+    source = dedent("""        from typeforge import Map
+        type First[T] = Map[T, int : str]
+        type Second[T] = Map[T, int : bytes]
         """)
     path = Path("aliases.py")
     plan = compile_source(source, path, maximum_arity=1).unwrap()
@@ -32,9 +31,8 @@ def test_emission_failure_is_translated_once_and_stops_later_declarations() -> N
 
 
 def test_unexpected_emitter_exception_propagates_unchanged() -> None:
-    source = dedent("""\
-        from typeforge import Case, Map
-        type Item[T] = Map[T, Case[int, str]]
+    source = dedent("""        from typeforge import Map
+        type Item[T] = Map[T, int : str]
         """)
     plan = compile_source(source, Path("alias.py"), maximum_arity=1).unwrap()
     error = RuntimeError("emitter bug")
@@ -49,9 +47,8 @@ def test_unexpected_emitter_exception_propagates_unchanged() -> None:
 
 
 def test_unrenderable_verification_type_still_skips_only_the_obligation() -> None:
-    source = dedent("""\
-        from typeforge import Case, Map
-        type Encoded[T] = Map[T, Case[int, str]]
+    source = dedent("""        from typeforge import Map
+        type Encoded[T] = Map[T, int : str]
         def convert[T](value: T) -> Encoded[T]:
             if type(value) is int:
                 return value

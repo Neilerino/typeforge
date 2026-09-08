@@ -22,7 +22,7 @@ from typeforge.compiler.stub_ir import (
 
 
 @pytest.mark.parametrize(
-    "return_annotation", ["Encoded[T]", "Map[T, Case[int, Copy[Payload]]]"]
+    "return_annotation", ["Encoded[T]", "Map[T, int : Copy[Payload]]"]
 )
 def test_callable_contract_preserves_relationship_before_record_rewriting(
     return_annotation: str,
@@ -31,11 +31,11 @@ def test_callable_contract_preserves_relationship_before_record_rewriting(
         parse_source(
             dedent(f"""\
             from typing import TypedDict
-            from typeforge import Case, Field, Key, Map, MapFields, Value
+            from typeforge import Field, Key, Map, MapFields, Value
             class Payload(TypedDict):
                 value: int
             type Copy[T] = MapFields[T, Field[Key, Value]]
-            type Encoded[T] = Map[T, Case[int, Copy[Payload]]]
+            type Encoded[T] = Map[T, int : Copy[Payload]]
             def encode[T](value: T) -> {return_annotation}: ...
             def identity[T](value: T) -> T: ...
             """),
@@ -96,16 +96,15 @@ def test_callable_contract_preserves_relationship_before_record_rewriting(
 def test_same_named_contracts_keep_authored_identity_and_class_type_variables() -> None:
     source = (
         parse_source(
-            dedent("""\
-            from typeforge import Case, Map
+            dedent("""            from typeforge import Map
             class First[T]:
-                def convert(self, value: T) -> Map[T, Case[int, str]]: ...
+                def convert(self, value: T) -> Map[T, int : str]: ...
             class Second[U]:
-                def convert(self, value: U) -> Map[U, Case[int, bytes]]: ...
+                def convert(self, value: U) -> Map[U, int : bytes]: ...
             if enabled:
-                def convert[V](value: V) -> Map[V, Case[int, bool]]: ...
+                def convert[V](value: V) -> Map[V, int : bool]: ...
             else:
-                def convert[V](value: V) -> Map[V, Case[int, float]]: ...
+                def convert[V](value: V) -> Map[V, int : float]: ...
             """),
             Path("scopes.py"),
         )
@@ -148,10 +147,9 @@ def test_schema_origins_reach_retained_predicate_operands() -> None:
     path = Path("predicate.py")
     source = (
         parse_source(
-            dedent("""\
-            from typeforge import Case, Equal, Map
+            dedent("""            from typeforge import Equal, Map
             from typeforge.pydantic import Schema
-            def convert[T](value: T) -> Map[T, Case[Equal[T, Schema[int]], str]]: ...
+            def convert[T](value: T) -> Map[T, Equal[T, Schema[int]] : str]: ...
             """),
             path,
         )
@@ -170,7 +168,7 @@ def test_schema_origins_reach_retained_predicate_operands() -> None:
     assert isinstance(predicate, EqualPredicate)
     assert predicate.right == schema_root == TypeName("int")
     assert predicate.right is not schema_root
-    schema_span = SourceSpan(path, SourcePosition(3, 49), SourcePosition(3, 60))
+    schema_span = SourceSpan(path, SourcePosition(3, 44), SourcePosition(3, 55))
     schema_targets = tuple(
         item.generated for item in specialized.origins if item.origin == schema_span
     )

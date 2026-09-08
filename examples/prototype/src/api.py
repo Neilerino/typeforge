@@ -1,18 +1,7 @@
 from datetime import datetime
 from typing import Literal, TypedDict
 
-from typeforge import (
-    Case,
-    Collect,
-    Default,
-    Each,
-    Equal,
-    Field,
-    Key,
-    Map,
-    MapFields,
-    Value,
-)
+from typeforge import Collect, Each, Equal, Field, Key, Map, MapFields, Value
 
 
 def collect[T](*values: Each[T]) -> Collect[T]:
@@ -23,8 +12,8 @@ def read[M](
     mode: M,
 ) -> Map[
     M,
-    Case[Equal[M, Literal["text"]], str],
-    Default[bytes],
+    Equal[M, Literal["text"]] : str,
+    ...:bytes,
 ]:
     raise NotImplementedError
 
@@ -33,9 +22,9 @@ def serialize[T](
     value: T,
 ) -> Map[
     T,
-    Case[int, float],
-    Case[datetime, str],
-    Default[T],
+    int:float,
+    datetime:str,
+    ...:T,
 ]:
     raise NotImplementedError
 
@@ -53,7 +42,7 @@ type JsonSafe[T] = MapFields[
     T,
     Field[
         Key,
-        Map[Value, Case[datetime, str], Default[Value]],
+        Map[Value, datetime:str, ...:Value],
     ],
 ]
 

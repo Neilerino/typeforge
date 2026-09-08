@@ -9,7 +9,7 @@ from pydantic import (
     TypeAdapter,
     ValidationError,
 )
-from typeforge import Case, Default, Map, Value
+from typeforge import Map, Value
 from typeforge.pydantic import Schema
 
 
@@ -17,31 +17,31 @@ from typeforge.pydantic import Schema
     ("expression", "raw", "expected"),
     [
         pytest.param(
-            Map[TypingAny, Case[int, str], Default[bytes]],
+            Map[TypingAny, int:str, ...:bytes],
             "3",
             b"3",
             id="any-exact-mismatch-default",
         ),
         pytest.param(
-            Map[TypingAny, Case[list[Value], set[Value]], Default[TypingAny]],
+            Map[TypingAny, list[Value] : set[Value], ...:TypingAny],
             ["3"],
             ["3"],
             id="any-has-no-list-structure",
         ),
         pytest.param(
-            Map[list[TypingAny], Case[list[Value], set[Value]]],
+            Map[list[TypingAny], list[Value] : set[Value]],
             ["3", 4],
             {"3", 4},
             id="list-any-captures-any",
         ),
         pytest.param(
-            Map[TypingAny, Case[TypingAny, str]],
+            Map[TypingAny, TypingAny:str],
             "3",
             "3",
             id="explicit-any-case",
         ),
         pytest.param(
-            Map[TypingAny, Case[int, bytes], Case[TypingAny, str]],
+            Map[TypingAny, int:bytes, TypingAny:str],
             "3",
             "3",
             id="mismatch-continues-to-later-case",
@@ -62,16 +62,16 @@ def test_schema_any_cases_preserve_exact_and_structural_roles(
 @pytest.mark.parametrize(
     "expression",
     [
-        pytest.param(Map[TypingAny, Case[int, str]], id="exact-no-match"),
+        pytest.param(Map[TypingAny, int:str], id="exact-no-match"),
         pytest.param(
-            Map[TypingAny, Case[list[Value], set[Value]]],
+            Map[TypingAny, list[Value] : set[Value]],
             id="structural-no-match",
         ),
         pytest.param(
-            Map[TypingAny, Case[int, str], Default[Never]],
+            Map[TypingAny, int:str, ...:Never],
             id="explicit-never-default",
         ),
-        pytest.param(Map[TypingAny, Case[TypingAny, Never]], id="selected-never"),
+        pytest.param(Map[TypingAny, TypingAny:Never], id="selected-never"),
     ],
 )
 def test_schema_rejects_empty_output_at_construction(expression: object) -> None:
@@ -81,12 +81,8 @@ def test_schema_rejects_empty_output_at_construction(expression: object) -> None
 
 
 def test_structural_map_reconciles_repeated_captures() -> None:
-    type Matched = Map[
-        tuple[int, int], Case[tuple[Value, Value], list[Value]], Default[bytes]
-    ]
-    type Mismatched = Map[
-        tuple[int, str], Case[tuple[Value, Value], list[Value]], Default[bytes]
-    ]
+    type Matched = Map[tuple[int, int], tuple[Value, Value] : list[Value], ...:bytes]
+    type Mismatched = Map[tuple[int, str], tuple[Value, Value] : list[Value], ...:bytes]
 
     assert TypeAdapter[object](Schema[Matched]).validate_python(["3"]) == [3]
     assert TypeAdapter[object](Schema[Mismatched]).validate_python("3") == b"3"
@@ -95,8 +91,8 @@ def test_structural_map_reconciles_repeated_captures() -> None:
 def test_failed_structural_case_does_not_leak_capture_to_next_case() -> None:
     type Selected = Map[
         tuple[int, str],
-        Case[tuple[Value, bytes], bytes],
-        Case[tuple[int, Value], list[Value]],
+        tuple[Value, bytes] : bytes,
+        tuple[int, Value] : list[Value],
     ]
     adapter = TypeAdapter[object](Schema[Selected])
 
@@ -108,7 +104,7 @@ def test_failed_structural_case_does_not_leak_capture_to_next_case() -> None:
 def test_nested_capture_templates_preserve_union_and_literal_types() -> None:
     type Selected = Map[
         list[int],
-        Case[list[Value], tuple[Value | None, Literal["accepted"]]],
+        list[Value] : tuple[Value | None, Literal["accepted"]],
     ]
     adapter = TypeAdapter[object](Schema[Selected])
 
@@ -120,7 +116,7 @@ def test_nested_capture_templates_preserve_union_and_literal_types() -> None:
 
 def test_variadic_alias_binds_each_argument_before_structural_capture() -> None:
     type Packed[*Items] = Map[
-        tuple[*Items], Case[tuple[Value, Value], list[Value]], Default[bytes]
+        tuple[*Items], tuple[Value, Value] : list[Value], ...:bytes
     ]
 
     assert TypeAdapter[object](Schema[Packed[int, int]]).validate_python(["3"]) == [3]
@@ -131,7 +127,7 @@ def test_schema_nested_beneath_container_retains_leaf_constraints() -> None:
     from pydantic import Field
 
     type Positive = Annotated[int, Field(gt=0)]
-    adapter = TypeAdapter[object](list[Schema[Map[int, Case[int, Positive]]]])
+    adapter = TypeAdapter[object](list[Schema[Map[int, int:Positive]]])
 
     assert adapter.validate_python(["3"]) == [3]
     with pytest.raises(ValidationError) as captured:
@@ -151,7 +147,7 @@ def test_schema_preserves_metadata_inside_and_outside_the_annotation() -> None:
         calls.append("outer")
         return value * 2
 
-    type Selected = Annotated[Map[int, Case[int, int]], AfterValidator(inner)]
+    type Selected = Annotated[Map[int, int:int], AfterValidator(inner)]
     adapter = TypeAdapter[object](Annotated[Schema[Selected], AfterValidator(outer)])
 
     assert adapter.validate_python("3") == 8

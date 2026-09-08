@@ -7,7 +7,8 @@ from pydantic_core import CoreSchema
 from returns.result import Failure
 
 from pydantic import GetCoreSchemaHandler
-from typeforge import Case, Default, Equal, Key, Map
+from typeforge import Equal, Key, Map
+from typeforge._markers import Case, Default
 from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic._compile import compile_annotation
 
@@ -25,8 +26,8 @@ class ForbiddenHandler(GetCoreSchemaHandler):
             "parsing",
             "invalid_marker",
         ),
-        (Map[int, Case[Equal[Key, Key], str]], "evaluation", "unbound_key"),
-        (Map[Any, Case[int, str]], "evaluation", "map_no_match"),
+        (Map[int, Equal[Key, Key] : str], "evaluation", "unbound_key"),
+        (Map[Any, int:str], "evaluation", "map_no_match"),
         (Equal[int, int], "evaluation", "expected_type"),
     ],
 )

@@ -16,21 +16,23 @@ from typeforge.pydantic._errors import SchemaIssue
 
 
 @pytest.mark.parametrize(
-    ("expression", "message"),
+    ("expression", "message", "error_type"),
     [
-        ("Map[int]", "a subject and at least one branch"),
-        ("Map[int, int: str, bytes]", "selector: output"),
+        ("Map[int]", "a subject and at least one branch", AdaptationError),
+        ("Map[int, int: str, bytes]", "selector: output", SourceSyntaxError),
     ],
 )
 def test_compiler_branch_errors_use_public_syntax(
-    expression: str, message: str
+    expression: str,
+    message: str,
+    error_type: type[AdaptationError | SourceSyntaxError],
 ) -> None:
     source = f"from typeforge import Map\ntype Invalid = {expression}\n"
     result = compile_source(source, Path("authored.py"), maximum_arity=2)
 
     assert isinstance(result, Failure)
     error = result.failure()
-    assert isinstance(error, AdaptationError)
+    assert isinstance(error, error_type)
     assert message in error.message
     assert "Case" not in error.message
     assert "Default" not in error.message

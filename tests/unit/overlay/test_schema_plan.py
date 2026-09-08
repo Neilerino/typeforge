@@ -80,10 +80,9 @@ def test_schema_roots_preserve_unspecialized_emission_failures() -> None:
 
 
 def test_shared_alias_outputs_do_not_create_overlapping_schema_edits() -> None:
-    source = dedent("""\
-        from typeforge import Case, Default, Map
+    source = dedent("""        from typeforge import Map
         from typeforge.pydantic import Schema
-        type Item[T] = Map[T, Case[int, str], Default[bytes]]
+        type Item[T] = Map[T, int : str, ... : bytes]
         class Payload:
             a: Schema[Item[int]]
             b: Schema[tuple[Schema[Item[int]], int]]
@@ -106,8 +105,7 @@ def test_shared_alias_outputs_do_not_create_overlapping_schema_edits() -> None:
 
     document = transform_source(source, Path("schemas.py")).unwrap()
 
-    assert document.generated_text == dedent("""\
-        from typeforge import Case, Default, Map
+    assert document.generated_text == dedent("""        from typeforge import Map
         from typeforge.pydantic import Schema
         type Item[T] = str | bytes
         class Payload:

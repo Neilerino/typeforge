@@ -47,10 +47,9 @@ def test_relationship_aliases_remain_target_neutral_until_publication(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "wire.py"
-    source = dedent("""\
-        from typeforge import Case, Default, Map
+    source = dedent("""        from typeforge import Map
 
-        type Wire[T] = Map[T, Case[bytes, str], Default[int]]
+        type Wire[T] = Map[T, bytes : str, ... : int]
         """)
     path.write_text(source, encoding="utf-8")
 
@@ -88,10 +87,9 @@ def test_runtime_statements_are_accepted_by_compilation_but_rejected_for_publica
 
 def test_public_surface_failure_precedes_compiler_failures(tmp_path: Path) -> None:
     path = tmp_path / "invalid_application.py"
-    source = dedent("""\
-        from typeforge import Case, Equal, Map
+    source = dedent("""        from typeforge import Equal, Map
 
-        def choose[T](value: T) -> Map[T, Case[Equal[T, int, str], str]]: ...
+        def choose[T](value: T) -> Map[T, Equal[T, int, str] : str]: ...
 
         while ready():
             serve()

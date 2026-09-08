@@ -1,6 +1,6 @@
 """Retained production behavior for deferred-input roadmap slice 1.
 
-Case IDs are indexed by docs/in_progress_tasks/deferred-input-map-characterization.md.
+Case IDs retain the deferred Input Map characterization witnesses below.
 Intended corrections live in that matrix until their owning slice is implemented.
 """
 
@@ -17,133 +17,129 @@ from typeforge.compiler.pipeline import generate_module
     ("annotation", "expected"),
     (
         param(
-            "Map[list[int], Case[list[Value], set[Value]], Default[bytes]]",
+            "Map[list[int], list[Value] : set[Value], ... : bytes]",
             "set[int]",
             id="direct-structural",
         ),
         param(
-            'Map[int, Case[int, Literal["accepted"]], Default[Literal["rejected"]]]',
+            'Map[int, int : Literal["accepted"], ... : Literal["rejected"]]',
             'Literal["accepted"]',
             id="literal-output",
         ),
         param(
-            'Map[bytes, Case[int, str], Default[Literal["rejected"]]]',
+            'Map[bytes, int : str, ... : Literal["rejected"]]',
             'Literal["rejected"]',
             id="literal-default",
         ),
         param(
-            'Map[Literal["yes"], Case[Literal["yes"], str], Default[bytes]]',
+            'Map[Literal["yes"], Literal["yes"] : str, ... : bytes]',
             "str",
             id="literal-case",
         ),
         param(
-            'Map[int, Case[Equal[Literal["yes"], Literal["yes"]], str], '
-            "Default[bytes]]",
+            'Map[int, Equal[Literal["yes"], Literal["yes"]] : str, ... : bytes]',
             "str",
             id="literal-predicate",
         ),
         param(
-            'Map[int, Case[Assignable[Literal["yes"], Literal["yes"]], str], '
-            "Default[bytes]]",
+            'Map[int, Assignable[Literal["yes"], Literal["yes"]] : str, ... : bytes]',
             "str",
             id="literal-assignable",
         ),
         param(
-            "Map[list[int], Case[list[Value], set[Value] | None], Default[bytes]]",
+            "Map[list[int], list[Value] : set[Value] | None, ... : bytes]",
             "set[int] | None",
             id="union-output",
         ),
         param(
-            "Map[list[int], Case[list[Value], tuple[Value | None]], Default[bytes]]",
+            "Map[list[int], list[Value] : tuple[Value | None], ... : bytes]",
             "tuple[int | None]",
             id="nested-union-output",
         ),
         param(
-            "Map[int | bytes, Case[int, str], Default[float]]",
+            "Map[int | bytes, int : str, ... : float]",
             "str | float",
             id="union-subject",
         ),
         param(
-            "Map[list[int | int], Case[list[int], str], Default[bytes]]",
+            "Map[list[int | int], list[int] : str, ... : bytes]",
             "str",
             id="normalized-subject",
         ),
         param(
-            "Map[list[int], Case[list[int | int], str], Default[bytes]]",
+            "Map[list[int], list[int | int] : str, ... : bytes]",
             "str",
             id="normalized-pattern",
         ),
         param(
-            "Map[list[int], Case[list[Value], tuple[Value | int]], Default[bytes]]",
+            "Map[list[int], list[Value] : tuple[Value | int], ... : bytes]",
             "tuple[int]",
             id="normalized-output",
         ),
         param(
-            "list[Map[int, Case[int, str], Default[bytes]]]",
+            "list[Map[int, int : str, ... : bytes]]",
             "list[str]",
             id="under-application",
         ),
         param(
-            "Map[int, Case[int, str], Default[bytes]] | None",
+            "Map[int, int : str, ... : bytes] | None",
             "str | None",
             id="under-union",
         ),
         param(
-            "tuple[*Map[int, Case[int, tuple[str, bytes]], Default[tuple[float]]]]",
+            "tuple[*Map[int, int : tuple[str, bytes], ... : tuple[float]]]",
             "tuple[*tuple[str, bytes]]",
             id="under-starred",
         ),
         param(
-            "tuple[Schema[Map[int, Case[int, str], Default[bytes]]], int]",
+            "tuple[Schema[Map[int, int : str, ... : bytes]], int]",
             "tuple[str, int]",
             id="nested-schema",
         ),
         param(
-            "Map[list[int], Case[list[Value], "
-            "Map[Value, Case[int, str], Default[bytes]]], Default[float]]",
+            (
+                "Map[list[int], list[Value] : Map[Value, int : str, ..."
+                " : bytes], ... : float]"
+            ),
             "str",
             id="nested-capture-map",
         ),
+        param("Map[Input, int : int, str : bytes]", "int | bytes", id="deferred"),
         param(
-            "Map[Input, Case[int, int], Case[str, bytes]]", "int | bytes", id="deferred"
-        ),
-        param(
-            "Map[Input, Case[Equal[Input, str], int], Default[float]]",
+            "Map[Input, Equal[Input, str] : int, ... : float]",
             "int | float",
             id="deferred-predicate",
         ),
         param(
-            "Map[Input, Case[int, Map[Input, Case[int, str], Default[float]]], "
-            "Default[bytes]]",
+            "Map[Input, int : Map[Input, int : str, ... : float], ... : bytes]",
             "str | float | bytes",
             id="nested-deferred",
         ),
         param(
-            "Map[int | str, Case[int, "
-            "Map[Input, Case[int, bytes], Default[float]]], Default[bytes]]",
+            "Map[int | str, int : Map[Input, int : bytes, ... : float], ... : bytes]",
             "bytes | float",
             id="union-deferred-outputs",
         ),
         param(
-            "Map[Input, Case[int, str], Case[str, str], Default[str]]",
+            "Map[Input, int : str, str : str, ... : str]",
             "str",
             id="duplicate-deferred",
         ),
         param(
-            "Map[Input, Case[int, str], Default[Never]]",
+            "Map[Input, int : str, ... : Never]",
             "str",
             id="deferred-explicit-never",
         ),
-        param("Map[Input, Case[int, str]]", "str", id="deferred-omitted"),
-        param("Map[str, Case[int, str]]", "Never", id="no-match-omitted"),
+        param("Map[Input, int : str]", "str", id="deferred-omitted"),
+        param("Map[str, int : str]", "Never", id="no-match-omitted"),
         param(
-            "Map[str, Case[int, str], Default[Never]]",
+            "Map[str, int : str, ... : Never]",
             "Never",
             id="no-match-explicit-never",
         ),
-        param("Map[int | bytes, Case[int, str]]", "str", id="union-no-match"),
+        param("Map[int | bytes, int : str]", "str", id="union-no-match"),
         param(
-            "Map[Input, Case[int, Never], Default[Never]]",
+            "Map[Input, int : Never, ... : Never]",
             "Never",
             id="deferred-all-never",
         ),
@@ -156,7 +152,7 @@ def test_schema_maps_preserve_type_outputs(
     path.write_text(
         "from typing import Literal, Never\n"
         "from typeforge import (\n"
-        "    All, Any, Assignable, Case, Default, Equal, Map, Not, Value,\n"
+        "    All, Any, Assignable, Equal, Map, Not, Value,\n"
         ")\n"
         "from typeforge.pydantic import Input, Schema\n\n"
         "class Payload:\n"
@@ -176,107 +172,102 @@ def test_schema_maps_preserve_type_outputs(
     ("annotation", "expected"),
     (
         param(
-            "Map[T, Case[Equal[T, int], str], Default[bytes]]",
+            "Map[T, Equal[T, int] : str, ... : bytes]",
             "str | bytes",
             id="unknown-predicate",
         ),
         param(
-            "Map[T, Case[Assignable[T, int], str], Default[bytes]]",
+            "Map[T, Assignable[T, int] : str, ... : bytes]",
             "str | bytes",
             id="unknown-assignable",
         ),
         param(
-            "Map[int, Case[Equal[int, int], float], "
-            "Case[Equal[T, int], str], Default[bytes]]",
+            "Map[int, Equal[int, int] : float, Equal[T, int] : str, ... : bytes]",
             "float",
             id="known-true-first",
         ),
         param(
-            "Map[int, Case[Equal[int, str], float], "
-            "Case[Equal[T, int], str], Default[bytes]]",
+            "Map[int, Equal[int, str] : float, Equal[T, int] : str, ... : bytes]",
             "str | bytes",
             id="known-false-first",
         ),
         param(
-            "Map[int, Case[int, float], Case[Equal[T, int], str], Default[bytes]]",
+            "Map[int, int : float, Equal[T, int] : str, ... : bytes]",
             "float",
             id="exact-first",
         ),
         param(
-            "Map[int, Case[Equal[T, int], str], "
-            "Case[Equal[U, int], float], Default[bytes]]",
+            "Map[int, Equal[T, int] : str, Equal[U, int] : float, ... : bytes]",
             "str | float | bytes",
             id="unknown-then-unknown",
         ),
         param(
-            "Map[int, Case[Equal[T, int], str], Case[int, float], "
-            "Case[Equal[U, int], complex], Default[bytes]]",
+            (
+                "Map[int, Equal[T, int] : str, int : float, Equal[U, "
+                "int] : complex, ... : bytes]"
+            ),
             "str | float",
             id="unknown-then-match",
         ),
-        param("Map[int, Case[Equal[T, int], str]]", "str", id="unknown-no-default"),
-        param("Map[T, Case[T, str], Default[bytes]]", "str", id="same-symbol-exact"),
+        param("Map[int, Equal[T, int] : str]", "str", id="unknown-no-default"),
+        param("Map[T, T : str, ... : bytes]", "str", id="same-symbol-exact"),
         param(
-            "Map[list[T], Case[list[T], str], Default[bytes]]",
+            "Map[list[T], list[T] : str, ... : bytes]",
             "str",
             id="same-structure",
         ),
         param(
-            "Map[list[T], Case[set[int], str], Default[bytes]]",
+            "Map[list[T], set[int] : str, ... : bytes]",
             "bytes",
             id="known-origin-mismatch",
         ),
         param(
-            "Map[tuple[int, T], Case[tuple[str, int], float], Default[bytes]]",
+            "Map[tuple[int, T], tuple[str, int] : float, ... : bytes]",
             "bytes",
             id="known-argument-mismatch",
         ),
         param(
-            "Map[tuple[T, int], Case[tuple[str, bytes], float], Default[bytes]]",
+            "Map[tuple[T, int], tuple[str, bytes] : float, ... : bytes]",
             "bytes",
             id="known-argument-mismatch-after-unknown",
         ),
         param(
-            "Map[tuple[T, T], Case[tuple[Value, Value], Value], Default[bytes]]",
+            "Map[tuple[T, T], tuple[Value, Value] : Value, ... : bytes]",
             "T",
             id="repeated-capture-same",
         ),
         param(
-            "Map[tuple[int, str, T], "
-            "Case[tuple[Value, Value, Value], Value], Default[bytes]]",
+            "Map[tuple[int, str, T], tuple[Value, Value, Value] : Value, ... : bytes]",
             "bytes",
             id="repeated-capture-mismatch",
         ),
         param(
-            "Map[int, Case[int, Map[T, Case[Equal[T, int], str], Default[bytes]]], "
-            "Default[float]]",
+            "Map[int, int : Map[T, Equal[T, int] : str, ... : bytes], ... : float]",
             "str | bytes",
             id="nested-uncertain-output",
         ),
         param(
-            "Map[T, Case[Equal[T, int], "
-            "Map[Input, Case[int, str], Default[float]]], Default[bytes]]",
+            "Map[T, Equal[T, int] : Map[Input, int : str, ... : float], ... : bytes]",
             "str | float | bytes",
             id="uncertain-deferred-output",
         ),
         param(
-            "Map[int, Case[Equal[Map[T, Case[int, int], Default[str]], int], bytes], "
-            "Default[float]]",
+            "Map[int, Equal[Map[T, int : int, ... : str], int] : bytes, ... : float]",
             "bytes | float",
             id="nested-uncertain-predicate",
         ),
         param(
-            "Map[int, Case[All[Equal[T, int], Equal[int, str]], str], Default[bytes]]",
+            "Map[int, All[Equal[T, int], Equal[int, str]] : str, ... : bytes]",
             "bytes",
             id="all-unknown-false",
         ),
         param(
-            "Map[int, Case[Any[Equal[T, int], Equal[int, int]], str], Default[bytes]]",
+            "Map[int, Any[Equal[T, int], Equal[int, int]] : str, ... : bytes]",
             "str",
             id="any-unknown-true",
         ),
         param(
-            "Map[int, Case[Not[Equal[T, int]], str], Default[bytes]]",
+            "Map[int, Not[Equal[T, int]] : str, ... : bytes]",
             "str | bytes",
             id="not-unknown",
         ),
@@ -289,7 +280,7 @@ def test_generic_schema_maps_preserve_reachable_outputs(
     path.write_text(
         "from typing import Literal, Never\n"
         "from typeforge import (\n"
-        "    All, Any, Assignable, Case, Default, Equal, Map, Not, Value,\n"
+        "    All, Any, Assignable, Equal, Map, Not, Value,\n"
         ")\n"
         "from typeforge.pydantic import Input, Schema\n\n"
         "class Payload[T, U]:\n"
@@ -311,58 +302,56 @@ def test_generic_schema_maps_preserve_reachable_outputs(
     ("aliases", "annotation", "expected"),
     (
         param(
-            "type Structural[A] = "
-            "Map[A, Case[list[Value], set[Value]], Default[bytes]]",
+            "type Structural[A] = Map[A, list[Value] : set[Value], ... : bytes]",
             "Structural[list[int]]",
             "set[int]",
             id="structural-alias",
         ),
         param(
-            "type Wire[A] = Map[A, Case[Equal[A, int], str], Default[bytes]]",
+            "type Wire[A] = Map[A, Equal[A, int] : str, ... : bytes]",
             "Wire[T]",
             "str | bytes",
             id="generic-alias",
         ),
         param(
-            "type Wire[A] = Map[A, Case[int, str]]",
+            "type Wire[A] = Map[A, int : str]",
             "Wire[bytes]",
             "Never",
             id="alias-omitted",
         ),
         param(
-            "type Wire[A] = Map[A, Case[int, str], Default[Never]]",
+            "type Wire[A] = Map[A, int : str, ... : Never]",
             "Wire[bytes]",
             "Never",
             id="alias-explicit-never",
         ),
         param(
-            "type Inner[A] = Map[A, Case[int, str], Default[bytes]]\n"
-            "type Outer[A] = Map[A, Case[str, float], Default[complex]]",
+            """type Inner[A] = Map[A, int : str, ... : bytes]
+type Outer[A] = Map[A, str : float, ... : complex]""",
             "Outer[Inner[int]]",
             "float",
             id="alias-in-argument",
         ),
         param(
-            "type Wire[A] = Map[A, Case[int, str], Default[bytes]]",
+            "type Wire[A] = Map[A, int : str, ... : bytes]",
             "list[Wire[int]]",
             "list[str]",
             id="alias-under-application",
         ),
         param(
-            "type Wire[A] = Map[A, Case[int, str], Default[bytes]]",
+            "type Wire[A] = Map[A, int : str, ... : bytes]",
             "Wire[int] | None",
             "str | None",
             id="alias-under-union",
         ),
         param(
-            "type Wire[A] = "
-            "Map[A, Case[int, tuple[str, bytes]], Default[tuple[float]]]",
+            "type Wire[A] = Map[A, int : tuple[str, bytes], ... : tuple[float]]",
             "tuple[*Wire[int]]",
             "tuple[*tuple[str, bytes]]",
             id="alias-under-starred",
         ),
         param(
-            "type Wire[A] = Map[A, Case[int, str], Default[bytes]]",
+            "type Wire[A] = Map[A, int : str, ... : bytes]",
             "tuple[Schema[Wire[int]], int]",
             "tuple[str, int]",
             id="alias-under-schema",
@@ -375,7 +364,7 @@ def test_schema_relationship_aliases_preserve_type_outputs(
     path = tmp_path / "aliases.py"
     path.write_text(
         "from typing import Never\n"
-        "from typeforge import Case, Default, Equal, Map, Value\n"
+        "from typeforge import Equal, Map, Value\n"
         "from typeforge.pydantic import Schema\n\n"
         f"{aliases}\n\n"
         "class Payload[T]:\n"
@@ -408,19 +397,23 @@ def test_schema_relationship_aliases_preserve_type_outputs(
             id="literal-field-name",
         ),
         param(
-            'Field[Map[Key, Case[Literal["original"], Literal["renamed"]], '
-            "Default[Key]], Value]",
+            (
+                'Field[Map[Key, Literal["original"] : '
+                'Literal["renamed"], ... : Key], Value]'
+            ),
             "renamed: int",
             id="literal-field-name-case",
         ),
         param(
-            'Field[Map[Key, Case[Equal[Key, Literal["original"]], '
-            'Literal["renamed"]], Default[Key]], Value]',
+            (
+                'Field[Map[Key, Equal[Key, Literal["original"]] : '
+                'Literal["renamed"], ... : Key], Value]'
+            ),
             "renamed: int",
             id="literal-field-name-predicate",
         ),
         param(
-            "Field[Key, Map[Value, Case[str, str]]]",
+            "Field[Key, Map[Value, str : str]]",
             "original: tf_typing.Never",
             id="field-value-never",
         ),
@@ -433,7 +426,7 @@ def test_schema_field_transforms_preserve_typing_emission(
     path.write_text(
         "from typing import Literal, TypedDict\n"
         "from typeforge import (\n"
-        "    Case, Default, Equal, Field, Key, Map, MapFields, Value,\n"
+        "    Equal, Field, Key, Map, MapFields, Value,\n"
         ")\n"
         "from typeforge.pydantic import Schema\n\n"
         "class Record(TypedDict):\n"

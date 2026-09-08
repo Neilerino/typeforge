@@ -54,9 +54,8 @@ def test_unexpected_analysis_failure_does_not_become_a_partial_plan() -> None:
 
 
 def test_verification_is_complete_and_independent_of_the_arity_frontier() -> None:
-    source = dedent("""\
-        from typeforge import Case, Collect, Each, Map
-        def convert[T](value: T) -> Map[T, Case[int, str]]:
+    source = dedent("""        from typeforge import Collect, Each, Map
+        def convert[T](value: T) -> Map[T, int : str]:
             return value
         def collect[T](*values: Each[T]) -> Collect[T]: ...
         """)
@@ -75,8 +74,8 @@ def test_unsupported_body_produces_a_complete_empty_verification_plan(
     body: str,
 ) -> None:
     source = (
-        "from typeforge import Case, Map\n"
-        "def convert[T](value: T) -> Map[T, Case[int, str]]:\n"
+        "from typeforge import Map\n"
+        "def convert[T](value: T) -> Map[T, int : str]:\n"
         f"    {body}\n"
     )
 

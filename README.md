@@ -109,7 +109,7 @@ Runtime errors retain their codes and field locations while displaying normalize
 Map data in slice notation. Ruff can compact spacing around colons without changing
 the expression. The supported examples pass the existing lint rules; raw slices
 still require Typeforge projection before ordinary type checking. See the
-[tested tooling and diagnostic behavior](docs/in_progress_tasks/map-slice-tooling.md).
+[tested tooling and diagnostic behavior](CONTEXT.md#tooling-and-diagnostics).
 
 Reusable unary predicate aliases bind to the subject of the consuming Map in
 both compiler and Pydantic frontends:
@@ -144,34 +144,34 @@ by the configured maximum arity; calls beyond it use the existing aggregate boun
 Callable overloads follow checker subtype matching, so exact selectors cannot
 exclude subtypes such as `bool` from `int`. Union selectors, reordered union
 equality, and selection involving `Any` do not have a portable cross-consumer
-guarantee. See the [callable support limits](docs/in_progress_tasks/map-slice-union-findings.md#slice-07-callable-publication-boundary)
+guarantee. See the [callable support limits](CONTEXT.md#callable-support)
 before relying on these forms to reproduce `Schema` selection.
 
-The syntax migration is in progress. Existing Case/Default
-examples below remain valid during the repository migration and will be removed
-at the coordinated cutover. See the
-[migration checklist](docs/in_progress_tasks/map-slice-syntax.md) and
-[union limitations](docs/in_progress_tasks/map-slice-union-findings.md).
+Slice branches are the public authoring syntax. `Case` and `Default` are no
+longer exported; replace `Case[selector, output]` with `selector: output` and
+`Default[output]` with `...: output`. Internal branch data remains unchanged.
+See the [authoring contract](CONTEXT.md#map-authoring)
+and [union limitations](CONTEXT.md#union-support-and-open-decisions).
 
 ```python
-from typeforge import Case, Default, Map
+from typeforge import Map
 
 
 def serialize[T](value: T) -> Map[
     T,
-    Case[int, float],
-    Case[str, bytes],
-    Default[T],
+    int : float,
+    str : bytes,
+    ... : T,
 ]:
     ...
 
 result_1 = serialize(5) # float
 result_2 = serialize("test") # bytes
-result_3 = serialize([123]) # list[int]
+result_3 = serialize([123]) # float | bytes | list[int]
 ```
 
-Each `Case` test can be an exact or structural type pattern or a boolean
-predicate composed with `Equal`, `Assignable`, `All`, `Any`, and `Not`. Cases
+Each selector can be an exact or structural type pattern or a boolean
+predicate composed with `Equal`, `Assignable`, `All`, `Any`, and `Not`. Branches
 share one declaration order, and the first matching pattern or true predicate
 wins.
 
@@ -180,13 +180,13 @@ Choose a return type from a boolean flag:
 ```python
 from typing import Literal
 
-from typeforge import Case, Default, Equal, Map
+from typeforge import Map
 
 
 type FetchResult[T: bool] = Map[
     T,
-    Case[Equal[T, Literal[True]], dict[str, object]],
-    Default[bytes],
+    Literal[True] : dict[str, object],
+    ... : bytes,
 ]
 
 def fetch[T: bool](
@@ -198,13 +198,13 @@ def fetch[T: bool](
 
 
 data = fetch("/users", parse_json=True)   # dict[str, object]
-raw = fetch("/users", parse_json=False)   # bytes
+raw = fetch("/users", parse_json=False)   # dict[str, object] | bytes
 ```
 
-Capture and reuse the inner type of a generic wrapper:
+Capture and reuse the inner type of a generic wrapper over a finite argument list:
 
 ```python
-from typeforge import Case, Default, Map, Value
+from typeforge import Collect, Each, Map, Value
 
 
 class Option[T]:
@@ -213,18 +213,21 @@ class Option[T]:
 
 type QueryResult[T] = Map[
     T,
-    Case[Option[Value], Value | None],
-    Default[T],
+    Option[Value] : Value | None,
+    ... : T,
 ]
 
 
-def unwrap[T](value: T) -> QueryResult[T]:
+def unwrap[T](*values: Each[T]) -> Collect[QueryResult[T]]:
     ...
 
 
 option: Option[int]
-result = unwrap(option)  # int | None
+result = unwrap(option, "text")  # tuple[int | None, str]
 ```
+
+This relationship specializes up to the configured maximum arity. Unbounded
+structural callable captures are outside the current publication support.
 
 Map a `TypedDict` and attach Markdown documentation to the resulting type:
 
@@ -265,7 +268,7 @@ pip install "typeforge[pydantic]"
 from typing import Literal, TypedDict
 
 from pydantic import BaseModel
-from typeforge import Case, Default, Drop, Equal, Field, Key, Map, MapFields, Value
+from typeforge import Drop, Field, Key, Map, MapFields, Value
 from typeforge.pydantic import Schema
 
 
@@ -278,8 +281,8 @@ type Public[T] = MapFields[
     T,
     Map[
         Key,
-        Case[Equal[Key, Literal["password"]], Drop],
-        Default[Field[Key, Value]],
+        Literal["password"] : Drop,
+        ... : Field[Key, Value],
     ],
 ]
 
@@ -301,7 +304,7 @@ and writable, and `ReadonlyField` makes it required and readonly. Pydantic retai
 field constraints and record metadata; generated TypedDicts use the compiler's
 existing base-type projection for Annotated fields. Nested Maps over union-valued
 fields still differ between compiler materialization and runtime evaluation;
-see the [field support limits](docs/in_progress_tasks/map-slice-union-findings.md#slice-09-field-composition-boundary).
+see the [field support limits](CONTEXT.md#field-support).
 
 ### Generic model fields
 
@@ -371,7 +374,7 @@ validators are not executed to choose a case.
 in static runtime selection; Input tests unwrap them to observe their leaf types.
 Selected output aliases keep Pydantic's constraints and schema references.
 Union selectors therefore have consumer-specific behavior, and runtime union
-construction absorbs `typing.Any`. The [runtime union boundary](docs/in_progress_tasks/map-slice-union-findings.md#slice-08-runtime-integration-boundary)
+construction absorbs `typing.Any`. The [union support boundary](CONTEXT.md#union-support-and-open-decisions)
 records the supported cases and remaining cross-consumer restrictions.
 
 Parameterized value-time patterns such as `list[int]` and `list[Value]` fail
@@ -412,8 +415,8 @@ relationships have no Pydantic model-field semantics.
 
 For generated typing interfaces, a schema Map over runtime `Input` emits its
 possible output types. An unresolved generic parameter keeps its identity:
-`Map[T, Case[int, str], Default[bytes]]` emits `str | bytes`, while
-`Map[T, Case[Equal[T, T], str], Default[bytes]]` emits only `str`. Earlier definite
+`Map[T, int : str, ... : bytes]` emits `str | bytes`, while
+`Map[T, Equal[T, T] : str, ... : bytes]` emits only `str`. Earlier definite
 matches still stop selection. Nested schema aliases expand before evaluation;
 alias cycles report the authored cycle path.
 

@@ -1,5 +1,13 @@
 # Slice Map feasibility POC
 
+Historical report for branch `neil/map-slice-poc`, commit `08d940a`. The commands
+below refer to that checkout. The production cutover retired the facade and demo;
+their useful assertions now live in
+[compiler regressions](../../tests/unit/compiler/source/test_slice_compiler_integration.py)
+and [runtime regressions](../../tests/unit/pydantic/test_slice_normalization.py).
+See the [project context](../../CONTEXT.md#map-authoring) for the
+final contract and remaining semantic limits.
+
 This is a throwaway experiment on `neil/map-slice-poc`, not a completed public
 syntax migration. It answers whether this spelling can use Typeforge's current
 compiler and runtime models:

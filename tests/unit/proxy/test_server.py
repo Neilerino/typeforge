@@ -424,7 +424,7 @@ def test_real_pyrefly_proxy_hovers_same_file_ecs_result(tmp_path: Path) -> None:
 from typing import Protocol, assert_type
 
 from documented_types import EntityId
-from typeforge import Case, Collect, Default, Each, Map, Value
+from typeforge import Collect, Each, Map, Value
 
 
 class Component(Protocol):
@@ -437,8 +437,8 @@ class Option[T: Component](Protocol):
 
 type QueryResult[T] = Map[
     T,
-    Case[Option[Value], Value | None],
-    Default[T],
+    Option[Value] : Value | None,
+    ... : T,
 ]
 
 

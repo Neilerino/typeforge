@@ -27,81 +27,71 @@ CHECKERS = (
 )
 
 
-LIBRARY_SOURCE = """
-from external import Parser
-from typing import Literal, TypedDict
-
-from typeforge import (
-    All,
-    Any,
-    Assignable,
-    Case,
-    Collect,
-    Default,
-    Each,
-    Equal,
-    Field,
-    Key,
-    Map,
-    MapFields,
-    Not,
-    Value,
-)
-
-
-def combine[T](*parsers: Each[Parser[T]]) -> Parser[Collect[T]]:
-    raise NotImplementedError
-
-
-def read[M](mode: M) -> Map[
-    M, Case[Equal[M, Literal["text"]], str], Default[bytes]
-]:
-    raise NotImplementedError
-
-
-def normalize[T](value: T) -> Map[
-    T, Case[Assignable[T, str], str], Default[bytes]
-]:
-    raise NotImplementedError
-
-
-def choose_all[T](value: T) -> Map[
-    T,
-    Case[All[Equal[T, str], Assignable[T, str]], str],
-    Default[bytes],
-]:
-    raise NotImplementedError
-
-
-def choose_any[T](value: T) -> Map[
-    T,
-    Case[Any[Equal[T, Literal["text"]], Equal[T, bytes]], str],
-    Default[float],
-]:
-    raise NotImplementedError
-
-
-def reject_bytes[T](value: T) -> Map[
-    T, Case[Not[Equal[T, bytes]], str], Default[bytes]
-]:
-    raise NotImplementedError
-
-
-def serialize[T](value: T) -> Map[T, Case[int, float], Default[T]]:
-    raise NotImplementedError
-
-
-class User(TypedDict):
-    name: str
-    age: int
-
-
-type Public[T] = MapFields[T, Field[Key, Value]]
-
-
-def publicize[T](value: T) -> Public[T]:
-    raise NotImplementedError
-""".lstrip()
+LIBRARY_SOURCE = (
+    "\n"
+    "from external import Parser\n"
+    "from typing import Literal, TypedDict\n"
+    "\n"
+    "from typeforge import All, Any, Assignable, Collect, "
+    "Each, Equal, Field, Key, Map, MapFields, Not, Value\n"
+    "\n"
+    "\n"
+    "def combine[T](*parsers: Each[Parser[T]]) -> "
+    "Parser[Collect[T]]:\n"
+    "    raise NotImplementedError\n"
+    "\n"
+    "\n"
+    "def read[M](mode: M) -> Map[\n"
+    '    M, Equal[M, Literal["text"]] : str, ... : bytes\n'
+    "]:\n"
+    "    raise NotImplementedError\n"
+    "\n"
+    "\n"
+    "def normalize[T](value: T) -> Map[\n"
+    "    T, Assignable[T, str] : str, ... : bytes\n"
+    "]:\n"
+    "    raise NotImplementedError\n"
+    "\n"
+    "\n"
+    "def choose_all[T](value: T) -> Map[\n"
+    "    T,\n"
+    "    All[Equal[T, str], Assignable[T, str]] : str,\n"
+    "    ... : bytes,\n"
+    "]:\n"
+    "    raise NotImplementedError\n"
+    "\n"
+    "\n"
+    "def choose_any[T](value: T) -> Map[\n"
+    "    T,\n"
+    '    Any[Equal[T, Literal["text"]], Equal[T, bytes]] : '
+    "str,\n"
+    "    ... : float,\n"
+    "]:\n"
+    "    raise NotImplementedError\n"
+    "\n"
+    "\n"
+    "def reject_bytes[T](value: T) -> Map[\n"
+    "    T, Not[Equal[T, bytes]] : str, ... : bytes\n"
+    "]:\n"
+    "    raise NotImplementedError\n"
+    "\n"
+    "\n"
+    "def serialize[T](value: T) -> Map[T, int : float, ... "
+    ": T]:\n"
+    "    raise NotImplementedError\n"
+    "\n"
+    "\n"
+    "class User(TypedDict):\n"
+    "    name: str\n"
+    "    age: int\n"
+    "\n"
+    "\n"
+    "type Public[T] = MapFields[T, Field[Key, Value]]\n"
+    "\n"
+    "\n"
+    "def publicize[T](value: T) -> Public[T]:\n"
+    "    raise NotImplementedError\n"
+).lstrip()
 
 
 CONSUMER_SOURCE = """
@@ -226,7 +216,7 @@ STRUCTURAL_MAP_LIBRARY_SOURCE = """
 from dataclasses import dataclass, field
 from typing import Protocol, dataclass_transform
 
-from typeforge import Case, Collect, Default, Each, Map, Value
+from typeforge import Collect, Each, Map, Value
 
 
 class Component(Protocol):
@@ -244,8 +234,8 @@ class Option[T]:
 
 type QueryResult[T] = Map[
     T,
-    Case[Option[Value], Value | None],
-    Default[T],
+    Option[Value] : Value | None,
+    ... : T,
 ]
 
 
@@ -296,16 +286,6 @@ assert_type(
 """.lstrip()
 
 
-STRUCTURAL_MAP_MARKER_STUB = """
-type Case[Test, Output] = Output
-type Collect[T] = tuple[T, ...]
-type Default[Output] = Output
-type Each[T] = T
-type Map[Subject, *Cases] = object
-type Value = object
-""".lstrip()
-
-
 @pytest.mark.parametrize("checker", CHECKERS, ids=lambda checker: checker.name)
 def test_generated_structural_map_stub_is_consumed_by_existing_checkers(
     tmp_path: Path,
@@ -315,20 +295,6 @@ def test_generated_structural_map_stub_is_consumed_by_existing_checkers(
     library.write_text(STRUCTURAL_MAP_LIBRARY_SOURCE, encoding="utf-8")
     consumer = tmp_path / "ecs_consumer.py"
     consumer.write_text(STRUCTURAL_MAP_CONSUMER_SOURCE, encoding="utf-8")
-    (tmp_path / "typeforge.pyi").write_text(
-        STRUCTURAL_MAP_MARKER_STUB,
-        encoding="utf-8",
-    )
-
-    authored = run(
-        (*checker.arguments, library.name),
-        cwd=tmp_path,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert authored.returncode == 0, authored.stdout + authored.stderr
-
     generated = generate_module(library, maximum_arity=2)
     assert isinstance(generated, Success)
     library.with_suffix(".pyi").write_text(generated.unwrap().content, encoding="utf-8")

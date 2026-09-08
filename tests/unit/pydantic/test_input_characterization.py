@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 import pytest
 
 from pydantic import AfterValidator, TypeAdapter, ValidationError
-from typeforge import All, Assignable, Case, Default, Equal, Key, Map
+from typeforge import All, Assignable, Equal, Key, Map
 from typeforge.pydantic import Input, Schema
 
 
@@ -20,9 +20,9 @@ def test_input_selects_first_case_and_never_retries_after_output_failure() -> No
 
     type Selected = Map[
         Input,
-        Case[str, Annotated[int, AfterValidator(first)]],
-        Case[str, Annotated[str, AfterValidator(later)]],
-        Default[Annotated[str, AfterValidator(later)]],
+        str : Annotated[int, AfterValidator(first)],
+        str : Annotated[str, AfterValidator(later)],
+        ... : Annotated[str, AfterValidator(later)],
     ]
     adapter = TypeAdapter[object](Schema[Selected])
 
@@ -38,7 +38,7 @@ def test_input_selects_first_case_and_never_retries_after_output_failure() -> No
 
 @pytest.mark.parametrize("raw", [True, 3.0, None])
 def test_input_no_match_has_stable_code_and_original_input(raw: object) -> None:
-    adapter = TypeAdapter[object](Schema[Map[Input, Case[int, str]]])
+    adapter = TypeAdapter[object](Schema[Map[Input, int:str]])
 
     with pytest.raises(ValidationError) as captured:
         adapter.validate_python(raw)
@@ -50,7 +50,7 @@ def test_input_no_match_has_stable_code_and_original_input(raw: object) -> None:
 
 def test_input_predicate_assignability_can_accept_a_subclass() -> None:
     adapter = TypeAdapter[object](
-        Schema[Map[Input, Case[Assignable[Input, int], int], Default[str]]]
+        Schema[Map[Input, Assignable[Input, int] : int, ...:str]]
     )
 
     assert adapter.validate_python(True) == 1
@@ -59,7 +59,7 @@ def test_input_predicate_assignability_can_accept_a_subclass() -> None:
 
 def test_input_union_and_annotated_patterns_match_raw_types() -> None:
     adapter = TypeAdapter[object](
-        Schema[Map[Input, Case[Annotated[int | str, "description"], int]]]
+        Schema[Map[Input, Annotated[int | str, "description"] : int]]
     )
 
     assert adapter.validate_python(3) == 3
@@ -72,9 +72,7 @@ def test_input_union_and_annotated_patterns_match_raw_types() -> None:
 
 
 def test_input_literal_patterns_match_values_before_output_coercion() -> None:
-    adapter = TypeAdapter[object](
-        Schema[Map[Input, Case[Literal["3"], int], Default[str]]]
-    )
+    adapter = TypeAdapter[object](Schema[Map[Input, Literal["3"] : int, ...:str]])
 
     assert adapter.validate_python("3") == 3
     assert adapter.validate_python("4") == "4"
@@ -86,8 +84,8 @@ def test_input_predicate_short_circuit_skips_unbound_operand() -> None:
         Schema[
             Map[
                 Input,
-                Case[All[Equal[Input, int], Equal[Key, Key]], bytes],
-                Default[str],
+                All[Equal[Input, int], Equal[Key, Key]] : bytes,
+                ...:str,
             ]
         ]
     )
@@ -100,8 +98,8 @@ def test_nested_input_map_observes_raw_value_before_outer_output_validation() ->
         Schema[
             Map[
                 Input,
-                Case[str, Map[Input, Case[str, int], Default[bytes]]],
-                Default[float],
+                str : Map[Input, str:int, ...:bytes],
+                ...:float,
             ]
         ]
     )
@@ -117,7 +115,7 @@ def test_unexpected_output_validator_exception_propagates_unchanged() -> None:
         raise failure
 
     adapter = TypeAdapter[object](
-        Schema[Map[Input, Case[str, Annotated[int, AfterValidator(fail)]]]]
+        Schema[Map[Input, str : Annotated[int, AfterValidator(fail)]]]
     )
 
     with pytest.raises(RuntimeError) as captured:

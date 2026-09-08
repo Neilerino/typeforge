@@ -87,13 +87,13 @@ def test_leaf_source_facts_remain_unchanged(leaf: SourceTypeExpression) -> None:
     assert expand_schema_aliases(leaf, (), declaration="Selected").unwrap() is leaf
 
 
-@pytest.mark.parametrize("default", ["", ", Default[Never]"])
+@pytest.mark.parametrize("default", ["", ", ...: Never"])
 def test_authored_defaults_survive_alias_expansion(default: str) -> None:
     source = (
         parse_source(
-            "from typeforge import Map, Case, Default\n"
+            "from typeforge import Map\n"
             "from typeforge.pydantic import Input\n"
-            f"type Alias[T] = Map[Input, Case[int, T]{default}]\n"
+            f"type Alias[T] = Map[Input, int: T{default}]\n"
             "type Selected = Alias[str]\n",
             Path("aliases.py"),
         )
@@ -117,10 +117,11 @@ def test_authored_defaults_survive_alias_expansion(default: str) -> None:
 def test_nested_aliases_bind_arguments_before_semantic_lowering() -> None:
     source = (
         parse_source(
-            "from typeforge import Map, Case, Default\n"
-            "type Inner[T] = Map[T, Case[int, str], Default[bytes]]\n"
-            "type Outer[T] = Map[T, Case[int, Inner[T]]]\n"
-            "type Selected = Outer[int]\n",
+            """from typeforge import Map
+type Inner[T] = Map[T, int : str, ... : bytes]
+type Outer[T] = Map[T, int : Inner[T]]
+type Selected = Outer[int]
+""",
             Path("aliases.py"),
         )
         .unwrap()

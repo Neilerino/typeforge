@@ -1,7 +1,7 @@
 from typing import Annotated, Literal, TypedDict
 
 from pydantic import BaseModel, TypeAdapter
-from typeforge import Case, Default, Doc, Drop, Equal, Field, Key, Map, MapFields, Value
+from typeforge import Doc, Drop, Equal, Field, Key, Map, MapFields, Value
 from typeforge.pydantic import Schema
 
 
@@ -15,15 +15,15 @@ type Public[T] = Annotated[
         T,
         Map[
             Key,
-            Case[Equal[Key, Literal["password"]], Drop],
-            Default[Field[Key, Value]],
+            Equal[Key, Literal["password"]] : Drop,
+            ... : Field[Key, Value],
         ],
     ],
     Doc("A public user without private credentials."),
 ]
 
 type DescribedInteger = Annotated[
-    Map[int, Case[int, int]],
+    Map[int, int:int],
     Doc("An integer selected by a Typeforge expression."),
 ]
 

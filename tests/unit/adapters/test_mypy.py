@@ -213,7 +213,7 @@ def test_mypy_checks_typeforge_overlay_for_same_file_calls(tmp_path: Path) -> No
     source_path = tmp_path / "ecs.py"
     authored_text = """from typing import Protocol, assert_type
 
-from typeforge import Case, Collect, Default, Each, Map, Value
+from typeforge import Collect, Each, Map, Value
 
 class Component(Protocol):
     def __hash__(self) -> int: ...
@@ -226,8 +226,8 @@ class Velocity:
 
 type QueryResult[T] = Map[
     T,
-    Case[Option[Value], Value | None],
-    Default[T],
+    Option[Value] : Value | None,
+    ... : T,
 ]
 
 class World[E]:

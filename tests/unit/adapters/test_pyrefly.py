@@ -237,7 +237,7 @@ def test_pyrefly_checks_bounded_ecs_overlay_and_hovers_exact_type(
 from dataclasses import dataclass
 from typing import Protocol, assert_type
 
-from typeforge import Case, Collect, Default, Each, Map, Value
+from typeforge import Collect, Each, Map, Value
 
 
 class Component(Protocol):
@@ -255,8 +255,8 @@ class Option[T: Component]:
 
 type QueryResult[T] = Map[
     T,
-    Case[Option[Value], Value | None],
-    Default[T],
+    Option[Value] : Value | None,
+    ... : T,
 ]
 
 

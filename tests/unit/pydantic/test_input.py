@@ -3,7 +3,7 @@ from uuid import UUID
 import pytest
 
 from pydantic import TypeAdapter, ValidationError
-from typeforge import Case, Default, Equal, Map
+from typeforge import Equal, Map
 from typeforge.pydantic import Input, Schema
 
 
@@ -11,8 +11,8 @@ def test_input_map_dispatches_on_raw_exact_type() -> None:
     type Identifier = Schema[
         Map[
             Input,
-            Case[int, int],
-            Case[str, UUID],
+            int:int,
+            str:UUID,
         ]
     ]
     adapter = TypeAdapter(Identifier)
@@ -31,8 +31,8 @@ def test_input_map_supports_json_and_default() -> None:
     type Value = Schema[
         Map[
             Input,
-            Case[int, int],
-            Default[str],
+            int:int,
+            ...:str,
         ]
     ]
     adapter = TypeAdapter(Value)
@@ -45,8 +45,8 @@ def test_input_map_serializes_selected_output() -> None:
     type Identifier = Schema[
         Map[
             Input,
-            Case[int, int],
-            Case[str, UUID],
+            int:int,
+            str:UUID,
         ]
     ]
     adapter = TypeAdapter(Identifier)
@@ -58,7 +58,7 @@ def test_input_map_serializes_selected_output() -> None:
 
 
 def test_input_predicate_case_dispatches() -> None:
-    type Identifier = Schema[Map[Input, Case[Equal[Input, str], UUID], Default[int]]]
+    type Identifier = Schema[Map[Input, Equal[Input, str] : UUID, ...:int]]
     adapter = TypeAdapter(Identifier)
     identifier = UUID("12345678-1234-5678-1234-567812345678")
 
@@ -70,8 +70,8 @@ def test_input_map_selects_from_raw_input_when_outputs_overlap_inputs() -> None:
     type Swapped = Schema[
         Map[
             Input,
-            Case[str, int],
-            Case[int, float],
+            str:int,
+            int:float,
         ]
     ]
     adapter = TypeAdapter(Swapped)
@@ -85,7 +85,7 @@ def test_input_map_selects_from_raw_input_when_outputs_overlap_inputs() -> None:
 
 
 def test_input_predicate_case_selects_when_outputs_overlap_inputs() -> None:
-    type Swapped = Schema[Map[Input, Case[Equal[Input, str], int], Default[float]]]
+    type Swapped = Schema[Map[Input, Equal[Input, str] : int, ...:float]]
     adapter = TypeAdapter(Swapped)
 
     assert adapter.validate_python("3") == 3
@@ -95,7 +95,7 @@ def test_input_predicate_case_selects_when_outputs_overlap_inputs() -> None:
 
 
 def test_input_dispatch_json_schema_is_honest_about_validation_input() -> None:
-    type Swapped = Schema[Map[Input, Case[str, int], Case[int, float]]]
+    type Swapped = Schema[Map[Input, str:int, int:float]]
     adapter = TypeAdapter(Swapped)
 
     assert adapter.json_schema(mode="validation") == {}

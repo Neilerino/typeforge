@@ -9,7 +9,7 @@ from pydantic import (
     TypeAdapter,
     ValidationError,
 )
-from typeforge import All, Any, Assignable, Case, Default, Equal, Map, Not
+from typeforge import All, Any, Assignable, Equal, Map, Not
 from typeforge.pydantic import Schema
 
 
@@ -24,7 +24,7 @@ def test_schema_is_not_a_value_wrapper() -> None:
 
 def test_schema_works_as_base_model_field() -> None:
     class Model(BaseModel):
-        value: Schema[Map[int, Case[Equal[int, int], int], Default[bytes]]]
+        value: Schema[Map[int, Equal[int, int] : int, ...:bytes]]
 
     model = Model(value="3")
 
@@ -45,15 +45,12 @@ def test_schema_time_conditions_compose() -> None:
     type Selected = Schema[
         Map[
             int,
-            Case[
-                All[
-                    Equal[int, int],
-                    Assignable[int, object],
-                    Not[Any[Equal[int, str], Equal[int, bytes]]],
-                ],
-                list[int],
-            ],
-            Default[dict[str, int]],
+            All[
+                Equal[int, int],
+                Assignable[int, object],
+                Not[Any[Equal[int, str], Equal[int, bytes]]],
+            ] : list[int],
+            ... : dict[str, int],
         ]
     ]
     adapter = TypeAdapter(Selected)
@@ -66,9 +63,9 @@ def test_schema_time_conditions_compose() -> None:
 def test_schema_time_map_selects_case_and_default() -> None:
     type Selected[T] = Map[
         T,
-        Case[int, float],
-        Case[bytes, str],
-        Default[T],
+        int:float,
+        bytes:str,
+        ...:T,
     ]
 
     bytes_adapter = TypeAdapter(Schema[Selected[bytes]])
@@ -83,8 +80,8 @@ def test_schema_time_map_distributes_over_union() -> None:
         Schema[
             Map[
                 int | bytes,
-                Case[int, float],
-                Case[bytes, str],
+                int:float,
+                bytes:str,
             ]
         ]
     )
@@ -97,13 +94,11 @@ def test_schema_time_map_without_a_match_reports_no_match() -> None:
     with pytest.raises(
         PydanticSchemaGenerationError, match=r"evaluation.*map_no_match"
     ):
-        TypeAdapter(Schema[Map[bytes, Case[int, str]]])
+        TypeAdapter(Schema[Map[bytes, int:str]])
 
 
 def test_schema_time_resolution_emits_no_python_validator() -> None:
-    adapter = TypeAdapter(
-        Schema[Map[int, Case[Equal[int, int], list[int]], Default[bytes]]]
-    )
+    adapter = TypeAdapter(Schema[Map[int, Equal[int, int] : list[int], ...:bytes]])
 
     def contains_function_schema(value: object) -> bool:
         if isinstance(value, dict):

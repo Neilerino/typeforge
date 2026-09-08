@@ -637,10 +637,9 @@ def test_composite_schema_results_are_ordered_by_source_then_overload_arity() ->
 
 
 def test_relationship_alias_copies_keep_the_original_schema_span() -> None:
-    source = dedent("""\
-        from typeforge import Case, Default, Map
+    source = dedent("""        from typeforge import Map
         from typeforge.pydantic import Schema
-        type Selected[T] = Map[T, Case[int, Schema[list[T]]], Default[bytes]]
+        type Selected[T] = Map[T, int : Schema[list[T]], ... : bytes]
         def first[T](value: T) -> Selected[T]: ...
         def second[T](value: T) -> Selected[T]: ...
         """)
