@@ -569,16 +569,33 @@ def test_union_field_values_through_existing_materialization(
 
 
 @pytest.mark.parametrize("sliced", [False, True])
-def test_record_union_and_union_capture_patterns_remain_unsupported(
+def test_record_unions_remain_unsupported(
     tmp_path: Path,
     sliced: bool,
 ) -> None:
-    record_expression = (
+    expression = (
         "MapFields[Row | Other, Map[Key, ...: Field[Key, Value]]]"
         if sliced
         else "MapFields[Row | Other, CanonicalMap[Key, Default[Field[Key, Value]]]]"
     )
-    capture_expression = (
+    path = tmp_path / "unsupported.py"
+    path.write_text(
+        IMPORTS + RECORD_SETUP + f"type Mapped[T] = {expression}\n"
+        "def f[T](x: T) -> Mapped[T]: ...\n"
+    )
+    result = generate_module(path, maximum_arity=2)
+    assert isinstance(result, Failure)
+    assert "supported compiler record" in str(result.failure())
+    annotation = runtime_expression(expression, sliced=sliced, setup=RECORD_SETUP)
+    with pytest.raises(PydanticSchemaGenerationError, match="unsupported_record"):
+        TypeAdapter(Schema[annotation])
+
+
+@pytest.mark.parametrize("sliced", [False, True])
+def test_alternative_capture_normalization_matches_internal_representation(
+    tmp_path: Path, sliced: bool
+) -> None:
+    expression = (
         "Map[list[int], list[Item] | set[Item]: Item, ...: bytes]"
         if sliced
         else (
@@ -586,23 +603,14 @@ def test_record_union_and_union_capture_patterns_remain_unsupported(
             " Item], Default[bytes]]"
         )
     )
-    path = tmp_path / "unsupported.py"
-    for expression, runtime_error, static_error in (
-        (record_expression, "unsupported_record", "supported compiler record"),
-        (capture_expression, "unbound_capture", "capture 'Item' is unbound"),
-    ):
-        body = (
-            f"type Mapped[T] = {expression}\ndef f[T](x: T) -> Mapped[T]: ...\n"
-            if expression == record_expression
-            else f"class Payload:\n    value: Schema[{expression}]\n"
-        )
-        path.write_text(IMPORTS + RECORD_SETUP + body)
-        result = generate_module(path, maximum_arity=2)
-        assert isinstance(result, Failure)
-        assert static_error in str(result.failure())
-        annotation = runtime_expression(expression, sliced=sliced, setup=RECORD_SETUP)
-        with pytest.raises(PydanticSchemaGenerationError, match=runtime_error):
-            TypeAdapter(Schema[annotation])
+    path = tmp_path / "alternatives.py"
+    path.write_text(
+        IMPORTS + RECORD_SETUP + f"class Payload:\n    value: Schema[{expression}]\n"
+    )
+    generated = generate_module(path, maximum_arity=2).unwrap()
+    assert generated.content.endswith("class Payload:\n    value: int\n")
+    annotation = runtime_expression(expression, sliced=sliced, setup=RECORD_SETUP)
+    assert TypeAdapter(Schema[annotation]).validate_python("4") == 4
 
 
 @pytest.mark.parametrize("checker", ["mypy", "pyright", "pyrefly"])

@@ -10,6 +10,7 @@ from typeforge.semantics.domain.exceptions import (
 )
 from typeforge.semantics.domain.generics import GenericFamily, GenericType
 from typeforge.semantics.domain.models import (
+    AlternativeTypePattern,
     CaptureBindings,
     CaptureReference,
     Condition,
@@ -32,9 +33,10 @@ from typeforge.semantics.protocols import TypeSystem
 from typeforge.semantics.type_evaluation import (
     assignable_types,
     build_type,
+    conjunction,
     consensus,
+    disjunction,
     equal_types,
-    indeterminate_type,
     inspect_type,
     is_symbol,
     merge_captures,
@@ -42,18 +44,32 @@ from typeforge.semantics.type_evaluation import (
 )
 
 
+class _PatternAlternative[T](NamedTuple):
+    condition: Condition
+    captures: CaptureBindings[T] = ()
+
+
 class _PatternMatch[T](NamedTuple):
-    """A condition and its isolated named bindings."""
+    """Overall reachability and complete, isolated successful alternatives."""
 
     matched: Condition
-    captures: CaptureBindings[T] = ()
+    alternatives: tuple[_PatternAlternative[T], ...] = ()
 
     @classmethod
     def match(
         cls,
         captures: CaptureBindings[T] = (),
     ) -> _PatternMatch[T]:
-        return cls(matched=True, captures=captures)
+        return cls.from_condition(True, captures)
+
+    @classmethod
+    def from_condition(
+        cls, condition: Condition, captures: CaptureBindings[T]
+    ) -> _PatternMatch[T]:
+        alternatives = (
+            () if condition is False else (_PatternAlternative(condition, captures),)
+        )
+        return cls(condition, alternatives)
 
     @classmethod
     def mismatch(cls) -> _PatternMatch[T]:
@@ -74,8 +90,8 @@ def match_map_pattern[T](
     ):
         target = _fixed_pattern_type(pattern, type_system)
         if target is not None:
-            return _PatternMatch(
-                assignable_types(subject, target, type_system), captures=captures
+            return _PatternMatch[T].from_condition(
+                assignable_types(subject, target, type_system), captures
             )
 
     return match_type_pattern(pattern, subject, type_system, captures)
@@ -103,6 +119,18 @@ def _fixed_pattern_type[T](
             return build_type(
                 ParameterizedTypeShape(ResolvedType(origin), tuple(values)), type_system
             )
+        case AlternativeTypePattern(members=members):
+            alternatives: list[TypeValue[T]] = []
+            for member in members:
+                member_type = _fixed_pattern_type(member, type_system)
+                if member_type is None:
+                    return None
+
+                alternatives.append(member_type)
+
+            return union_type(
+                alternatives, type_system, "fixed pattern alternatives must be types"
+            )
         case _ as unreachable:
             assert_never(unreachable)
 
@@ -126,11 +154,11 @@ def _[T](
     type_system: TypeSystem[T],
     captures: CaptureBindings[T] = (),
 ) -> _PatternMatch[T]:
-    return _PatternMatch(
+    return _PatternMatch[T].from_condition(
         equal_types(
             left=subject, right=ResolvedType(pattern.value), type_system=type_system
         ),
-        captures=captures,
+        captures,
     )
 
 
@@ -147,9 +175,9 @@ def _[T](
         if matched is False:
             return _PatternMatch[T].mismatch()
 
-        return _PatternMatch(
+        return _PatternMatch[T].from_condition(
             matched,
-            captures=tuple(
+            tuple(
                 (symbol, binding if symbol == pattern.symbol else value)
                 for symbol, value in captures
             ),
@@ -165,9 +193,31 @@ def _[T](
     type_system: TypeSystem[T],
     captures: CaptureBindings[T] = (),
 ) -> _PatternMatch[T]:
-    return _PatternMatch(
-        equal_types(subject, pattern.value, type_system), captures=captures
+    return _PatternMatch[T].from_condition(
+        equal_types(subject, pattern.value, type_system), captures
     )
+
+
+@match_type_pattern.register(AlternativeTypePattern)
+def _[T](
+    pattern: AlternativeTypePattern[T],
+    subject: TypeValue[T],
+    type_system: TypeSystem[T],
+    captures: CaptureBindings[T] = (),
+) -> _PatternMatch[T]:
+    alternatives: list[_PatternAlternative[T]] = []
+    for member in pattern.members:
+        fixed = _fixed_pattern_type(member, type_system)
+        result = (
+            _PatternMatch[T].from_condition(
+                assignable_types(subject, fixed, type_system), captures
+            )
+            if fixed is not None
+            else match_map_pattern(member, subject, type_system, captures)
+        )
+        alternatives.extend(result.alternatives)
+
+    return _alternative_match(tuple(alternatives))
 
 
 @match_type_pattern.register(ParameterizedTypePattern)
@@ -184,7 +234,11 @@ def _[T](
         )
         return _PatternMatch(
             consensus(match.matched for match in matches),
-            _possible_captures(matches, type_system),
+            tuple(
+                _PatternAlternative(IndeterminateCondition(), alternative.captures)
+                for match in matches
+                for alternative in match.alternatives
+            ),
         )
 
     if is_symbol(subject):
@@ -194,7 +248,7 @@ def _[T](
                 "cannot capture type arguments from an unresolved type parameter"
             )
 
-        return _PatternMatch(IndeterminateCondition(), captures=captures)
+        return _PatternMatch[T].from_condition(IndeterminateCondition(), captures)
 
     shape = inspect_type(subject, type_system)
     if shape is None:
@@ -213,25 +267,30 @@ def _[T](
     if len(arguments) != len(pattern.arguments):
         return _PatternMatch[T].mismatch()
 
-    uncertain = isinstance(origin_match, IndeterminateCondition)
-    current_captures = captures
+    alternatives: tuple[_PatternAlternative[T], ...] = (
+        _PatternAlternative(origin_match, captures),
+    )
     for nested_pattern, nested_subject in zip(
         pattern.arguments, arguments, strict=True
     ):
-        nested_match = match_type_pattern(
-            nested_pattern, nested_subject, type_system, current_captures
-        )
-        matched = nested_match.matched
-        if matched is False:
+        next_alternatives: list[_PatternAlternative[T]] = []
+        for alternative in alternatives:
+            nested_match = match_type_pattern(
+                nested_pattern, nested_subject, type_system, alternative.captures
+            )
+            next_alternatives.extend(
+                _PatternAlternative(
+                    conjunction((alternative.condition, nested.condition)),
+                    nested.captures,
+                )
+                for nested in nested_match.alternatives
+            )
+
+        alternatives = tuple(next_alternatives)
+        if not alternatives:
             return _PatternMatch[T].mismatch()
 
-        uncertain |= isinstance(matched, IndeterminateCondition)
-        current_captures = nested_match.captures
-
-    return _PatternMatch(
-        IndeterminateCondition() if uncertain else True,
-        current_captures,
-    )
+    return _alternative_match(alternatives)
 
 
 def _project_interface[T](
@@ -278,25 +337,12 @@ def _project_interface[T](
     return (union_type(elements, type_system, "Sequence elements must be types"),)
 
 
-def _possible_captures[T](
-    matches: tuple[_PatternMatch[T], ...], type_system: TypeSystem[T]
-) -> CaptureBindings[T]:
-    possible = [dict(match.captures) for match in matches if match.matched is not False]
-    if not possible:
-        return ()
-
-    bindings: list[tuple[TypeSymbol, TypeValue[T]]] = []
-    for symbol in possible[0]:
-        if not all(symbol in alternative for alternative in possible):
-            continue
-
-        values = tuple(alternative[symbol] for alternative in possible)
-        value = (
-            values[0] if len(values) == 1 else indeterminate_type(values, type_system)
-        )
-        bindings.append((symbol, value))
-
-    return tuple(bindings)
+def _alternative_match[T](
+    alternatives: tuple[_PatternAlternative[T], ...],
+) -> _PatternMatch[T]:
+    return _PatternMatch(
+        disjunction(alternative.condition for alternative in alternatives), alternatives
+    )
 
 
 def map_values_match[T](
@@ -321,7 +367,10 @@ def _has_unbound_capture[T](
     match pattern:
         case CaptureReference(symbol=symbol):
             return symbol not in bound_symbols
-        case ParameterizedTypePattern(arguments=arguments):
+        case (
+            ParameterizedTypePattern(arguments=arguments)
+            | AlternativeTypePattern(members=arguments)
+        ):
             return any(
                 _has_unbound_capture(argument, bound_symbols) for argument in arguments
             )

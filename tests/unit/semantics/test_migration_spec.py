@@ -15,6 +15,7 @@ from typeforge.compiler.pipeline import generate_module
 from typeforge.pydantic import Schema
 from typeforge.semantics import (
     AllExpression,
+    AlternativeTypePattern,
     AnyExpression,
     AssignableExpression,
     CaptureReference,
@@ -358,6 +359,43 @@ def test_interface_capture_does_not_hide_unexpected_adapter_exceptions() -> None
     )
     with pytest.raises(ValueError, match="broken facts implementation"):
         evaluate(expression, adapter)
+
+
+def test_alternative_adapter_failure_propagates_after_an_earlier_match() -> None:
+    issue = SemanticAdapterError("later alternative comparison is unavailable")
+    expression = MapExpression(
+        TypeReference("str"),
+        (
+            CaseExpression(
+                AlternativeTypePattern((ITEM, ExactTypePattern("int"))), ITEM
+            ),
+        ),
+        default=TypeReference("bytes"),
+    )
+    result = evaluate(
+        expression,
+        FailureInjectionTypeSystemProxy(NameTypeSystem(), "assignable", issue),
+    )
+    assert isinstance(result, Failure)
+    assert result.failure() is issue
+
+
+def test_alternative_does_not_hide_unexpected_adapter_exceptions() -> None:
+    class BrokenComparisonTypeSystem(NameTypeSystem):
+        def assignable(self, source: str, target: str) -> Result[bool, SemanticIssue]:
+            raise ValueError("broken alternative implementation")
+
+    expression = MapExpression(
+        TypeReference("str"),
+        (
+            CaseExpression(
+                AlternativeTypePattern((ITEM, ExactTypePattern("int"))), ITEM
+            ),
+        ),
+        default=TypeReference("bytes"),
+    )
+    with pytest.raises(ValueError, match="broken alternative implementation"):
+        evaluate(expression, BrokenComparisonTypeSystem())
 
 
 @pytest.mark.parametrize(

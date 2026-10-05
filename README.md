@@ -371,8 +371,7 @@ functions. Declaration variables must be unique within each scope. Capture token
 are immutable and do not become caller-supplied type parameters. An unconstrained
 generic subject reveals no container arguments, so its unspecialized type-function
 declaration currently projects the safe `object` bound. Concrete applications and
-already known generic shapes remain precise. Alternative capture patterns arrive
-in a subsequent slice.
+already known generic shapes remain precise.
 Structural `Value` authoring has been removed; `Value` remains a MapFields field
 reference until the Record/Fields cutover.
 
@@ -397,6 +396,30 @@ through complete outputs. Repeated captures still require exact agreement.
 Compatible interface captures currently support list, tuple, and Sequence origins.
 Unknown generic origins produce a diagnostic instead of choosing a fallback;
 other known families, such as set, do not match Sequence.
+
+A union of capture patterns evaluates every matching alternative independently:
+
+```python
+@type_function
+def Repeated[T]():
+    Item = Capture("Item")
+    return Map[
+        T,
+        tuple[Item, str] | tuple[int, Item]: tuple[Item, Item],
+        ...: bytes,
+    ]
+
+type Correlated = Repeated[tuple[int, str]]
+# tuple[int, int] | tuple[str, str]
+```
+
+Each alternative has its own bindings. Outputs are instantiated before they are
+unioned, so this result excludes mixed pairs. Nested alternatives retain the same
+rule, and repeated captures within an alternative still require exact agreement.
+Separate Map branches express ordered priority. If a matching alternative needs
+an unbound output capture, evaluation fails rather than using another alternative
+or the fallback. Unknown subjects retain conservative bounds; broader callable
+precision remains a later slice.
 
 ## Pydantic integration
 

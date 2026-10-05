@@ -45,6 +45,7 @@ from typeforge.compiler.source import (
 )
 from typeforge.semantics import (
     AllExpression,
+    AlternativeTypePattern,
     AnyExpression,
     AssignableExpression,
     CaptureReference,
@@ -361,6 +362,8 @@ def _lower_case_test(
     role: SemanticRole,
 ) -> Expression[StaticType] | TypePattern[StaticType]:
     match expression:
+        case UnionTypeExpression() if _requires_evaluation(expression, environment):
+            return _lower_type_pattern(expression, environment)
         case AppliedTypeExpression():
             field_name = field_name_literal(expression)
             if role == "field-name" and field_name is not None:
@@ -386,6 +389,12 @@ def _lower_type_pattern(
     environment: SemanticEnvironment,
 ) -> TypePattern[StaticType]:
     match expression:
+        case UnionTypeExpression(members=members) if _requires_evaluation(
+            expression, environment
+        ):
+            return AlternativeTypePattern(
+                tuple(_lower_type_pattern(member, environment) for member in members)
+            )
         case CaptureTypeExpression():
             return lower_capture_reference(expression)
         case NameTypeExpression(source=source) if (

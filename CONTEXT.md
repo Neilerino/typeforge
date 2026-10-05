@@ -43,6 +43,9 @@ When changing capture identity, isolation, or output lookup, read
 [their compiler/runtime contracts](tests/unit/test_named_capture_contract.py).
 For compatible Sequence captures or heterogeneous tuple elements, also read
 [the interface capture contracts](tests/unit/test_interface_capture_contract.py).
+For overlapping or nested pattern unions, read
+[the alternative capture contracts](tests/unit/test_alternative_capture_contract.py);
+each matching environment instantiates a complete output before unioning.
 Local aliases and Record/Fields remain later slices.
 
 ## Language
