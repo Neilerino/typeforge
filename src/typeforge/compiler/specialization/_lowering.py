@@ -12,6 +12,7 @@ from typeforge.compiler.stub_ir import (
     AllPredicate,
     AnyPredicate,
     AssignablePredicate,
+    CaptureType,
     ClassDeclaration,
     CollectType,
     Declaration,
@@ -26,7 +27,6 @@ from typeforge.compiler.stub_ir import (
     LiteralType,
     MapCase,
     MapType,
-    MapValueType,
     ModuleImport,
     NotPredicate,
     OverloadDeclaration,
@@ -252,6 +252,20 @@ def _lower_each_function(
         )
 
     captured_name = captured_names[0]
+    structural_map = _find_collected_map(declaration.return_type, captured_name)
+    if structural_map is not None and any(
+        not is_predicate(case.test) and len(_capture_tokens(case.test)) > 1
+        for case in structural_map.cases
+    ):
+        return Failure(
+            LoweringError(
+                LoweringErrorCode.MULTIPLE_CAPTURES,
+                declaration.name,
+                "finite callable specialization currently supports one capture "
+                "per structural branch",
+            )
+        )
+
     signatures = tuple(
         signature
         for arity in range(frontier.minimum, frontier.maximum + 1)
@@ -867,15 +881,20 @@ def _structural_map_choices(
     on_rewrite: TypeRewriteObserver | None = None,
 ) -> tuple[_StructuralMapChoice, ...]:
     controller = _map_subject_name(mapping)
-    cases = tuple(
-        _StructuralMapChoice(
-            _replace_map_value(case.test, generated_type, on_rewrite=on_rewrite),
-            _replace_map_value(case.output_type, generated_type, on_rewrite=on_rewrite),
-            False,
+    cases: list[_StructuralMapChoice] = []
+    for case in map_specializations(mapping, controller):
+        if is_predicate(case.test):
+            continue
+
+        bindings = {token: generated_type for token in _capture_tokens(case.test)}
+        cases.append(
+            _StructuralMapChoice(
+                _replace_capture(case.test, bindings, on_rewrite=on_rewrite),
+                _replace_capture(case.output_type, bindings, on_rewrite=on_rewrite),
+                False,
+            )
         )
-        for case in map_specializations(mapping, controller)
-        if not is_predicate(case.test)
-    )
+
     return (
         *cases,
         _StructuralMapChoice(
@@ -898,30 +917,36 @@ def _map_subject_name(mapping: MapType) -> str:
     return ""
 
 
-def _replace_map_value(
+def _capture_tokens(expression: StubTypeExpression) -> frozenset[CaptureType]:
+    return frozenset(
+        item for item in walk_type(expression) if isinstance(item, CaptureType)
+    )
+
+
+def _replace_capture(
     expression: StubTypeExpression,
-    replacement: StubTypeExpression,
+    bindings: dict[CaptureType, TypeVariable],
     on_rewrite: TypeRewriteObserver | None = None,
 ) -> StubTypeExpression:
-    result = _replace_map_value_expression(expression, replacement, on_rewrite)
+    result = _replace_capture_expression(expression, bindings, on_rewrite)
     if on_rewrite is not None:
         on_rewrite(expression, result)
 
     return result
 
 
-def _replace_map_value_expression(
+def _replace_capture_expression(
     expression: StubTypeExpression,
-    replacement: StubTypeExpression,
+    bindings: dict[CaptureType, TypeVariable],
     on_rewrite: TypeRewriteObserver | None = None,
 ) -> StubTypeExpression:
-    if isinstance(expression, MapValueType):
-        return replacement
+    if isinstance(expression, CaptureType):
+        return bindings.get(expression, expression)
 
     if isinstance(expression, TypeApplication | FixedTuple | UnionExpression):
         return rewrite_type_children(
             expression,
-            lambda child: _replace_map_value(child, replacement, on_rewrite=on_rewrite),
+            lambda child: _replace_capture(child, bindings, on_rewrite=on_rewrite),
         )
 
     return expression

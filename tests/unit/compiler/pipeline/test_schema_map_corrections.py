@@ -64,7 +64,7 @@ class Payload:
             id="C7-known-argument-mismatch",
         ),
         pytest.param(
-            "Map[tuple[int, T], tuple[Value, Value] : Value, ... : bytes]",
+            "Map[tuple[int, T], tuple[Item, Item] : Item, ... : bytes]",
             "int | bytes",
             id="C8-repeated-capture",
         ),
@@ -81,14 +81,18 @@ def test_generic_schema_corrections(
     path = tmp_path / "schemas.py"
     path.write_text(
         "from typeforge._markers import Equal, Assignable\n"
-        "from typeforge import Map, Value\n"
+        "from typeforge import Capture, Map\n"
         "from typeforge.pydantic import Schema\n"
+        'Item = Capture("Item")\n'
         "class Payload[T, U]:\n"
         f"    value: Schema[{expression}]\n"
     )
 
     generated = generate_module(path, maximum_arity=1).unwrap()
-    assert generated.content == f"class Payload[T, U]:\n    value: {expected}\n"
+    assert (
+        generated.content
+        == f"Item: object\n\nclass Payload[T, U]:\n    value: {expected}\n"
+    )
 
 
 def test_selected_alias_output_expands_nested_aliases(tmp_path: Path) -> None:

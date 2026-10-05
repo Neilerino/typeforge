@@ -16,7 +16,9 @@ from typeforge.overlay import transform_source
 
 LIBRARY = """from dataclasses import dataclass
 from typing import Literal, TypedDict
-from typeforge import Collect, Each, Map, Value
+from typeforge import Capture, Collect, Each, Map
+
+Item = Capture("Item")
 from typeforge._markers import All, Any, Assignable, Equal, Not
 
 VERSION: int = 1 // 0
@@ -30,7 +32,7 @@ class Option[T]:
 
 type Numeric = Assignable[int]
 type Encoded[T] = Map[T, int: str | None, ...: bytes]
-type QueryResult[T] = Map[T, Option[Value]: Value | None, ...: T]
+type QueryResult[T] = Map[T, Option[Item]: Item | None, ...: T]
 
 def identity[T](value: T) -> T: ...
 def encode[T](value: T) -> Encoded[T]: ...
@@ -201,15 +203,16 @@ def test_unsupported_slice_callables_return_typed_failures(
 def test_unbounded_capture_does_not_publish_a_partial_interface(tmp_path: Path) -> None:
     path = tmp_path / "unsupported.py"
     path.write_text(
-        "from typeforge import Map, Value\n"
+        "from typeforge import Capture, Map\n"
+        'Item = Capture("Item")\n'
         "def identity[T](value: T) -> T: ...\n"
         "def choose[T](value: T) -> "
-        "Map[T, list[Value]: tuple[Value, ...], ...: bytes]: ...\n"
+        "Map[T, list[Item]: tuple[Item, ...], ...: bytes]: ...\n"
     )
 
-    assert generate_module(path, maximum_arity=2) == Failure(
-        EmissionError("unlowered type expression: MapValueType")
-    )
+    result = generate_module(path, maximum_arity=2)
+    assert isinstance(result, Failure)
+    assert result == Failure(EmissionError("unlowered type expression: CaptureType"))
 
 
 def test_publication_and_overlay_keep_distinct_alias_bounds(tmp_path: Path) -> None:

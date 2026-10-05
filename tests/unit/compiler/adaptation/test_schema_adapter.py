@@ -36,10 +36,11 @@ def schema_source(
     source = (
         parse_source(
             "from typeforge._markers import Equal, Assignable\n"
-            "from typeforge import Map, Value\n"
+            "from typeforge import Capture, Map, Value\n"
             "from typeforge._markers import All, Any, Not\n"
             "from typeforge import MapFields, Field, Key\n"
             "from typeforge.pydantic import Input, Schema\n"
+            'Item = Capture("Item")\n'
             f"{aliases}\n"
             f"type Selected = Schema[{expression}]\n",
             Path("schema.py"),
@@ -55,8 +56,8 @@ def schema_source(
 def test_schema_adapter_evaluates_aliased_structural_outputs() -> None:
     source, boundary = schema_source(
         "Outer[list[int]]",
-        """type Inner[T] = Map[T, list[Value] : set[Value] | None]
-type Outer[T] = Map[T, list[Value] : Inner[T]]""",
+        """type Inner[T] = Map[T, list[Item] : set[Item] | None]
+type Outer[T] = Map[T, list[Item] : Inner[T]]""",
     )
 
     assert adapt_schema_expression(
@@ -81,7 +82,7 @@ type Outer[T] = Map[T, list[Value] : Inner[T]]""",
             TypeName("bytes"),
         ),
         (
-            "Map[list[T], list[Value] : set[Value]]",
+            "Map[list[T], list[Item] : set[Item]]",
             TypeApplication(TypeName("set"), (TypeName("T"),)),
         ),
     ],
@@ -146,7 +147,7 @@ def test_schema_adapter_composes_nested_types(
     [
         ("Equal[int]", "Equal requires two type arguments"),
         ("Input", "Input requires value-time evaluation"),
-        ("Value", "Value requires MapFields or a structural Map case"),
+        ("Value", "Value requires MapFields"),
         ("Equal[int, int]", "Schema must evaluate to a type"),
         (
             "MapFields[int, Field[Key, Value]]",
@@ -264,7 +265,7 @@ def test_unexpected_backend_failures_propagate(monkeypatch: pytest.MonkeyPatch) 
 
 def test_aliased_failures_report_the_authored_use_site() -> None:
     source, boundary = schema_source(
-        "Broken[int]", "type Broken[T] = Map[T, Value : Value] | Input"
+        "Broken[int]", "type Broken[T] = Map[T, Item : Item] | Input"
     )
 
     assert adapt_schema_expression(

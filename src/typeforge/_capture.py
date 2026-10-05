@@ -25,3 +25,12 @@ class Capture(GenericAlias):
 
     def __bool__(self) -> bool:
         raise TypeError("capture truthiness is unsupported; use Map for type selection")
+
+    @classmethod
+    def __class_getitem__(cls, arguments: tuple[object, ...]) -> Self:
+        # Python reconstructs GenericAlias origins when evaluating annotations.
+        # Keep the declaring symbol rather than creating another capture.
+        if len(arguments) != 1 or not isinstance(arguments[0], CaptureSymbol):
+            raise TypeError("Capture subscription requires its declared symbol")
+
+        return super().__new__(cls, cls, arguments)

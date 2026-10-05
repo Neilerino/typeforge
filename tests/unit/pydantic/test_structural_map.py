@@ -1,15 +1,17 @@
 import pytest
 
 from pydantic import TypeAdapter, ValidationError
-from typeforge import Map, Value
+from typeforge import Capture, Map
 from typeforge.pydantic import Schema
+
+Item = Capture("Item")
 
 
 def test_structural_map_captures_and_substitutes_value() -> None:
     type Converted = Schema[
         Map[
             list[int],
-            list[Value] : tuple[Value, ...],
+            list[Item] : tuple[Item, ...],
             ...:bytes,
         ]
     ]
@@ -22,7 +24,7 @@ def test_structural_map_substitutes_multiple_output_positions() -> None:
     type Converted = Schema[
         Map[
             list[int],
-            list[Value] : dict[str, Value],
+            list[Item] : dict[str, Item],
             ...:bytes,
         ]
     ]
@@ -38,7 +40,7 @@ def test_structural_map_uses_default_for_different_constructor() -> None:
     type Converted = Schema[
         Map[
             set[int],
-            list[Value] : tuple[Value, ...],
+            list[Item] : tuple[Item, ...],
             ...:bytes,
         ]
     ]
@@ -53,7 +55,7 @@ def test_structural_capture_can_drive_a_nested_map() -> None:
     type Converted = Schema[
         Map[
             list[int],
-            list[Value] : Map[Value, int:str, ...:bytes],
+            list[Item] : Map[Item, int:str, ...:bytes],
             ...:float,
         ]
     ]

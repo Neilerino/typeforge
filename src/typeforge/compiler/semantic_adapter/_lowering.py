@@ -48,7 +48,6 @@ from typeforge.semantics import (
     AnyExpression,
     AssignableExpression,
     CaptureReference,
-    CaptureValuePattern,
     CaseExpression,
     DropExpression,
     EqualExpression,
@@ -121,10 +120,10 @@ def _(
     *,
     role: SemanticRole = "type",
 ) -> CaptureReference:
-    return _capture_reference(expression)
+    return lower_capture_reference(expression)
 
 
-def _capture_reference(expression: CaptureTypeExpression) -> CaptureReference:
+def lower_capture_reference(expression: CaptureTypeExpression) -> CaptureReference:
     declaration = expression.declaration
     return CaptureReference(
         TypeSymbol(
@@ -371,7 +370,10 @@ def _lower_case_test(
         case MarkerTypeExpression():
             marker = _normalize_semantic_marker(expression)
             if isinstance(marker, ValueMarker):
-                return CaptureValuePattern()
+                raise SemanticLoweringError(
+                    "Value is a field reference; "
+                    "declare Capture for structural matching"
+                )
 
         case _:
             pass
@@ -385,7 +387,7 @@ def _lower_type_pattern(
 ) -> TypePattern[StaticType]:
     match expression:
         case CaptureTypeExpression():
-            return _capture_reference(expression)
+            return lower_capture_reference(expression)
         case NameTypeExpression(source=source) if (
             bound := dict(environment).get(source)
         ) is not None and not is_static(bound):
@@ -400,7 +402,10 @@ def _lower_type_pattern(
         case MarkerTypeExpression():
             marker = _normalize_semantic_marker(expression)
             if isinstance(marker, ValueMarker):
-                return CaptureValuePattern()
+                raise SemanticLoweringError(
+                    "Value is a field reference; "
+                    "declare Capture for structural matching"
+                )
 
             raise SemanticLoweringError(
                 "unsupported type pattern "
@@ -446,6 +451,7 @@ def _requires_evaluation(
     match expression:
         case (
             MarkerTypeExpression()
+            | CaptureTypeExpression()
             | SchemaTypeExpression()
             | RuntimeInputTypeExpression()
         ):

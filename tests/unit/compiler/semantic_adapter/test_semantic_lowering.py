@@ -14,6 +14,7 @@ from typeforge.compiler.semantic_adapter import (
 )
 from typeforge.compiler.source import (
     AppliedTypeExpression,
+    CaptureTypeExpression,
     MarkerKind,
     MarkerTypeExpression,
     NameTypeExpression,
@@ -25,7 +26,7 @@ from typeforge.compiler.source import (
     UnionTypeExpression,
 )
 from typeforge.semantics import (
-    CaptureValuePattern,
+    CaptureReference,
     CaseExpression,
     DeferredMap,
     EvaluationContext,
@@ -42,6 +43,7 @@ from typeforge.semantics import (
     RecordShape,
     ResolvedType,
     TypeReference,
+    TypeSymbol,
     ValueReference,
     evaluate,
 )
@@ -79,21 +81,26 @@ def test_parameterized_type_lowers_to_a_structured_compiler_type() -> None:
 
 
 def test_map_lowers_parameterized_case_roles_to_shared_semantics() -> None:
-    """`Case[list[Value], set[Value]]` lowers to a pattern and template."""
-    value = marker(MarkerKind.VALUE)
+    """`Case[list[Item], set[Item]]` lowers to a pattern and template."""
+    value = CaptureTypeExpression("Item", SPAN, "Item", SPAN)
+    capture = CaptureReference(
+        TypeSymbol(
+            (str(SPAN.path), str(SPAN.start.line), str(SPAN.start.column)), "Item"
+        )
+    )
     expression = marker(
         MarkerKind.MAP,
         name("T"),
         marker(
             MarkerKind.CASE,
             AppliedTypeExpression(
-                source="list[Value]",
+                source="list[Item]",
                 span=SPAN,
                 constructor=name("list"),
                 arguments=(value,),
             ),
             AppliedTypeExpression(
-                source="set[Value]",
+                source="set[Item]",
                 span=SPAN,
                 constructor=name("set"),
                 arguments=(value,),
@@ -108,11 +115,11 @@ def test_map_lowers_parameterized_case_roles_to_shared_semantics() -> None:
             CaseExpression(
                 ParameterizedTypePattern(
                     NamedType("list"),
-                    (CaptureValuePattern(),),
+                    (capture,),
                 ),
                 ParameterizedTypeTemplate(
                     NamedType("set"),
-                    (ValueReference(),),
+                    (capture,),
                 ),
             ),
         ),
@@ -312,14 +319,14 @@ def application(
 
 @pytest.mark.parametrize("nested", (False, True))
 def test_capture_output_role_composes_through_unions(nested: bool) -> None:
-    value = marker(MarkerKind.VALUE)
+    value = CaptureTypeExpression("Item", SPAN, "Item", SPAN)
     output = (
         application(
-            "tuple", UnionTypeExpression("Value | None", SPAN, (value, name("None")))
+            "tuple", UnionTypeExpression("Item | None", SPAN, (value, name("None")))
         )
         if nested
         else UnionTypeExpression(
-            "set[Value] | None", SPAN, (application("set", value), name("None"))
+            "set[Item] | None", SPAN, (application("set", value), name("None"))
         )
     )
     expression = marker(

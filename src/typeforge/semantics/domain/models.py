@@ -68,11 +68,6 @@ class ExactTypePattern[T]:
 
 
 @dataclass(frozen=True, slots=True)
-class CaptureValuePattern:
-    """The structural pattern position bound to authored `Value`."""
-
-
-@dataclass(frozen=True, slots=True)
 class ParameterizedTypePattern[T]:
     """A structural pattern for a parameterized type."""
 
@@ -277,7 +272,6 @@ class EvaluationContext[T]:
 
     key: str | None = None
     value: TypeValue[T] | None = None
-    capture: TypeValue[T] | None = None
     captures: CaptureBindings[T] = ()
     input_type: TypeValue[T] | None = None
     mode: EvaluationMode = EvaluationMode.DEFINITE
@@ -363,7 +357,6 @@ type BooleanExpression[T] = (
 
 type TypePattern[T] = (
     ExactTypePattern[T]
-    | CaptureValuePattern
     | CaptureReference
     | ParameterizedTypePattern[T]
     | TypeValueReference[T]
@@ -404,7 +397,6 @@ def is_pattern_expr[T](
     return isinstance(
         expression,
         ExactTypePattern
-        | CaptureValuePattern
         | CaptureReference
         | ParameterizedTypePattern
         | TypeValueReference,

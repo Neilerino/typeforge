@@ -31,7 +31,8 @@ def test_resumption_selects_once_without_evaluating_output_and_retains_bindings(
         s.CaseExpression(s.ExactTypePattern("int"), s.type_ref("int")),
     )
     context = s.EvaluationContext(
-        value=s.ResolvedType("float"), capture=s.ResolvedType("str")
+        value=s.ResolvedType("float"),
+        captures=((s.TypeSymbol((__name__,), "Item"), s.ResolvedType("str")),),
     )
     plan = s.DeferredMap(cases, s.type_ref("default"), context)
     observer = Observer((Success(False), Success(True)))
@@ -40,7 +41,7 @@ def test_resumption_selects_once_without_evaluating_output_and_retains_bindings(
     assert selected.case_index == 1
     assert selected.output is cases[1].output
     assert selected.context.value is context.value
-    assert selected.context.capture is context.capture
+    assert selected.context.captures is context.captures
     assert selected.context.input_type == s.ResolvedType("raw-type")
     assert observer.visited == [case.test for case in cases[:2]]
     assert evaluator.context.input_type is None

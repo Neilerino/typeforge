@@ -125,6 +125,32 @@ def test_bound_capture_can_select_an_input_without_rebinding() -> None:
     assert adapter.validate_python("hello") == b"hello"
 
 
+def test_bound_nested_capture_does_not_require_new_generic_arguments(
+    tmp_path: Path,
+) -> None:
+    program = (
+        "from typeforge import Capture, Map, type_function\n"
+        "@type_function\n"
+        "def KnownShape[T]():\n"
+        '    Item = Capture("Item")\n'
+        "    return Map[list[int], list[Item]: "
+        "Map[T, list[Item]: str, ...: bytes]]\n"
+    )
+    namespace: dict[str, object] = {"__name__": __name__}
+    exec(program, namespace)
+    for argument, output in (("list[int]", str), ("list[str]", bytes)):
+        specialized: object = eval(f"KnownShape[{argument}]", namespace)
+        assert (
+            TypeAdapter(Schema[specialized]).json_schema()
+            == TypeAdapter(output).json_schema()
+        )
+
+    source = tmp_path / "known_shape.py"
+    source.write_text(program)
+    generated = generate_module(source, maximum_arity=1).unwrap()
+    assert "type KnownShape[T] = str | bytes" in generated.content
+
+
 def test_module_capture_is_transparent_to_compiler_matching(tmp_path: Path) -> None:
     source = tmp_path / "module_token.py"
     source.write_text(
@@ -135,7 +161,36 @@ def test_module_capture_is_transparent_to_compiler_matching(tmp_path: Path) -> N
         "    value: Schema[Map[list[int], list[Item]: Item]]\n"
     )
     generated = generate_module(source, maximum_arity=1).unwrap()
+    assert "Item: object" in generated.content
+    assert "Item: Capture" not in generated.content
     assert generated.content.endswith("class Payload:\n    value: int\n")
+
+
+@pytest.mark.parametrize(
+    ("selector", "output", "message"),
+    [
+        (
+            "tuple[Item, Other]",
+            "tuple[Item, Other]",
+            "one capture per structural branch",
+        ),
+        ("list[Item]", "Other", "unlowered type expression: CaptureType"),
+    ],
+)
+def test_finite_callable_capture_frontier_does_not_alias_independent_tokens(
+    tmp_path: Path, selector: str, output: str, message: str
+) -> None:
+    source = tmp_path / "callable_captures.py"
+    source.write_text(
+        "from typeforge import Capture, Collect, Each, Map\n"
+        'Item = Capture("Item")\n'
+        'Other = Capture("Item")\n'
+        f"type Selected[T] = Map[T, {selector}: {output}, ...: T]\n"
+        "def convert[T](*items: Each[T]) -> Collect[Selected[T]]: ...\n"
+    )
+    result = generate_module(source, maximum_arity=2)
+    assert isinstance(result, Failure)
+    assert message in result.failure().message
 
 
 @pytest.mark.parametrize("name", ["", None, 1])
@@ -186,10 +241,6 @@ def test_capture_diagnostics_use_public_spelling() -> None:
     assert "CaptureSymbol" not in str(raised.value)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Ticket 06: structural Value authoring cutover and caller migration pending",
-)
 def test_structural_value_authoring_is_rejected_in_both_consumers(
     tmp_path: Path,
 ) -> None:

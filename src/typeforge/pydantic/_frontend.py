@@ -485,9 +485,6 @@ class _AnnotationAdapter:
                     default=None if default is None else self._name_expression(default),
                 )
 
-            case s.CaptureValuePattern():
-                return s.ValueReference()
-
             case s.ParameterizedTypePattern():
                 raise invalid(
                     self.origins[id(expression)],
@@ -544,7 +541,11 @@ class _AnnotationAdapter:
                 return self._pattern(value)
 
             case s.ValueReference():
-                return s.CaptureValuePattern()
+                raise invalid(
+                    self.origins[id(expression)],
+                    "Value is a field reference; "
+                    "declare Capture for structural matching",
+                )
 
             case s.CaptureReference():
                 return expression

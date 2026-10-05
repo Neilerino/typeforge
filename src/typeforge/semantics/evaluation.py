@@ -234,15 +234,10 @@ class Evaluator[T]:
 
     @_dispatch.register(ValueReference)
     def _value(self, expression: ValueReference) -> EvaluationValue[T]:
-        if self.context.capture is not None:
-            return self.context.capture
-
         if self.context.value is not None:
             return self.context.value
 
-        raise UnboundValueSemanticError(
-            "Value requires MapFields or a structural Map case"
-        )
+        raise UnboundValueSemanticError("Value requires MapFields")
 
     @_dispatch.register(CaptureReference)
     def _capture(self, expression: CaptureReference) -> EvaluationValue[T]:
@@ -550,7 +545,6 @@ class Evaluator[T]:
                     matched = pattern_match.matched
                     output_context = replace(
                         self.context,
-                        capture=pattern_match.value_binding,
                         captures=pattern_match.captures,
                     )
                 else:

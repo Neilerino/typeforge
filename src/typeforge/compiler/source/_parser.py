@@ -145,6 +145,7 @@ def _parse_source(source: str, path: Path) -> ParsedSource:
         typed_dicts=typed_dicts,
         classes=classes,
         variable_annotations=tuple(variable_annotations),
+        captures=bindings.captures,
         text=source,
         docstring_span=_docstring_span(path, tree),
         future_import_spans=_future_import_spans(path, tree),

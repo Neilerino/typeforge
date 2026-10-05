@@ -224,7 +224,9 @@ def test_mypy_consumes_same_file_method_overlay(tmp_path: Path) -> None:
 def test_mypy_consumes_bounded_structural_map_overlay(tmp_path: Path) -> None:
     source = """from dataclasses import dataclass
 from typing import Protocol, assert_type
-from typeforge import Collect, Each, Map, Value
+from typeforge import Capture, Collect, Each, Map
+
+Item = Capture("Item")
 
 class Component(Protocol):
     def __hash__(self) -> int: ...
@@ -234,7 +236,7 @@ class Option[T: Component]:
     value: T
 
 type QueryResult[T] = Map[
-    T, Option[Value] : Value | None, ... : T
+    T, Option[Item] : Item | None, ... : T
 ]
 
 class World:
