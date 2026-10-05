@@ -17,7 +17,6 @@ from typeforge.pydantic._frontend import (
     AdaptedAnnotation,
     adapt_annotation,
 )
-from typeforge.pydantic._policy import PydanticEvaluationPolicy
 from typeforge.pydantic._type_system import RUNTIME_TYPE_SYSTEM, RuntimeType
 
 
@@ -52,7 +51,6 @@ def _evaluate_annotation(
     return (
         s.Evaluator(
             RUNTIME_TYPE_SYSTEM,
-            policy=PydanticEvaluationPolicy(),
             deferred_types=DeferredAnnotations(adapted, source),
         )
         .evaluate(adapted.expression)

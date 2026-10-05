@@ -88,31 +88,20 @@ from typeforge.utils.error_handling import safe_result
 
 class _DefaultPolicy[T]:
     def no_match(self, outcome: MapNoMatch[T]) -> NoMatchDecision:
-        return NoMatchDecision.ACCEPT
+        return (
+            NoMatchDecision.REJECT
+            if outcome.context.mode is EvaluationMode.DEFINITE
+            else NoMatchDecision.ACCEPT
+        )
 
 
 def evaluate[T](
     expression: Expression[T],
     type_system: TypeSystem[T],
     context: EvaluationContext[T] | None = None,
-) -> Result[EvaluationValue[T], SemanticIssue]:
-    """Evaluate with the language's default policy: exhausted Maps produce Never.
-
-    Compiler consumers use this narrower result seam. Custom acceptance policy
-    belongs on Evaluator, whose result additionally declares rejected selections.
-    """
-
-    def default_failure(issue: SemanticIssue | MapNoMatch[T]) -> SemanticIssue:
-        # This entry point owns an always-accepting policy. Rejecting a selection
-        # here would violate that invariant, not create another compiler outcome.
-        assert isinstance(issue, SemanticIssue)
-        return issue
-
-    return (
-        Evaluator(type_system, context=context)
-        .evaluate(expression)
-        .alt(default_failure)
-    )
+) -> Result[EvaluationValue[T], SemanticIssue | MapNoMatch[T]]:
+    """Reject reached uncovered subjects; allow speculative output-bound exploration."""
+    return Evaluator(type_system, context=context).evaluate(expression)
 
 
 class Evaluator[T]:
