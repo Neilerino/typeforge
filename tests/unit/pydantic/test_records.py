@@ -13,7 +13,6 @@ from pydantic import Field as PydanticField
 from typeforge import (
     Doc,
     Drop,
-    Equal,
     Field,
     Key,
     Map,
@@ -22,6 +21,7 @@ from typeforge import (
     ReadonlyField,
     Value,
 )
+from typeforge._markers import Equal
 from typeforge.pydantic import Schema
 
 

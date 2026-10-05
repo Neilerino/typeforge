@@ -17,8 +17,8 @@ def test_predicate_alias_declarations_and_consuming_maps_compile(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "example.py"
-    path.write_text("""\
-from typeforge import Map, Assignable
+    path.write_text("""from typeforge._markers import Assignable
+from typeforge import Map
 from typeforge.pydantic import Schema
 type Numeric = Assignable[int]
 class Payload:
@@ -35,8 +35,8 @@ def test_generic_compound_aliases_keep_nested_subjects_and_explicit_operands(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "nested.py"
-    path.write_text("""\
-from typeforge import Map, All, Any, Not, Equal, Assignable
+    path.write_text("""from typeforge._markers import All, Any, Not, Equal, Assignable
+from typeforge import Map
 from typeforge.pydantic import Schema
 type Is[T] = Equal[T]
 type Alias[T] = Is[T]
@@ -62,7 +62,8 @@ def test_union_predicate_alias_has_inline_schema_behavior(
 ) -> None:
     path = tmp_path / "unions.py"
     path.write_text(f"""\
-from typeforge import Map, Assignable
+from typeforge import Map
+from typeforge._markers import Assignable
 from typeforge.pydantic import Schema
 type Numeric = Assignable[int | str]
 class Payload:
@@ -84,7 +85,8 @@ class Payload:
 def test_unbound_aliases_fail_outside_selectors(use: str) -> None:
     result = compile_source(
         f"""\
-from typeforge import Map, Equal, Assignable
+from typeforge import Map
+from typeforge._markers import Equal, Assignable
 from typeforge.pydantic import Schema
 type Numeric = Assignable[int]
 class Payload:
@@ -114,7 +116,8 @@ def test_unsupported_predicate_aliases_are_authored_failures(
 ) -> None:
     result = compile_source(
         f"""\
-from typeforge import Map, All, Equal
+from typeforge import Map
+from typeforge._markers import All, Equal
 {definition}
 def select[T](value: T) -> Map[T, {use}: str]: ...
 """,
@@ -131,8 +134,8 @@ def select[T](value: T) -> Map[T, {use}: str]: ...
 def test_expanded_predicate_retains_authored_span_and_subject_identity() -> None:
     source = (
         parse_source(
-            """\
-from typeforge import Map, Equal
+            """from typeforge._markers import Equal
+from typeforge import Map
 type Is[T] = Equal[T]
 type Selected = Map[bytes, Is[int]: str]
 """,
@@ -159,9 +162,9 @@ def test_alias_binding_works_with_field_subjects_without_executing_source(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "records.py"
-    path.write_text("""\
-from typing import TypedDict, Literal
-from typeforge import Map, MapFields, Equal, Field, Key, Value
+    path.write_text("""from typing import TypedDict, Literal
+from typeforge import Map, MapFields, Field, Key, Value
+from typeforge._markers import Equal
 type Name = Equal[Literal["value"]]
 type Integer = Equal[int]
 class Row(TypedDict):

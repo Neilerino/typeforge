@@ -21,6 +21,7 @@ from typeforge.semantics.domain.models import (
 )
 from typeforge.semantics.protocols import TypeSystem
 from typeforge.semantics.type_evaluation import (
+    assignable_types,
     consensus,
     equal_types,
     indeterminate_type,
@@ -158,7 +159,7 @@ def _[T](
     )
 
 
-def map_values_are_equal[T](
+def map_values_match[T](
     left: EvaluationValue[T],
     right: EvaluationValue[T],
     type_system: TypeSystem[T],
@@ -166,7 +167,7 @@ def map_values_are_equal[T](
     if isinstance(
         left, ResolvedType | UnresolvedType | IndeterminateType
     ) and isinstance(right, ResolvedType | UnresolvedType | IndeterminateType):
-        return equal_types(left, right, type_system)
+        return assignable_types(left, right, type_system)
 
     if isinstance(left, FieldName) and isinstance(right, FieldName):
         return left == right
@@ -186,4 +187,4 @@ def _has_capture[T](pattern: TypePattern[T]) -> bool:
             assert_never(unreachable)
 
 
-__all__ = ("map_values_are_equal", "match_type_pattern")
+__all__ = ("map_values_match", "match_type_pattern")

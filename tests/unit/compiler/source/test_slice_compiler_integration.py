@@ -13,9 +13,10 @@ from typeforge.compiler.source import MarkerKind, MarkerTypeExpression, parse_so
 from typeforge.overlay import transform_source
 
 IMPORTS = """from typing import Literal, Never, TypedDict, Annotated
-from typeforge import Map, Equal, Assignable, All, Not
-from typeforge._markers import Case, Default, Map as CanonicalMap
+from typeforge import Map
+from typeforge._markers import Equal, Assignable, All, Not
 from typeforge import MapFields, Field, OptionalField, Drop, Key, Value
+from typeforge._markers import Case, Default, Map as CanonicalMap
 from typeforge.pydantic import Schema
 """
 
@@ -256,8 +257,8 @@ def test_unbounded_structural_callable_has_the_same_existing_emission_limit(
 
 
 def test_unary_predicate_alias_normalizes_after_alias_expansion() -> None:
-    source = """\
-from typeforge import Map, Assignable
+    source = """from typeforge._markers import Assignable
+from typeforge import Map
 type Numeric = Assignable[int]
 def f[T](x: T) -> Map[T, Numeric: str, ...: bytes]: ...
 """
@@ -280,7 +281,7 @@ def f[T](x: T) -> Map[T, int: str, ...: T]: ...
 def test_module_qualified_map_and_predicates_resolve_at_the_parser() -> None:
     source = """\
 import typeforge as tf
-def f[T](x: T) -> tf.Map[T, tf.Assignable[int]: str, ...: T]: ...
+def f[T](x: T) -> tf.Map[T, tf.Is[int]: str, ...: T]: ...
 """
     plan = compile_source(source, Path("example.py"), maximum_arity=2).unwrap()
     assert plan.module.declarations

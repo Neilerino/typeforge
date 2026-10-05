@@ -1,7 +1,8 @@
 from typing import Annotated, Literal, TypedDict
 
 from pydantic import BaseModel, TypeAdapter
-from typeforge import Doc, Drop, Equal, Field, Key, Map, MapFields, Value
+from typeforge import Doc, Drop, Field, Key, Map, MapFields, Value
+from typeforge._markers import Equal
 from typeforge.pydantic import Schema
 
 

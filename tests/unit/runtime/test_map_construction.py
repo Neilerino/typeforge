@@ -6,8 +6,8 @@ from typing import Annotated, Literal, Never, TypeVar, get_args, get_origin
 import pytest
 
 from pydantic import BaseModel, PydanticSchemaGenerationError, TypeAdapter
-from typeforge import All, Assignable, Equal, Map, Not, Value
-from typeforge._markers import Case, Default
+from typeforge import Map, Value
+from typeforge._markers import All, Assignable, Case, Default, Equal, Not
 from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic import Schema
 

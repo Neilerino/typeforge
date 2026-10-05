@@ -14,10 +14,10 @@ from typeforge.compiler.pipeline import compile_source, generate_module
 from typeforge.compiler.specialization import LoweringError, LoweringErrorCode
 from typeforge.overlay import transform_source
 
-LIBRARY = """\
-from dataclasses import dataclass
+LIBRARY = """from dataclasses import dataclass
 from typing import Literal, TypedDict
-from typeforge import All, Any, Assignable, Collect, Each, Equal, Map, Not, Value
+from typeforge import Collect, Each, Map, Value
+from typeforge._markers import All, Any, Assignable, Equal, Not
 
 VERSION: int = 1 // 0
 
@@ -183,7 +183,10 @@ def test_unsupported_slice_callables_return_typed_failures(
     tmp_path: Path, signature: str, code: LoweringErrorCode
 ) -> None:
     path = tmp_path / "unsupported.py"
-    source = "from typeforge import Assignable, Collect, Each, Map\n" + signature
+    source = (
+        "from typeforge._markers import Assignable\n"
+        "from typeforge import Collect, Each, Map\n" + signature
+    )
     path.write_text(source)
 
     result = generate_module(path, maximum_arity=2)

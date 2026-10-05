@@ -286,7 +286,7 @@ def test_schema_boundaries_are_erased_from_model_fields_in_overlay() -> None:
     source = (
         "from pydantic import BaseModel\n"
         "from typing import TypedDict\n"
-        "from typeforge import Equal, Field, Key, Map, "
+        "from typeforge._markers import Equal\nfrom typeforge import Field, Key, Map,"
         "MapFields, Value\n"
         "from typeforge.pydantic import Schema\n"
         "\n"

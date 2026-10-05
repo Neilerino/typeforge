@@ -35,8 +35,10 @@ def schema_source(
 ) -> tuple[SourceModule, SchemaTypeExpression]:
     source = (
         parse_source(
-            "from typeforge import Map, Value, Equal, Assignable\n"
-            "from typeforge import All, Any, Not, MapFields, Field, Key\n"
+            "from typeforge._markers import Equal, Assignable\n"
+            "from typeforge import Map, Value\n"
+            "from typeforge._markers import All, Any, Not\n"
+            "from typeforge import MapFields, Field, Key\n"
             "from typeforge.pydantic import Input, Schema\n"
             f"{aliases}\n"
             f"type Selected = Schema[{expression}]\n",
@@ -246,12 +248,12 @@ def test_modeled_backend_failures_cross_the_authored_conversion_boundary(
 def test_unexpected_backend_failures_propagate(monkeypatch: pytest.MonkeyPatch) -> None:
     failure = RuntimeError("unexpected backend failure")
 
-    def equal(
+    def assignable(
         self: CompilerTypeSystem, left: StaticType, right: StaticType
     ) -> Result[bool, SemanticIssue]:
         raise failure
 
-    monkeypatch.setattr(CompilerTypeSystem, "equal", equal)
+    monkeypatch.setattr(CompilerTypeSystem, "assignable", assignable)
     source, boundary = schema_source("Map[int, int : str]")
 
     with pytest.raises(RuntimeError) as caught:

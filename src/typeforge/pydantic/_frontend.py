@@ -14,24 +14,21 @@ from typing import (
 )
 
 from typeforge import (
-    All,
-    Assignable,
     Collect,
     Drop,
     Each,
-    Equal,
     Field,
+    Is,
     Key,
     MapFields,
-    Not,
     OptionalField,
     ReadonlyField,
     Value,
 )
-from typeforge import Any as AnyCondition
 from typeforge import semantics as s
 from typeforge._map import normalize_selector_literal
-from typeforge._markers import Case, Default, Map
+from typeforge._markers import All, Assignable, Case, Default, Equal, Map, Not
+from typeforge._markers import Any as AnyCondition
 from typeforge.pydantic._errors import SchemaIssue, UnresolvedAnnotationIssue
 from typeforge.pydantic._markers import Input
 from typeforge.pydantic._type_system import (
@@ -55,6 +52,7 @@ _MARKERS = (
     Case,
     Default,
     Equal,
+    Is,
     Assignable,
     All,
     AnyCondition,
@@ -238,6 +236,12 @@ class _AnnotationAdapter:
 
         if origin is Drop:
             return s.DropExpression()
+
+        if origin is Is:
+            if len(arguments) != 1:
+                raise invalid(value, "Is requires one type argument")
+
+            return self._binary_predicate(value, Equal, arguments, selector_subject)
 
         if origin is Equal or origin is Assignable:
             return self._binary_predicate(value, origin, arguments, selector_subject)
@@ -449,6 +453,8 @@ class _AnnotationAdapter:
     ) -> s.Expression[RuntimeType] | s.TypePattern[RuntimeType]:
         expression = self.adapt(value, selector_subject=subject)
         result = self._pattern(expression) or expression
+        if isinstance(result, s.ExactTypePattern):
+            result = s.TypeReference(result.value)
 
         self.origins[id(result)] = value
         return result
