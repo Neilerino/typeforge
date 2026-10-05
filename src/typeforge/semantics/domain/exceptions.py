@@ -17,6 +17,8 @@ class SemanticIssueCode(StrEnum):
     UNBOUND_INPUT = "unbound_input"
     UNBOUND_KEY = "unbound_key"
     UNBOUND_VALUE = "unbound_value"
+    UNBOUND_CAPTURE = "unbound_capture"
+    UNRESOLVED_CAPTURE = "unresolved_capture"
     UNSUPPORTED_EXPRESSION = "unsupported_expression"
 
 
@@ -71,6 +73,14 @@ class UnboundKeySemanticError(SemanticIssue):
 
 class UnboundValueSemanticError(SemanticIssue):
     code = SemanticIssueCode.UNBOUND_VALUE
+
+
+class UnboundCaptureSemanticError(SemanticIssue):
+    code = SemanticIssueCode.UNBOUND_CAPTURE
+
+
+class UnresolvedCaptureSemanticError(SemanticIssue):
+    code = SemanticIssueCode.UNRESOLVED_CAPTURE
 
 
 class UnsupportedExpressionSemanticError(SemanticIssue):

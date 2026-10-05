@@ -8,16 +8,18 @@ from pydantic import (
     TypeAdapter,
     ValidationError,
 )
-from typeforge import Is, Map, Value
+from typeforge import Capture, Is, Map
 from typeforge._markers import Case, Default
 from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic import Schema
+
+Item = Capture("Item")
 
 
 def test_alias_capture_builds_nested_templates_and_selects_nested_maps() -> None:
     type Selected[T] = Map[
         T,
-        list[Value] : tuple[Value | None, Map[Value, int : Literal["accepted"]]],
+        list[Item] : tuple[Item | None, Map[Item, int : Literal["accepted"]]],
         ...:bytes,
     ]
     adapter = TypeAdapter[object](Schema[Selected[list[int]]])
@@ -31,9 +33,7 @@ def test_alias_capture_builds_nested_templates_and_selects_nested_maps() -> None
 
 
 def test_variadic_aliases_bind_before_reconciling_captures() -> None:
-    type Packed[*Items] = Map[
-        tuple[*Items], tuple[Value, Value] : list[Value], ...:bytes
-    ]
+    type Packed[*Items] = Map[tuple[*Items], tuple[Item, Item] : list[Item], ...:bytes]
     type Forward[*Items] = Packed[*Items]
 
     assert TypeAdapter[object](Schema[Forward[int, int]]).validate_python(["3"]) == [3]
@@ -44,8 +44,8 @@ def test_variadic_aliases_bind_before_reconciling_captures() -> None:
 def test_failed_structural_case_does_not_leak_captures() -> None:
     type Selected = Map[
         tuple[int, str],
-        tuple[Value, bytes] : bytes,
-        Annotated[tuple[int, Value], "opaque"] : list[Value],
+        tuple[Item, bytes] : bytes,
+        Annotated[tuple[int, Item], "opaque"] : list[Item],
     ]
     adapter = TypeAdapter[object](Schema[Selected])
 
@@ -55,7 +55,7 @@ def test_failed_structural_case_does_not_leak_captures() -> None:
 
 
 def test_alias_any_fallback_is_distinct_from_any_in_a_known_structure() -> None:
-    type Selected[T] = Map[T, list[Value] : set[Value], ...:bytes]
+    type Selected[T] = Map[T, list[Item] : set[Item], ...:bytes]
     assert TypeAdapter[object](Schema[Selected[Any]]).validate_python("3") == b"3"
     assert TypeAdapter[object](Schema[Selected[list[Any]]]).validate_python(["3"]) == {
         "3"
@@ -97,7 +97,7 @@ def test_structural_capture_preserves_model_bound_typevar_serialization() -> Non
     class ExtraDetail(Detail):
         extra: int
 
-    type Selected[T] = Map[list[T] | bytes, list[Value] : list[Value], ...:bytes]
+    type Selected[T] = Map[list[T] | bytes, list[Item] : list[Item], ...:bytes]
 
     class Payload[T: Detail](BaseModel):
         value: Schema[Selected[T]]
@@ -110,7 +110,7 @@ def test_structural_capture_preserves_model_bound_typevar_serialization() -> Non
 
 
 def test_partial_generic_inheritance_substitutes_structural_alias_fields() -> None:
-    type Selected[T] = Map[list[T], list[Value] : set[Value]]
+    type Selected[T] = Map[list[T], list[Item] : set[Item]]
 
     class Parent[T, U](BaseModel):
         value: Schema[Selected[T]]
@@ -126,7 +126,7 @@ def test_partial_generic_inheritance_substitutes_structural_alias_fields() -> No
 
 
 def test_alias_defaults_bind_in_declaration_order() -> None:
-    type Selected[T = int, U = list[T]] = Map[U, list[Value] : set[Value]]
+    type Selected[T = int, U = list[T]] = Map[U, list[Item] : set[Item]]
 
     assert TypeAdapter[object](Schema[Selected]).validate_python(["3"]) == {3}
     assert TypeAdapter[object](Schema[Selected[str]]).validate_python(["3"]) == {"3"}
@@ -160,7 +160,7 @@ def test_missing_alias_name_preserves_model_rebuild_lifecycle() -> None:
 def test_aliases_can_supply_patterns_and_output_templates() -> None:
     type Pattern[T] = list[T]
     type Output[T] = tuple[T, ...]
-    type Selected[T] = Map[T, Pattern[Value] : Output[Value]]
+    type Selected[T] = Map[T, Pattern[Item] : Output[Item]]
 
     adapter = TypeAdapter[object](Schema[Selected[list[int]]])
     assert adapter.validate_python(["3", 4]) == (3, 4)
@@ -169,7 +169,7 @@ def test_aliases_can_supply_patterns_and_output_templates() -> None:
 def test_variadic_alias_supports_fixed_positions_and_explicit_tuple_unpack() -> None:
     type Selected[First, *Rest, Last] = Map[
         tuple[First, *Rest, Last],
-        tuple[str, Value, Value, bytes] : list[Value],
+        tuple[str, Item, Item, bytes] : list[Item],
         ...:bytes,
     ]
     assert TypeAdapter[object](
@@ -188,7 +188,7 @@ def test_alias_failures_do_not_leak_bindings_between_builds() -> None:
 
 
 def test_nested_capture_no_match_preserves_generic_origin_only_when_needed() -> None:
-    type Selected[T] = Map[list[T], list[Value] : Map[Value, Is[int] : str]]
+    type Selected[T] = Map[list[T], list[Item] : Map[Item, Is[int] : str]]
 
     class Payload[T](BaseModel):
         value: Schema[Selected[T]]
@@ -211,22 +211,20 @@ def test_ordinary_generic_alias_outputs_receive_bound_arguments() -> None:
 
 
 def test_finite_unpack_expands_structural_positions() -> None:
-    type Selected = Map[tuple[*tuple[int, int]], tuple[Value, Value] : list[Value]]
+    type Selected = Map[tuple[*tuple[int, int]], tuple[Item, Item] : list[Item]]
     assert TypeAdapter[object](Schema[Selected]).validate_python(["3"]) == [3]
 
 
 def test_variadic_defaults_bind_before_structural_capture() -> None:
     type Selected[*Items = *tuple[int, int]] = Map[
-        tuple[*Items], tuple[Value, Value] : list[Value], ...:bytes
+        tuple[*Items], tuple[Item, Item] : list[Item], ...:bytes
     ]
     assert TypeAdapter[object](Schema[Selected]).validate_python(["3"]) == [3]
     assert TypeAdapter[object](Schema[Selected[()]]).validate_python("3") == b"3"
 
 
 def test_unknown_variadic_arity_is_not_treated_as_finite_positions() -> None:
-    type Selected[*Items] = Map[
-        tuple[*Items], tuple[int, Value] : list[Value], ...:bytes
-    ]
+    type Selected[*Items] = Map[tuple[*Items], tuple[int, Item] : list[Item], ...:bytes]
     for expression in (Selected, Selected[*tuple[int, ...]]):
         with pytest.raises(PydanticSchemaGenerationError, match="alias_arguments"):
             TypeAdapter[object](Schema[expression])
@@ -268,6 +266,6 @@ def test_frontend_expands_aliases_in_canonical_branch_data() -> None:
 def test_structural_patterns_keep_nested_fixed_unions_as_types() -> None:
     type Selected = Map[
         tuple[bytes, int | str],
-        tuple[Value, int | str] : list[Value],
+        tuple[Item, int | str] : list[Item],
     ]
     assert TypeAdapter[object](Schema[Selected]).validate_python(["3"]) == [b"3"]

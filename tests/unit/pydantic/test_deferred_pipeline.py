@@ -14,11 +14,13 @@ from pydantic import (
     TypeAdapter,
     ValidationError,
 )
-from typeforge import Field, Key, Map, MapFields, Value
+from typeforge import Capture, Field, Key, Map, MapFields, Value
 from typeforge._markers import All, Assignable, Equal, Not
 from typeforge._markers import Any as AnyCondition
 from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic import Input, Schema
+
+Item = Capture("Item")
 
 
 def test_deferred_selection_uses_raw_type_and_only_selected_output() -> None:
@@ -116,7 +118,7 @@ def test_structural_capture_remains_available_to_deferred_selection_and_output()
 ):
     type Selected = Map[
         list[int],
-        list[Value] : Map[Input, Value:str, ...:Value],
+        list[Item] : Map[Input, Item:str, ...:Item],
     ]
     adapter = TypeAdapter(Schema[Selected])
     assert adapter.validate_python("3") == 3
@@ -170,7 +172,7 @@ def test_union_annotated_and_ordinary_alias_tests() -> None:
     "pattern",
     [
         list[int],
-        list[Value],
+        list[Item],
         int | list[int],
         Annotated[list[int], "metadata"],
     ],

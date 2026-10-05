@@ -13,6 +13,8 @@ from typing import (
     get_origin,
 )
 
+from typeforge._capture import Capture, CaptureSymbol
+
 
 class TypeFunctionConstructionError(TypeError):
     """The construction did not produce a supported reusable type template."""
@@ -130,6 +132,13 @@ def _validate_template(value: object, parameters: tuple[TypeVar, ...]) -> None:
         return
 
     origin = get_origin(value)
+    if origin is Capture:
+        arguments = get_args(value)
+        if len(arguments) != 1 or not isinstance(arguments[0], CaptureSymbol):
+            raise TypeFunctionConstructionError("invalid capture declaration")
+
+        return
+
     if origin is None:
         raise TypeFunctionConstructionError(
             f"type_function must return a type template; received {value!r}"

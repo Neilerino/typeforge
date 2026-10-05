@@ -242,9 +242,10 @@ def test_resolved_structural_maps_need_no_validation_callbacks() -> None:
     adapter = TypeAdapter[object](Schema[Map[int, int : list[int]]])
     assert adapter.validate_python(["3"]) == [3]
 
-    from typeforge import Value
+    from typeforge import Capture
 
-    type Selected[T] = Map[T, list[Value] : tuple[Value, ...]]
+    Item = Capture("Item")
+    type Selected[T] = Map[T, list[Item] : tuple[Item, ...]]
     structural = TypeAdapter[object](Schema[Selected[list[int]]])
     assert structural.validate_python(["3"]) == (3,)
     assert "function-" not in repr(structural.core_schema)

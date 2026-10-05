@@ -4,6 +4,7 @@ from collections.abc import Callable
 from types import NoneType
 from typing import Annotated, Literal, Union, cast, get_args, get_origin
 
+from typeforge._capture import Capture, CaptureSymbol
 from typeforge._markers import Case, Default, Equal, Map
 
 
@@ -11,6 +12,13 @@ def format_annotation(value: object) -> str:
     """Traverse typing arguments without evaluating alias bodies or metadata."""
     origin = get_origin(value)
     arguments: tuple[object, ...] = get_args(value)
+    if (
+        origin is Capture
+        and len(arguments) == 1
+        and isinstance(arguments[0], CaptureSymbol)
+    ):
+        return f"Capture({arguments[0].name!r})"
+
     if origin is Map and arguments:
         subject, *entries = arguments
         parts = [format_annotation(subject)]

@@ -26,6 +26,7 @@ from typeforge import (
     Value,
 )
 from typeforge import semantics as s
+from typeforge._capture import Capture, CaptureSymbol
 from typeforge._map import normalize_selector_literal
 from typeforge._markers import All, Assignable, Case, Default, Equal, Map, Not
 from typeforge._markers import Any as AnyCondition
@@ -49,6 +50,7 @@ class AdaptedAnnotation:
 
 
 _MARKERS = (
+    Capture,
     SymbolicTypeParameter,
     Map,
     Case,
@@ -219,6 +221,15 @@ class _AnnotationAdapter:
     ) -> s.Expression[RuntimeType]:
         origin = get_origin(value) or value
         arguments: tuple[object, ...] = get_args(value)
+        if origin is Capture:
+            if len(arguments) != 1 or not isinstance(arguments[0], CaptureSymbol):
+                raise invalid(value, "invalid capture declaration")
+
+            symbol = arguments[0]
+            return s.CaptureReference(
+                s.TypeSymbol(("runtime-capture", str(id(symbol))), symbol.name)
+            )
+
         if origin is SymbolicTypeParameter:
             if len(arguments) != 1 or not isinstance(arguments[0], TypeVar):
                 raise invalid(value, "invalid symbolic type parameter")
@@ -474,9 +485,6 @@ class _AnnotationAdapter:
                     default=None if default is None else self._name_expression(default),
                 )
 
-            case s.CaptureValuePattern():
-                return s.ValueReference()
-
             case s.ParameterizedTypePattern():
                 raise invalid(
                     self.origins[id(expression)],
@@ -533,7 +541,14 @@ class _AnnotationAdapter:
                 return self._pattern(value)
 
             case s.ValueReference():
-                return s.CaptureValuePattern()
+                raise invalid(
+                    self.origins[id(expression)],
+                    "Value is a field reference; "
+                    "declare Capture for structural matching",
+                )
+
+            case s.CaptureReference():
+                return expression
 
             case s.TypeReference(value=value):
                 return s.ExactTypePattern(value)

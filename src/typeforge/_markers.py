@@ -250,17 +250,11 @@ type Key = Annotated[
 type Value = Annotated[
     object,
     Doc(
-        "References a type captured by the surrounding transformation. Inside "
-        "`MapFields`, it is the current field type. Inside a structural selector "
-        "such as `Option[Value]`, it is the nested generic argument matched from "
-        "the map subject.\n"
+        "References the current field type inside `MapFields`. Structural "
+        "patterns use explicitly declared Capture tokens.\n"
         "\n"
         "```python\n"
-        "type QueryResult[T] = Map[\n"
-        "    T,\n"
-        "    Option[Value] : Value | None,\n"
-        "    ... : T,\n"
-        "]\n"
+        "type OptionalFields[T] = MapFields[T, OptionalField[Key, Value]]\n"
         "```"
     ),
 ]

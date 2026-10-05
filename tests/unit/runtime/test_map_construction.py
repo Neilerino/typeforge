@@ -6,10 +6,12 @@ from typing import Annotated, Literal, Never, TypeVar, get_args, get_origin
 import pytest
 
 from pydantic import BaseModel, PydanticSchemaGenerationError, TypeAdapter
-from typeforge import Map, Value
+from typeforge import Capture, Map
 from typeforge._markers import All, Assignable, Case, Default, Equal, Not
 from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic import Schema
+
+Item = Capture("Item")
 
 
 def test_output_only_parameter_is_discovered_and_specialized() -> None:
@@ -144,11 +146,11 @@ def test_selector_only_parameters_and_scope_identity_are_preserved() -> None:
 
 def test_construction_preserves_order_metadata_and_structural_capture() -> None:
     metadata = object()
-    output = Annotated[tuple[Value, ...], metadata]
-    expression = Map[list[int], list[Value] : output, list[Value] : bytes]
+    output = Annotated[tuple[Item, ...], metadata]
+    expression = Map[list[int], list[Item] : output, list[Item] : bytes]
     assert get_args(expression)[1:] == (
-        Case[list[Value], output],
-        Case[list[Value], bytes],
+        Case[list[Item], output],
+        Case[list[Item], bytes],
     )
     assert get_args(get_args(get_args(expression)[1])[1])[-1] is metadata
     assert TypeAdapter(Schema[expression]).validate_python(["1"]) == (1,)

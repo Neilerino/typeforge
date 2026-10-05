@@ -18,6 +18,7 @@ from typeforge.semantics.domain.assertions import (
 from typeforge.semantics.domain.exceptions import (
     DuplicateFieldSemanticError,
     SemanticIssue,
+    UnboundCaptureSemanticError,
     UnboundInputSemanticError,
     UnboundKeySemanticError,
     UnboundValueSemanticError,
@@ -28,6 +29,7 @@ from typeforge.semantics.domain.models import (
     AnnotatedExpression,
     AnyExpression,
     AssignableExpression,
+    CaptureReference,
     Condition,
     DeferredMap,
     DropExpression,
@@ -232,15 +234,20 @@ class Evaluator[T]:
 
     @_dispatch.register(ValueReference)
     def _value(self, expression: ValueReference) -> EvaluationValue[T]:
-        if self.context.capture is not None:
-            return self.context.capture
-
         if self.context.value is not None:
             return self.context.value
 
-        raise UnboundValueSemanticError(
-            "Value requires MapFields or a structural Map case"
-        )
+        raise UnboundValueSemanticError("Value requires MapFields")
+
+    @_dispatch.register(CaptureReference)
+    def _capture(self, expression: CaptureReference) -> EvaluationValue[T]:
+        bound = dict(self.context.captures).get(expression.symbol)
+        if bound is None:
+            raise UnboundCaptureSemanticError(
+                f"capture {expression.symbol.name!r} is unbound"
+            )
+
+        return bound
 
     @_dispatch.register(DropExpression)
     def _drop(self, expression: DropExpression) -> EvaluationValue[T]:
@@ -529,12 +536,17 @@ class Evaluator[T]:
                 if isinstance(
                     subject, ResolvedType | UnresolvedType | IndeterminateType
                 ):
-                    matched, value_binding = match_map_pattern(
+                    pattern_match = match_map_pattern(
                         case.test,
                         subject,
                         self.type_system,
+                        self.context.captures,
                     )
-                    output_context = replace(self.context, capture=value_binding)
+                    matched = pattern_match.matched
+                    output_context = replace(
+                        self.context,
+                        captures=pattern_match.captures,
+                    )
                 else:
                     matched = False
 

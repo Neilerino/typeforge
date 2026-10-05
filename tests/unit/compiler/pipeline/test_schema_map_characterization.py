@@ -17,7 +17,7 @@ from typeforge.compiler.pipeline import generate_module
     ("annotation", "expected"),
     (
         param(
-            "Map[list[int], list[Value] : set[Value], ... : bytes]",
+            "Map[list[int], list[Item] : set[Item], ... : bytes]",
             "set[int]",
             id="direct-structural",
         ),
@@ -47,12 +47,12 @@ from typeforge.compiler.pipeline import generate_module
             id="literal-assignable",
         ),
         param(
-            "Map[list[int], list[Value] : set[Value] | None, ... : bytes]",
+            "Map[list[int], list[Item] : set[Item] | None, ... : bytes]",
             "set[int] | None",
             id="union-output",
         ),
         param(
-            "Map[list[int], list[Value] : tuple[Value | None], ... : bytes]",
+            "Map[list[int], list[Item] : tuple[Item | None], ... : bytes]",
             "tuple[int | None]",
             id="nested-union-output",
         ),
@@ -72,7 +72,7 @@ from typeforge.compiler.pipeline import generate_module
             id="normalized-pattern",
         ),
         param(
-            "Map[list[int], list[Value] : tuple[Value | int], ... : bytes]",
+            "Map[list[int], list[Item] : tuple[Item | int], ... : bytes]",
             "tuple[int]",
             id="normalized-output",
         ),
@@ -98,7 +98,7 @@ from typeforge.compiler.pipeline import generate_module
         ),
         param(
             (
-                "Map[list[int], list[Value] : Map[Value, int : str, ..."
+                "Map[list[int], list[Item] : Map[Item, int : str, ..."
                 " : bytes], ... : float]"
             ),
             "str",
@@ -151,9 +151,9 @@ def test_schema_maps_preserve_type_outputs(
     path = tmp_path / "models.py"
     path.write_text(
         "from typing import Literal, Never\n"
-        "from typeforge import Map, Value\n"
+        "from typeforge import Capture, Map\n"
         "from typeforge._markers import All, Any, Assignable, Equal, Not\n"
-        "from typeforge.pydantic import Input, Schema\n\n"
+        'from typeforge.pydantic import Input, Schema\nItem = Capture("Item")\n\n'
         "class Payload:\n"
         f"    value: Schema[{annotation}]\n",
         encoding="utf-8",
@@ -168,7 +168,8 @@ def test_schema_maps_preserve_type_outputs(
 
     assert isinstance(generated, Success)
     assert generated.unwrap().content == (
-        f"from typing import Literal, Never\n\nclass Payload:\n    value: {expected}\n"
+        "from typing import Literal, Never\n\nItem: object\n\n"
+        f"class Payload:\n    value: {expected}\n"
     )
 
 
@@ -236,12 +237,12 @@ def test_schema_maps_preserve_type_outputs(
             id="known-argument-mismatch-after-unknown",
         ),
         param(
-            "Map[tuple[T, T], tuple[Value, Value] : Value, ... : bytes]",
+            "Map[tuple[T, T], tuple[Item, Item] : Item, ... : bytes]",
             "T",
             id="repeated-capture-same",
         ),
         param(
-            "Map[tuple[int, str, T], tuple[Value, Value, Value] : Value, ... : bytes]",
+            "Map[tuple[int, str, T], tuple[Item, Item, Item] : Item, ... : bytes]",
             "bytes",
             id="repeated-capture-mismatch",
         ),
@@ -283,9 +284,9 @@ def test_generic_schema_maps_preserve_reachable_outputs(
     path = tmp_path / "models.py"
     path.write_text(
         "from typing import Literal, Never\n"
-        "from typeforge import Map, Value\n"
+        "from typeforge import Capture, Map\n"
         "from typeforge._markers import All, Any, Assignable, Equal, Not\n"
-        "from typeforge.pydantic import Input, Schema\n\n"
+        'from typeforge.pydantic import Input, Schema\nItem = Capture("Item")\n\n'
         "class Payload[T, U]:\n"
         f"    value: Schema[{annotation}]\n",
         encoding="utf-8",
@@ -295,7 +296,7 @@ def test_generic_schema_maps_preserve_reachable_outputs(
 
     assert isinstance(generated, Success)
     assert generated.unwrap().content == (
-        "from typing import Literal, Never\n\n"
+        "from typing import Literal, Never\n\nItem: object\n\n"
         "class Payload[T, U]:\n"
         f"    value: {expected}\n"
     )
@@ -305,7 +306,7 @@ def test_generic_schema_maps_preserve_reachable_outputs(
     ("aliases", "annotation", "expected"),
     (
         param(
-            "type Structural[A] = Map[A, list[Value] : set[Value], ... : bytes]",
+            "type Structural[A] = Map[A, list[Item] : set[Item], ... : bytes]",
             "Structural[list[int]]",
             "set[int]",
             id="structural-alias",
@@ -367,8 +368,8 @@ def test_schema_relationship_aliases_preserve_type_outputs(
     path = tmp_path / "aliases.py"
     path.write_text(
         "from typing import Never\n"
-        "from typeforge._markers import Equal\nfrom typeforge import Map, Value\n"
-        "from typeforge.pydantic import Schema\n\n"
+        "from typeforge._markers import Equal\nfrom typeforge import Capture, Map\n"
+        'from typeforge.pydantic import Schema\nItem = Capture("Item")\n\n'
         f"{aliases}\n\n"
         "class Payload[T]:\n"
         f"    value: Schema[{annotation}]\n",

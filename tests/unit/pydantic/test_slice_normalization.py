@@ -12,11 +12,13 @@ from pydantic import (
     ValidationError,
 )
 from pydantic import Field as PydanticField
-from typeforge import Drop, Field, Key, Map, MapFields, OptionalField, Value
+from typeforge import Capture, Drop, Field, Key, Map, MapFields, OptionalField, Value
 from typeforge._markers import All, Assignable, Case, Default, Equal, Not
 from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic import Input, Schema
 from typeforge.pydantic._frontend import adapt_annotation
+
+Item = Capture("Item")
 
 
 def test_python_accepts_slices_but_does_not_substitute_inside_them() -> None:
@@ -94,18 +96,18 @@ def test_eager_normalization_reuses_markers_and_preserves_substitution() -> None
             3,
         ),
         (
-            Map[list[int], list[Value] : tuple[Value, ...]],
-            CanonicalMap[list[int], Case[list[Value], tuple[Value, ...]]],
+            Map[list[int], list[Item] : tuple[Item, ...]],
+            CanonicalMap[list[int], Case[list[Item], tuple[Item, ...]]],
             ["1", 2],
             (1, 2),
         ),
         (
-            Map[list[int], list[Value] : Map[Value, Equal[int] : str, ...:bytes]],
+            Map[list[int], list[Item] : Map[Item, Equal[int] : str, ...:bytes]],
             CanonicalMap[
                 list[int],
                 Case[
-                    list[Value],
-                    CanonicalMap[Value, Case[Equal[Value, int], str], Default[bytes]],
+                    list[Item],
+                    CanonicalMap[Item, Case[Equal[Item, int], str], Default[bytes]],
                 ],
             ],
             "x",

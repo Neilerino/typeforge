@@ -321,8 +321,9 @@ def test_schema_boundaries_resolve_in_model_fields_and_generated_stubs(
             "from typing import TypedDict\n"
             "from typeforge._markers import Equal\n"
             "from typeforge import Field, Key, Map,"
-            "MapFields, Value\n"
+            "MapFields, Value, Capture\n"
             "from typeforge.pydantic import Input, Schema\n"
+            'Item = Capture("Item")\n'
             "\n"
             "type Wire[T] = Map[T, bytes : str, ... : int]\n"
             "\n"
@@ -339,12 +340,12 @@ def test_schema_boundaries_resolve_in_model_fields_and_generated_stubs(
             "bytes]]\n"
             "    runtime_if: Schema[Map[Input, Equal[Input, str] : "
             "int, ... : float]]\n"
-            "    structural: Schema[Map[list[int], list[Value] : "
-            "Value, ... : bytes]]\n"
+            "    structural: Schema[Map[list[int], list[Item] : "
+            "Item, ... : bytes]]\n"
             "    structural_output: Schema[Map[list[int], "
-            "list[Value] : set[Value], ... : bytes]]\n"
-            "    nested_capture: Schema[Map[list[int], list[Value] "
-            ": Map[Value, int : str, ... : bytes], ... : float]]\n"
+            "list[Item] : set[Item], ... : bytes]]\n"
+            "    nested_capture: Schema[Map[list[int], list[Item] "
+            ": Map[Item, int : str, ... : bytes], ... : float]]\n"
             "    public: Schema[Public[User]]\n"
         ),
         encoding="utf-8",

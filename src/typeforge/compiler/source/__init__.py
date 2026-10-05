@@ -30,6 +30,7 @@ from typeforge.compiler.source._markers import (
 )
 from typeforge.compiler.source._model import (
     AppliedTypeExpression,
+    CaptureTypeExpression,
     ClassDeclaration,
     ClassField,
     FunctionDeclaration,
@@ -73,6 +74,7 @@ __all__ = [
     "AnyMarker",
     "AppliedTypeExpression",
     "AssignableMarker",
+    "CaptureTypeExpression",
     "CaseMarker",
     "ClassDeclaration",
     "ClassField",

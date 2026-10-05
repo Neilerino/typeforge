@@ -3,6 +3,8 @@
 from dataclasses import replace
 from functools import singledispatch
 
+from returns.result import Failure
+
 from typeforge.compiler.adaptation._context import (
     SourceTypeContext,
     class_type_environment,
@@ -19,11 +21,13 @@ from typeforge.compiler.record_materialization import (
     RecordMaterializationError,
     is_map_fields_alias,
 )
+from typeforge.compiler.semantic_adapter import lower_capture_reference
 from typeforge.compiler.source import (
     AllMarker,
     AnyMarker,
     AppliedTypeExpression,
     AssignableMarker,
+    CaptureTypeExpression,
     CaseMarker,
     CollectMarker,
     DefaultMarker,
@@ -73,6 +77,7 @@ from typeforge.compiler.stub_ir import (
     AllPredicate,
     AnyPredicate,
     AssignablePredicate,
+    CaptureType,
     ClassDeclaration,
     ClassField,
     CollectType,
@@ -85,7 +90,6 @@ from typeforge.compiler.stub_ir import (
     HomogeneousTuple,
     MapCase,
     MapType,
-    MapValueType,
     NotPredicate,
     Parameter,
     ParameterKind,
@@ -148,7 +152,12 @@ def adapt_source_module(
         parameters = tuple(parameter.name for parameter in alias.type_parameters)
         if alias.is_type_function:
             value = _resolve_type_function_application(
-                alias.value, alias.name, parameters, type_context, origins
+                alias.value,
+                alias.name,
+                parameters,
+                type_context,
+                origins,
+                unresolved_capture_bound=bool(parameters),
             )
         else:
             value = _adapt_alias_fallback(
@@ -351,6 +360,8 @@ def _resolve_type_function_application(
     type_parameters: tuple[str, ...],
     type_context: SourceTypeContext,
     origins: list[GeneratedElementOrigin[SourceSpan]] | None,
+    *,
+    unresolved_capture_bound: bool = False,
 ) -> StubTypeExpression:
     boundary = SchemaTypeExpression(expression.source, expression.span, (expression,))
     parameter_names = {(name,) for name in type_parameters}
@@ -359,7 +370,7 @@ def _resolve_type_function_application(
         for alias in type_context.aliases
         if alias.qualified_name not in parameter_names
     )
-    return adapt_schema_expression(
+    result = adapt_schema_expression(
         boundary,
         aliases,
         declaration=declaration,
@@ -367,7 +378,17 @@ def _resolve_type_function_application(
         type_parameters=type_parameters,
         preserve_type_variables=True,
         origins=origins,
-    ).unwrap()
+    )
+    if (
+        unresolved_capture_bound
+        and isinstance(result, Failure)
+        and result.failure().unresolved_capture is not None
+    ):
+        # A declaration may expose a bound without inspecting unknown arguments.
+        # Concrete applications still evaluate the retained source template.
+        return TypeName("object")
+
+    return result.unwrap()
 
 
 def _collect_semantic_relationship_aliases(
@@ -802,6 +823,18 @@ def _(
 
 @_adapt_type_expression.register
 def _(
+    expression: CaptureTypeExpression,
+    declaration: str,
+    type_parameters: tuple[str, ...],
+    origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
+    *,
+    type_context: SourceTypeContext,
+) -> CaptureType:
+    return CaptureType(lower_capture_reference(expression).symbol)
+
+
+@_adapt_type_expression.register
+def _(
     expression: RawTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
@@ -913,7 +946,11 @@ def _(
     marker = _normalize_marker(declaration, expression)
     match marker:
         case ValueMarker():
-            return MapValueType()
+            raise AdaptationError(
+                declaration,
+                expression.source,
+                "Value is a field reference; declare Capture for structural matching",
+            )
         case MapMarker(subject=subject, entries=entries):
             cases = tuple(
                 MapCase(

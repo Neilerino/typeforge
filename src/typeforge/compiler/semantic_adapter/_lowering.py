@@ -18,6 +18,7 @@ from typeforge.compiler.source import (
     AnyMarker,
     AppliedTypeExpression,
     AssignableMarker,
+    CaptureTypeExpression,
     CaseMarker,
     DefaultMarker,
     DropMarker,
@@ -46,7 +47,7 @@ from typeforge.semantics import (
     AllExpression,
     AnyExpression,
     AssignableExpression,
-    CaptureValuePattern,
+    CaptureReference,
     CaseExpression,
     DropExpression,
     EqualExpression,
@@ -65,6 +66,7 @@ from typeforge.semantics import (
     ReadonlyFieldExpression,
     TypePattern,
     TypeReference,
+    TypeSymbol,
     TypeValue,
     TypeValueReference,
     UnionExpression,
@@ -108,6 +110,31 @@ def _(
         return TypeValueReference(bound)
 
     return TypeReference(_lower_concrete_type(expression, environment))
+
+
+@lower_semantic_expression.register
+def _(
+    expression: CaptureTypeExpression,
+    environment: SemanticEnvironment,
+    output_name: str | None = None,
+    *,
+    role: SemanticRole = "type",
+) -> CaptureReference:
+    return lower_capture_reference(expression)
+
+
+def lower_capture_reference(expression: CaptureTypeExpression) -> CaptureReference:
+    declaration = expression.declaration
+    return CaptureReference(
+        TypeSymbol(
+            (
+                str(declaration.path),
+                str(declaration.start.line),
+                str(declaration.start.column),
+            ),
+            expression.name,
+        )
+    )
 
 
 @lower_semantic_expression.register
@@ -343,7 +370,10 @@ def _lower_case_test(
         case MarkerTypeExpression():
             marker = _normalize_semantic_marker(expression)
             if isinstance(marker, ValueMarker):
-                return CaptureValuePattern()
+                raise SemanticLoweringError(
+                    "Value is a field reference; "
+                    "declare Capture for structural matching"
+                )
 
         case _:
             pass
@@ -356,6 +386,8 @@ def _lower_type_pattern(
     environment: SemanticEnvironment,
 ) -> TypePattern[StaticType]:
     match expression:
+        case CaptureTypeExpression():
+            return lower_capture_reference(expression)
         case NameTypeExpression(source=source) if (
             bound := dict(environment).get(source)
         ) is not None and not is_static(bound):
@@ -370,7 +402,10 @@ def _lower_type_pattern(
         case MarkerTypeExpression():
             marker = _normalize_semantic_marker(expression)
             if isinstance(marker, ValueMarker):
-                return CaptureValuePattern()
+                raise SemanticLoweringError(
+                    "Value is a field reference; "
+                    "declare Capture for structural matching"
+                )
 
             raise SemanticLoweringError(
                 "unsupported type pattern "
@@ -416,6 +451,7 @@ def _requires_evaluation(
     match expression:
         case (
             MarkerTypeExpression()
+            | CaptureTypeExpression()
             | SchemaTypeExpression()
             | RuntimeInputTypeExpression()
         ):

@@ -91,5 +91,6 @@ TYPE_FORGE = ArchModule(
         ArchFile(name="_markers"),
         ArchFile(name="_map"),
         ArchFile(name="_type_function"),
+        ArchFile(name="_capture"),
     ],
 )

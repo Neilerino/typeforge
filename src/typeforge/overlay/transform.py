@@ -34,13 +34,13 @@ from typeforge.compiler.pipeline import (
 )
 from typeforge.compiler.pipeline import SourceSpan as AuthoredSourceSpan
 from typeforge.compiler.stub_ir import (
+    CaptureType,
     ClassDeclaration,
     EachType,
     FixedTuple,
     FunctionDeclaration,
     HomogeneousTuple,
     MapType,
-    MapValueType,
     OverloadDeclaration,
     Parameter,
     ParameterKind,
@@ -251,7 +251,7 @@ def _generate_overloads(
         if _has_variadic_specializations(declaration):
             declaration = _positional_variadic_overloads(declaration)
 
-        if _declaration_contains_map_value(declaration):
+        if _declaration_contains_capture(declaration):
             continue
 
         declaration = replace(
@@ -307,37 +307,37 @@ def _has_variadic_specializations(declaration: OverloadDeclaration) -> bool:
     )
 
 
-def _declaration_contains_map_value(declaration: OverloadDeclaration) -> bool:
+def _declaration_contains_capture(declaration: OverloadDeclaration) -> bool:
     return any(
-        _function_contains_map_value(signature)
+        _function_contains_capture(signature)
         for signature in (*declaration.signatures, declaration.fallback)
     )
 
 
-def _function_contains_map_value(declaration: FunctionDeclaration) -> bool:
+def _function_contains_capture(declaration: FunctionDeclaration) -> bool:
     return any(
-        _type_contains_map_value(parameter.annotation)
+        _type_contains_capture(parameter.annotation)
         for parameter in declaration.parameters
-    ) or _type_contains_map_value(declaration.return_type)
+    ) or _type_contains_capture(declaration.return_type)
 
 
-def _type_contains_map_value(expression: StubTypeExpression) -> bool:
-    if isinstance(expression, MapValueType):
+def _type_contains_capture(expression: StubTypeExpression) -> bool:
+    if isinstance(expression, CaptureType):
         return True
 
     if isinstance(expression, TypeApplication):
-        return _type_contains_map_value(expression.constructor) or any(
-            _type_contains_map_value(argument) for argument in expression.arguments
+        return _type_contains_capture(expression.constructor) or any(
+            _type_contains_capture(argument) for argument in expression.arguments
         )
 
     if isinstance(expression, FixedTuple):
-        return any(_type_contains_map_value(item) for item in expression.items)
+        return any(_type_contains_capture(item) for item in expression.items)
 
     if isinstance(expression, HomogeneousTuple | UnpackedType | EachType):
-        return _type_contains_map_value(expression.item)
+        return _type_contains_capture(expression.item)
 
     if isinstance(expression, UnionExpression):
-        return any(_type_contains_map_value(member) for member in expression.members)
+        return any(_type_contains_capture(member) for member in expression.members)
 
     return False
 
@@ -581,7 +581,7 @@ def _relationship_fallback(expression: MapType) -> StubTypeExpression:
 
 
 def _checker_type(expression: StubTypeExpression) -> StubTypeExpression:
-    if isinstance(expression, MapValueType):
+    if isinstance(expression, CaptureType):
         return TypeName("object")
 
     if isinstance(expression, MapType):
