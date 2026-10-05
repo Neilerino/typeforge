@@ -1,0 +1,391 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "05 \u00b7 Construct once, specialize without executing the body",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1344,
+      570
+    ],
+    "repository": {
+      "url": "https://github.com/Neilerino/typeforge",
+      "revision": "20f1644c184674b69b2571ff496bba119ea511be"
+    }
+  },
+  "components": [
+    {
+      "id": "function-scope-future",
+      "type": "external",
+      "label": "Captures \u00b7 fields \u00b7 local aliases",
+      "sublabel": "Body scopes arrive in slices 06 / 09 / 11",
+      "tag": "FUTURE",
+      "pos": [
+        34,
+        40
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": ".scratch/typeforge-api/issues/06-named-captures.md",
+          "label": "Named capture scope"
+        },
+        {
+          "path": ".scratch/typeforge-api/issues/09-record-fields.md",
+          "label": "Record construction"
+        },
+        {
+          "path": ".scratch/typeforge-api/issues/11-local-aliases.md",
+          "label": "Local aliases"
+        }
+      ]
+    },
+    {
+      "id": "function-symbol",
+      "type": "database",
+      "label": "SymbolicTypeParameter",
+      "sublabel": "GenericAlias bridge keeps TypeVar identity",
+      "tag": "NEW DOMAIN BRIDGE",
+      "pos": [
+        342,
+        40
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/_type_function.py",
+          "line": 21,
+          "label": "Immutable parameter"
+        }
+      ]
+    },
+    {
+      "id": "function-template",
+      "type": "database",
+      "label": "TypeAliasType",
+      "sublabel": "Immutable body, params, authored module",
+      "tag": "REUSED PYTHON DATA",
+      "pos": [
+        678,
+        40
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/_type_function.py",
+          "line": 73,
+          "label": "Native alias factory"
+        }
+      ]
+    },
+    {
+      "id": "function-output",
+      "type": "frontend",
+      "label": "Standard typing / CoreSchema",
+      "sublabel": "Checkers and Pydantic own value checks",
+      "tag": "EXISTING OUTPUT",
+      "pos": [
+        1014,
+        40
+      ],
+      "size": [
+        296,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_emission.py",
+          "label": "Static typing emission"
+        },
+        {
+          "path": "src/typeforge/pydantic/_emission.py",
+          "line": 21,
+          "label": "Pydantic emission"
+        }
+      ]
+    },
+    {
+      "id": "function-author",
+      "type": "external",
+      "label": "@type_function \u00b7 Selected[T]",
+      "sublabel": "Selected[int] \u2192 str; no body replay",
+      "tag": "USER OUTCOME",
+      "pos": [
+        34,
+        210
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_type_function_contract.py",
+          "line": 17,
+          "label": "Once-only contract"
+        }
+      ]
+    },
+    {
+      "id": "function-runtime",
+      "type": "backend",
+      "label": "type_function / _symbolic_constructor",
+      "sublabel": "Copy parameter cells; run construction once",
+      "tag": "NEW RUNTIME OWNER",
+      "pos": [
+        342,
+        210
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/_type_function.py",
+          "line": 30,
+          "label": "Template construction"
+        },
+        {
+          "path": "src/typeforge/_type_function.py",
+          "line": 85,
+          "label": "Closure isolation"
+        }
+      ]
+    },
+    {
+      "id": "function-runtime-binding",
+      "type": "backend",
+      "label": "_AnnotationAdapter._alias_adapter",
+      "sublabel": "Bind arguments; unwrap symbolic identity",
+      "tag": "EXTENDED FRONTEND",
+      "pos": [
+        678,
+        210
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_frontend.py",
+          "line": 654,
+          "label": "Existing alias binding"
+        },
+        {
+          "path": "src/typeforge/pydantic/_frontend.py",
+          "line": 217,
+          "label": "Symbol bridge lowering"
+        }
+      ]
+    },
+    {
+      "id": "function-evaluation",
+      "type": "backend",
+      "label": "Evaluator.evaluate",
+      "sublabel": "Same selection rules and type operations",
+      "tag": "EXISTING SEMANTICS",
+      "pos": [
+        1014,
+        210
+      ],
+      "size": [
+        296,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 172,
+          "label": "Shared evaluation"
+        }
+      ]
+    },
+    {
+      "id": "function-source",
+      "type": "backend",
+      "label": "_parse_type_function",
+      "sublabel": "Supported return \u2192 source alias facts",
+      "tag": "NEW SOURCE SUPPORT",
+      "pos": [
+        34,
+        400
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/source/_parser.py",
+          "line": 409,
+          "label": "Restricted body parser"
+        }
+      ]
+    },
+    {
+      "id": "function-compiler-binding",
+      "type": "backend",
+      "label": "_resolve_type_function_application",
+      "sublabel": "Reuse schema aliases, cycles, and bounds",
+      "tag": "NEW ADAPTATION PATH",
+      "pos": [
+        342,
+        400
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/adaptation/_source_to_ir.py",
+          "line": 348,
+          "label": "Specialized application"
+        },
+        {
+          "path": "src/typeforge/compiler/adaptation/_schema.py",
+          "line": 61,
+          "label": "Schema boundary"
+        }
+      ]
+    },
+    {
+      "id": "function-source-lowering",
+      "type": "backend",
+      "label": "lower_semantic_expression",
+      "sublabel": "Source-owned facts \u2192 shared expression",
+      "tag": "EXISTING COMPILER SEAM",
+      "pos": [
+        678,
+        400
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_lowering.py",
+          "line": 86,
+          "label": "Semantic lowering"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "function-import",
+      "from": "function-author",
+      "to": "function-runtime",
+      "label": "import",
+      "variant": "emphasis"
+    },
+    {
+      "id": "function-runtime-use",
+      "from": "function-runtime",
+      "to": "function-runtime-binding",
+      "label": "Schema",
+      "variant": "emphasis"
+    },
+    {
+      "id": "function-runtime-evaluate",
+      "from": "function-runtime-binding",
+      "to": "function-evaluation",
+      "label": "evaluate",
+      "variant": "emphasis"
+    },
+    {
+      "id": "function-symbol-bridge",
+      "from": "function-runtime",
+      "to": "function-symbol",
+      "label": "bind"
+    },
+    {
+      "id": "function-native-template",
+      "from": "function-runtime-binding",
+      "to": "function-template",
+      "label": "consume"
+    },
+    {
+      "id": "function-output-emission",
+      "from": "function-evaluation",
+      "to": "function-output",
+      "label": "emit",
+      "variant": "emphasis"
+    },
+    {
+      "id": "function-source-read",
+      "from": "function-author",
+      "to": "function-source",
+      "label": "parse source",
+      "labelDy": 24
+    },
+    {
+      "id": "function-source-adapt",
+      "from": "function-source",
+      "to": "function-compiler-binding",
+      "label": "alias facts",
+      "labelDy": -39
+    },
+    {
+      "id": "function-source-lower",
+      "from": "function-compiler-binding",
+      "to": "function-source-lowering",
+      "label": "lower"
+    },
+    {
+      "id": "function-source-evaluate",
+      "from": "function-source-lowering",
+      "to": "function-evaluation",
+      "label": "evaluate"
+    },
+    {
+      "id": "function-next-scopes",
+      "from": "function-symbol",
+      "to": "function-scope-future",
+      "label": "extend",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "User contract",
+      "items": [
+        "Normal Python import constructs an immutable template once.",
+        "Selected[int] specializes to str; an unresolved Selected[T] has str | bytes as its output bound.",
+        "Schema evaluates the template at runtime."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Two frontends, one evaluator",
+      "items": [
+        "Runtime can build a valid template with ordinary Python code.",
+        "Compiler reads supported syntax and never executes the application.",
+        "Parameter identities, cycles, and alias binding keep their existing owners."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Review boundary",
+      "items": [
+        "Basic source scope: one final return, optional docstring, no value arguments.",
+        "Extra compiler body forms land with captures, records, and local aliases.",
+        "33 contracts include lifecycle, metadata, isolation, and three checkers."
+      ]
+    }
+  ]
+}

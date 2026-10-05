@@ -1,0 +1,17 @@
+{
+  "diagram_type": "architecture",
+  "output": "architecture.html",
+  "specification_sha256": "bb66825468d2f2aae6748d78cac5cd77df257c8cff5e3b58b9ef344aadadd4b8",
+  "artifact_sha256": "a5f1bb136531839c38a464854159da8cf23d8ec1430760e500057751932104fc",
+  "validation": "9/9 showcase, 0 errors, 0 warnings",
+  "browser_evidence": "passed",
+  "visual_review": "passed",
+  "correction_rounds": 0,
+  "reviewed_captures": [
+    "architecture.visual-check.1440x900.light.png",
+    "architecture.visual-check.1440x900.dark.png",
+    "architecture.visual-check.2048x1320.light.png",
+    "architecture.visual-check.2048x1320.dark.png"
+  ],
+  "observations": "All four endpoint captures were inspected. Runtime construction, compiler source adaptation, convergence on shared evaluation, native template identity, source badges, and review cards are legible in both themes. Both desktop endpoints fit with no clipping, ambiguous corridors, or obscured relationships."
+}
