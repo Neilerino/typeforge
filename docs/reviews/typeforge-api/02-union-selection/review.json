@@ -1,0 +1,17 @@
+{
+  "diagram_type": "architecture",
+  "output": "architecture.html",
+  "specification_sha256": "c30d5696f1fa7f5be6823d4867b0fb84f8e102b9254d037318c741796864ae47",
+  "artifact_sha256": "26d0822dad1d2c32354bab7996ab629c7d27798b45859b2021d3186fb5939a5c",
+  "validation": "9/9 showcase, 0 errors, 0 warnings",
+  "browser_evidence": "passed",
+  "visual_review": "passed",
+  "correction_rounds": 0,
+  "reviewed_captures": [
+    "architecture.visual-check.1440x900.light.png",
+    "architecture.visual-check.1440x900.dark.png",
+    "architecture.visual-check.2048x1320.light.png",
+    "architecture.visual-check.2048x1320.dark.png"
+  ],
+  "observations": "Reviewed all four endpoint screenshots. The shared evaluation path, compiler comparison, no-match policy, source badges, legend, navigation, and review cards remain readable in light and dark themes at laptop and large desktop sizes. No clipping, obscured routes, or ambiguous dependencies were observed."
+}

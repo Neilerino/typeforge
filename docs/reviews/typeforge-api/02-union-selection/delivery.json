@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/neilwadden/.codex/visualizations/2026/09/07/01a07d18-ce62-7e82-bf3c-06a7362ad7d9/typeforge-stack/docs/reviews/typeforge-api/02-union-selection/architecture.json",
+  "output": "/Users/neilwadden/.codex/visualizations/2026/09/07/01a07d18-ce62-7e82-bf3c-06a7362ad7d9/typeforge-stack/docs/reviews/typeforge-api/02-union-selection/architecture.html",
+  "specification": {
+    "sha256": "c30d5696f1fa7f5be6823d4867b0fb84f8e102b9254d037318c741796864ae47",
+    "bytes": 7472
+  },
+  "artifact": {
+    "sha256": "26d0822dad1d2c32354bab7996ab629c7d27798b45859b2021d3186fb5939a5c",
+    "bytes": 720209
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  },
+  "evidence": {
+    "verified": true,
+    "repository": "https://github.com/Neilerino/typeforge",
+    "revision": "461339bbc3bd8e1f408ef1d96ba13f3d03d6849c",
+    "references": 10
+  }
+}

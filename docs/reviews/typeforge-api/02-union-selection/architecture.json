@@ -1,0 +1,320 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Ticket 02 · Union selection · C4 code view",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1344,
+      570
+    ],
+    "repository": {
+      "url": "https://github.com/Neilerino/typeforge",
+      "revision": "461339bbc3bd8e1f408ef1d96ba13f3d03d6849c"
+    }
+  },
+  "components": [
+    {
+      "id": "union_author",
+      "type": "external",
+      "label": "Developer's union Map",
+      "sublabel": "int | str → bytes | float",
+      "tag": "User story",
+      "pos": [
+        34,
+        180
+      ],
+      "size": [
+        210,
+        90
+      ]
+    },
+    {
+      "id": "union_evaluation",
+      "type": "backend",
+      "label": "_evaluate_map()",
+      "sublabel": "Evaluator · distribute known members",
+      "tag": "Existing · shared traversal",
+      "pos": [
+        342,
+        180
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 421,
+          "label": "Union evaluation"
+        }
+      ]
+    },
+    {
+      "id": "ordered_union_case",
+      "type": "backend",
+      "label": "_select_map_member()",
+      "sublabel": "Ordered cases; Is sees whole subject",
+      "tag": "Existing · selection",
+      "pos": [
+        678,
+        180
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 502,
+          "label": "Member selection"
+        }
+      ]
+    },
+    {
+      "id": "reached_no_match",
+      "type": "backend",
+      "label": "_no_match()",
+      "sublabel": "MapNoMatch fact → policy decision",
+      "tag": "Changed · typed failure",
+      "pos": [
+        1014,
+        180
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 185,
+          "label": "No-match boundary"
+        }
+      ]
+    },
+    {
+      "id": "schema_source_boundary",
+      "type": "frontend",
+      "label": "adapt_schema_expression()",
+      "sublabel": "Facts → authored AdaptationError",
+      "tag": "Changed · compiler boundary",
+      "pos": [
+        342,
+        40
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/adaptation/_schema.py",
+          "line": 61,
+          "label": "Compiler schema"
+        },
+        {
+          "path": "src/typeforge/compiler/record_materialization/_materialization.py",
+          "line": 261,
+          "label": "Record failure translation"
+        }
+      ]
+    },
+    {
+      "id": "schema_runtime_boundary",
+      "type": "frontend",
+      "label": "_evaluate_annotation()",
+      "sublabel": "Typing data → Pydantic diagnostics",
+      "tag": "Changed · uses shared policy",
+      "pos": [
+        342,
+        380
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_compile.py",
+          "line": 48,
+          "label": "Runtime schema"
+        },
+        {
+          "path": "src/typeforge/pydantic/_evaluation.py",
+          "line": 21,
+          "label": "Runtime failure translation"
+        }
+      ]
+    },
+    {
+      "id": "whole_union_exact",
+      "type": "backend",
+      "label": "Evaluator._equal()",
+      "sublabel": "Compare original Map expression",
+      "tag": "Existing · whole-subject Is",
+      "pos": [
+        678,
+        40
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 364,
+          "label": "Exact expression"
+        }
+      ]
+    },
+    {
+      "id": "set_union_comparison",
+      "type": "backend",
+      "label": "CompilerTypeSystem.equal()",
+      "sublabel": "Recursive union set equivalence",
+      "tag": "Changed · comparison only",
+      "pos": [
+        1014,
+        40
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_type_system.py",
+          "line": 79,
+          "label": "Compiler equality"
+        }
+      ]
+    },
+    {
+      "id": "shared_selection_policy",
+      "type": "backend",
+      "label": "_DefaultPolicy.no_match()",
+      "sublabel": "Reject reached; accept speculative",
+      "tag": "Changed · one policy",
+      "pos": [
+        1014,
+        380
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 89,
+          "label": "Default policy"
+        }
+      ]
+    },
+    {
+      "id": "remaining_union_work",
+      "type": "external",
+      "label": "Aliases / callable slices",
+      "sublabel": "Ticket 03; tickets 14–15",
+      "tag": "Future · separate contracts",
+      "pos": [
+        34,
+        380
+      ],
+      "size": [
+        210,
+        90
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "authored-expression",
+      "from": "union_author",
+      "to": "union_evaluation",
+      "label": "MapExpression"
+    },
+    {
+      "id": "members-in-order",
+      "from": "union_evaluation",
+      "to": "ordered_union_case",
+      "label": "each member"
+    },
+    {
+      "id": "uncovered-fact",
+      "from": "ordered_union_case",
+      "to": "reached_no_match",
+      "label": "uncovered"
+    },
+    {
+      "id": "compiler-evaluation",
+      "from": "schema_source_boundary",
+      "to": "union_evaluation",
+      "label": "evaluate",
+      "labelDy": 24
+    },
+    {
+      "id": "runtime-evaluation",
+      "from": "schema_runtime_boundary",
+      "to": "union_evaluation",
+      "label": "same evaluator"
+    },
+    {
+      "id": "exact-case",
+      "from": "ordered_union_case",
+      "to": "whole_union_exact",
+      "label": "Is branch"
+    },
+    {
+      "id": "backend-equality",
+      "from": "whole_union_exact",
+      "to": "set_union_comparison",
+      "label": "exact types"
+    },
+    {
+      "id": "acceptance-decision",
+      "from": "reached_no_match",
+      "to": "shared_selection_policy",
+      "label": "reject / bound",
+      "labelDy": 24
+    },
+    {
+      "id": "later-contracts",
+      "from": "schema_runtime_boundary",
+      "to": "remaining_union_work",
+      "variant": "dashed",
+      "label": "extend lowering"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Review the selected result",
+      "items": [
+        "Bare cases distribute: int | str → bytes | float. Is[str | int] compares the whole union.",
+        "Comparison ignores order and duplicates; emitted order remains deterministic."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Review uncovered inputs",
+      "items": [
+        "Map[int | str, int: bytes] fails for str, including inside an outer union or application.",
+        "Explicit Never still simplifies normally. Unselected outputs are not evaluated."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Review seams and next steps",
+      "items": [
+        "Both consumers use one policy; their boundaries translate typed facts into authored diagnostics.",
+        "Ticket 03 expands ordinary aliases. Callable accepted-input contracts remain tickets 14–15."
+      ]
+    }
+  ]
+}
