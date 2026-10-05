@@ -1,0 +1,322 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Ticket 01 \u00b7 Scalar Map matching \u00b7 C4 code view",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1344,
+      570
+    ],
+    "repository": {
+      "url": "https://github.com/Neilerino/typeforge",
+      "revision": "4ffc4f0e062804a6796e265472a9ae1e3e566c03"
+    }
+  },
+  "components": [
+    {
+      "id": "author",
+      "type": "external",
+      "label": "Developer's Map",
+      "sublabel": "bool \u2192 bare int \u2192 str",
+      "tag": "User story",
+      "pos": [
+        33.6,
+        180
+      ],
+      "size": [
+        210.0,
+        90
+      ]
+    },
+    {
+      "id": "construction",
+      "type": "frontend",
+      "label": "Map.__class_getitem__()",
+      "sublabel": "Slice \u2192 Case / Default data",
+      "tag": "Changed \u00b7 Is binding",
+      "pos": [
+        331.8,
+        180
+      ],
+      "size": [
+        247.79999999999998,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/_map.py",
+          "line": 17,
+          "label": "Runtime authoring"
+        }
+      ]
+    },
+    {
+      "id": "runtime_front",
+      "type": "frontend",
+      "label": "_case_test()",
+      "sublabel": "_AnnotationAdapter \u00b7 typing objects",
+      "tag": "Changed \u00b7 bare type reference",
+      "pos": [
+        676.1999999999999,
+        180
+      ],
+      "size": [
+        273.0,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_frontend.py",
+          "line": 451,
+          "label": "Runtime lowering"
+        }
+      ]
+    },
+    {
+      "id": "selection",
+      "type": "backend",
+      "label": "_select_map_member()",
+      "sublabel": "Evaluator \u00b7 first matching branch",
+      "tag": "Existing \u00b7 shared branch order",
+      "pos": [
+        1020.5999999999999,
+        180
+      ],
+      "size": [
+        273.0,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 523,
+          "label": "Shared evaluator"
+        }
+      ]
+    },
+    {
+      "id": "source_context",
+      "type": "frontend",
+      "label": "SourceTypeContext",
+      "sublabel": "Aliases + declared class ancestors",
+      "tag": "New \u00b7 source facts",
+      "pos": [
+        331.8,
+        40
+      ],
+      "size": [
+        247.79999999999998,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/adaptation/_context.py",
+          "line": 10,
+          "label": "Compiler facts"
+        }
+      ]
+    },
+    {
+      "id": "source_front",
+      "type": "frontend",
+      "label": "adapt_source_module()",
+      "sublabel": "Schema lowering + local class facts",
+      "tag": "Changed \u00b7 compiler path",
+      "pos": [
+        676.1999999999999,
+        40
+      ],
+      "size": [
+        273.0,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/adaptation/_source_to_ir.py",
+          "line": 116,
+          "label": "Source adaptation"
+        }
+      ]
+    },
+    {
+      "id": "bare_match",
+      "type": "backend",
+      "label": "map_values_match()",
+      "sublabel": "Bare selector \u2192 assignable_types",
+      "tag": "Changed \u00b7 compatibility",
+      "pos": [
+        1020.5999999999999,
+        380
+      ],
+      "size": [
+        273.0,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/map_matching.py",
+          "line": 162,
+          "label": "Bare matching"
+        }
+      ]
+    },
+    {
+      "id": "runtime_types",
+      "type": "backend",
+      "label": "TypeSystem.assignable()",
+      "sublabel": "Runtime + compiler adapters",
+      "tag": "Changed \u00b7 compatibility facts",
+      "pos": [
+        676.1999999999999,
+        380
+      ],
+      "size": [
+        273.0,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_type_system.py",
+          "line": 100,
+          "label": "Runtime assignability"
+        },
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_type_system.py",
+          "line": 79,
+          "label": "Compiler assignability"
+        }
+      ]
+    },
+    {
+      "id": "exact",
+      "type": "backend",
+      "label": "Is[Type]",
+      "sublabel": "Lower to exact EqualExpression",
+      "tag": "New API \u00b7 existing semantic data",
+      "pos": [
+        33.6,
+        40
+      ],
+      "size": [
+        210.0,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/_markers.py",
+          "label": "Is alias",
+          "line": 97
+        },
+        {
+          "path": "src/typeforge/semantics/type_evaluation.py",
+          "label": "Exact comparison",
+          "line": 26
+        }
+      ]
+    },
+    {
+      "id": "future",
+      "type": "external",
+      "label": "Union / capture slices",
+      "sublabel": "Extend these owners in later PRs",
+      "tag": "Future \u00b7 not implemented here",
+      "pos": [
+        33.6,
+        380
+      ],
+      "size": [
+        210.0,
+        90
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "author-runtime",
+      "from": "author",
+      "to": "construction",
+      "label": "import and subscribe",
+      "labelDy": 70
+    },
+    {
+      "id": "construct-lower",
+      "from": "construction",
+      "to": "runtime_front",
+      "label": "canonical data"
+    },
+    {
+      "id": "runtime-select",
+      "from": "runtime_front",
+      "to": "selection",
+      "label": "MapExpression",
+      "labelDy": 30
+    },
+    {
+      "id": "facts-adapt",
+      "from": "source_context",
+      "to": "source_front",
+      "label": "class bindings"
+    },
+    {
+      "id": "source-select",
+      "from": "source_front",
+      "to": "selection",
+      "label": "same expression model"
+    },
+    {
+      "id": "select-bare",
+      "from": "selection",
+      "to": "bare_match",
+      "label": "bare selector",
+      "labelDy": 80
+    },
+    {
+      "id": "bare-runtime",
+      "from": "bare_match",
+      "to": "runtime_types",
+      "label": "assignable_types()",
+      "labelDy": -55
+    },
+    {
+      "id": "exact-construction",
+      "from": "exact",
+      "to": "construction",
+      "label": "bind exact subject"
+    },
+    {
+      "id": "later",
+      "from": "runtime_types",
+      "to": "future",
+      "variant": "dashed",
+      "label": "future generic rules"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Review the user-visible difference",
+      "items": [
+        "Bare int accepts bool and int subclasses. Is[int] keeps exact comparison.",
+        "Selected str/bytes reaches existing stub and Pydantic schema emitters."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Review boundaries",
+      "items": [
+        "Compiler reads declared inheritance from the source snapshot; it never imports the application.",
+        "Runtime evaluates typing objects. The semantic evaluator remains shared."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Next stack steps",
+      "items": [
+        "Ticket 02 adds whole-subject union rules and no-match failures.",
+        "Tickets 04\u201308 extend generic compatibility and named captures; they reuse these owners."
+      ]
+    }
+  ]
+}

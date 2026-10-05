@@ -1,0 +1,17 @@
+{
+  "diagram_type": "architecture",
+  "output": "architecture.html",
+  "specification_sha256": "9f01520a84478a2431f2136199f7c8702c6580009b81c05a30b9721b5a632636",
+  "artifact_sha256": "d8864354b315b18cab80cd42c806953706eb70df94d164750ef3d9bba755706d",
+  "validation": "9/9 showcase, 0 errors, 0 warnings",
+  "browser_evidence": "passed",
+  "visual_review": "passed",
+  "correction_rounds": 1,
+  "reviewed_captures": [
+    "architecture.visual-check.1440x900.light.png",
+    "architecture.visual-check.1440x900.dark.png",
+    "architecture.visual-check.2048x1320.light.png",
+    "architecture.visual-check.2048x1320.dark.png"
+  ],
+  "observations": "Reviewed light and dark screenshots at 1440\u00d7900 and 2048\u00d71320. Nodes, relationship labels, source badges, legend, navigation, and review cards are visible and readable without clipping; current dependencies and future extension are distinct."
+}

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/neilwadden/.codex/visualizations/2026/09/07/01a07d18-ce62-7e82-bf3c-06a7362ad7d9/typeforge-stack/docs/reviews/typeforge-api/01-scalar-map-matching/architecture.json",
+  "output": "/Users/neilwadden/.codex/visualizations/2026/09/07/01a07d18-ce62-7e82-bf3c-06a7362ad7d9/typeforge-stack/docs/reviews/typeforge-api/01-scalar-map-matching/architecture.html",
+  "specification": {
+    "sha256": "9f01520a84478a2431f2136199f7c8702c6580009b81c05a30b9721b5a632636",
+    "bytes": 7348
+  },
+  "artifact": {
+    "sha256": "d8864354b315b18cab80cd42c806953706eb70df94d164750ef3d9bba755706d",
+    "bytes": 720954
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  },
+  "evidence": {
+    "verified": true,
+    "repository": "https://github.com/Neilerino/typeforge",
+    "revision": "4ffc4f0e062804a6796e265472a9ae1e3e566c03",
+    "references": 10
+  }
+}
