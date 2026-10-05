@@ -6,6 +6,7 @@ from sys import executable
 from unittest.mock import patch
 
 import pytest
+from returns.result import Failure
 
 from typeforge.analysis import MappingKind
 from typeforge.analysis.mapping import generated_to_authored
@@ -81,20 +82,26 @@ class Example[T]:
         ("Map[int | str, int: str | None, ...: bytes]", "str | None | bytes"),
         ("Map[int, int: Never, ...: bytes]", "Never | bytes"),
         ("Map[int, bytes: str]", "str | Never"),
-        ("Schema[Map[int, bytes: str]]", "Never"),
+        ("Schema[Map[int, bytes: str]]", None),
         ("Schema[Map[int, int: str | None, ...: bytes]]", "str | None"),
         ("Map[int, ...: Never]", "Never"),
     ],
 )
 def test_union_fallback_and_schema_selection_keep_distinct_policies(
-    mapping: str, expected: str
+    mapping: str, expected: str | None
 ) -> None:
     source = (
         "from typing import Never\nfrom typeforge import Map\n"
         "from typeforge.pydantic import Schema\n"
         f"class Row:\n    value: {mapping}\n"
     )
-    document = transform_source(source).unwrap()
+    result = transform_source(source)
+    if expected is None:
+        assert isinstance(result, Failure)
+        assert "no case matched" in str(result.failure())
+        return
+
+    document = result.unwrap()
     assert f"value: {expected}\n" in document.generated_text
     assert (
         transform_source(document.generated_text).unwrap().generated_text

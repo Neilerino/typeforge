@@ -37,6 +37,7 @@ from typeforge.semantics import (
     KeyReference,
     MapExpression,
     MapFieldsExpression,
+    MapNoMatch,
     NotExpression,
     OptionalFieldExpression,
     ParameterizedTypePattern,
@@ -463,14 +464,17 @@ def test_map_is_ordered_and_distributes_over_unions() -> None:
     )
 
 
-def test_map_without_a_match_resolves_to_never() -> None:
-    """An omitted Map default resolves through the adapter's empty union."""
+def test_map_without_a_match_reports_the_uncovered_subject() -> None:
+    """An uncovered definite subject is distinct from an explicit Never output."""
     expression = MapExpression(
         TypeReference("bytes"),
         (CaseExpression(TypeReference("int"), TypeReference("str")),),
     )
 
-    assert evaluate(expression, NameTypeSystem()) == Success(ResolvedType("Never"))
+    result = evaluate(expression, NameTypeSystem())
+    assert isinstance(result, Failure)
+    assert isinstance(result.failure(), MapNoMatch)
+    assert result.failure().subject == ResolvedType("bytes")
 
 
 def test_parameterized_map_semantics_are_shared_by_type_system_adapters() -> None:

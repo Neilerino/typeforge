@@ -108,8 +108,10 @@ to check public rejection rules and executable documentation.
 ## Selection and validation
 
 **No-match** is distinct from selecting Never. With no fallback, compiler Schema
-selection uses Never; Pydantic rejects a reached no-match even inside an outer
-union. **Indeterminate selection** retains reachable alternatives and provenance.
+selection and Pydantic reject a reached no-match even inside an outer union or
+type application. Speculative output bounds may include an uncovered path;
+they do not prove that an input is accepted. **Indeterminate selection** retains
+reachable alternatives and provenance.
 Predicate failures remain errors, subject to existing short-circuit rules.
 
 **Runtime Input** selects against raw values before output coercion. Validation
@@ -211,8 +213,9 @@ parameters retain their original arguments; captures bind matched types.
 Unresolved relationships can retain useful output bounds. The initial public
 surface retains bare compatibility matching and exact Is, removes Assignable,
 and defers compound predicates and binary comparisons. Scalar matching and
-public removal of Equal/Assignable/All/Any/Not are implemented. Union integration
-remains pending.
+public removal of Equal/Assignable/All/Any/Not are implemented. Known union
+selection and whole-subject Is agree in compiler Schema and runtime evaluation.
+Callable input and output projection remain separate pending slices.
 
 The latest [bare-selector decision](docs/ideas/map-selection-decisions.md#revisited-assignable-example--bare-subclass-matching-requested)
 requires Animal to match a Dog subclass. This revises the earlier exact-only
@@ -230,11 +233,11 @@ agreed contracts still needs derisking.
 
 ### G2 — Union equality
 
-Resolved compiler equality depends on member order, unlike runtime equality.
-The [agreed correction](docs/ideas/map-selection-decisions.md#d2--union-equality)
-uses set equivalence; implementation is pending.
-Reconcile comparison with runtime and unresolved provenance while preserving
-emitted order independently. U08/U30 are the witnesses.
+Resolved compiler equality now uses set equivalence, as runtime equality does.
+It ignores member order and duplicates recursively inside parameterized types.
+Emitted order is preserved independently; unresolved provenance retains its
+existing comparison rules. U08/U30 and the
+[union contract](tests/unit/test_union_selection_contract.py) are the witnesses.
 
 ### G3 — Union aliases
 
@@ -302,5 +305,7 @@ APIs have not changed.
 The [agreed no-match rule](docs/ideas/map-selection-decisions.md#agreed-partial-static-no-match-failure)
 fails a Map when a known subject member has no matching branch. Ordinary Never
 union semantics remain those of Python. This decision supersedes earlier
-Never-only outcomes for known unmatched inputs; compiler/runtime integration and
-callable input-contract projection remain pending.
+Never-only outcomes for known unmatched inputs. Compiler Schema, record
+materialization, and runtime evaluation now share this failure rule. Callable
+input-contract projection remains pending; an output bound alone is not an
+accepted-input contract.
