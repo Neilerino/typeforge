@@ -12,9 +12,12 @@ from pydantic import (
     TypeAdapter,
     ValidationError,
 )
-from typeforge import Is, Key, Map
+from typeforge import Is, Map
 from typeforge._markers import All, Assignable, Equal, Not
+from typeforge._record import FieldSymbol, SymbolicField
 from typeforge.pydantic import Schema
+
+UNBOUND_FIELD = SymbolicField(SymbolicField, (FieldSymbol(),))
 
 
 def test_generic_no_default_map_specializes_and_rejects_unmatched_any() -> None:
@@ -159,7 +162,9 @@ def test_selected_never_is_not_misreported_as_no_match(expression: object) -> No
 
 def test_no_match_stops_evaluation_before_later_operand_failure() -> None:
     with pytest.raises(PydanticSchemaGenerationError, match=r"\[map_no_match\]"):
-        TypeAdapter[object](Schema[Map[int, Equal[Map[Any, Is[int] : str], Key] : str]])
+        TypeAdapter[object](
+            Schema[Map[int, Equal[Map[Any, Is[int] : str], UNBOUND_FIELD.name] : str]]
+        )
 
 
 def test_conditions_short_circuit_and_union_subjects_share_evaluation() -> None:
@@ -168,7 +173,7 @@ def test_conditions_short_circuit_and_union_subjects_share_evaluation() -> None:
             Map[
                 int | bytes,
                 All[Assignable[int, object], Not[Equal[int, bytes]]] : str,
-                Equal[Key, Key] : Never,
+                Equal[UNBOUND_FIELD.name, UNBOUND_FIELD.name] : Never,
             ]
         ]
     )

@@ -28,69 +28,68 @@ CHECKERS = (
 
 
 LIBRARY_SOURCE = (
-    "\n"
-    "from external import Parser\n"
-    "from typing import Literal, TypedDict\n"
-    "\n"
-    "from typeforge import Collect, Each, Field, Key, Map, MapFields, Value\n"
-    "from typeforge._markers import All, Any, Assignable, Equal, Not\n"
-    "\n"
-    "\n"
-    "def combine[T](*parsers: Each[Parser[T]]) -> "
-    "Parser[Collect[T]]:\n"
-    "    raise NotImplementedError\n"
-    "\n"
-    "\n"
-    "def read[M](mode: M) -> Map[\n"
-    '    M, Equal[M, Literal["text"]] : str, ... : bytes\n'
-    "]:\n"
-    "    raise NotImplementedError\n"
-    "\n"
-    "\n"
-    "def normalize[T](value: T) -> Map[\n"
-    "    T, Assignable[T, str] : str, ... : bytes\n"
-    "]:\n"
-    "    raise NotImplementedError\n"
-    "\n"
-    "\n"
-    "def choose_all[T](value: T) -> Map[\n"
-    "    T,\n"
-    "    All[Equal[T, str], Assignable[T, str]] : str,\n"
-    "    ... : bytes,\n"
-    "]:\n"
-    "    raise NotImplementedError\n"
-    "\n"
-    "\n"
-    "def choose_any[T](value: T) -> Map[\n"
-    "    T,\n"
-    '    Any[Equal[T, Literal["text"]], Equal[T, bytes]] : '
-    "str,\n"
-    "    ... : float,\n"
-    "]:\n"
-    "    raise NotImplementedError\n"
-    "\n"
-    "\n"
-    "def reject_bytes[T](value: T) -> Map[\n"
-    "    T, Not[Equal[T, bytes]] : str, ... : bytes\n"
-    "]:\n"
-    "    raise NotImplementedError\n"
-    "\n"
-    "\n"
-    "def serialize[T](value: T) -> Map[T, int : float, ... "
-    ": T]:\n"
-    "    raise NotImplementedError\n"
-    "\n"
-    "\n"
-    "class User(TypedDict):\n"
-    "    name: str\n"
-    "    age: int\n"
-    "\n"
-    "\n"
-    "type Public[T] = MapFields[T, Field[Key, Value]]\n"
-    "\n"
-    "\n"
-    "def publicize[T](value: T) -> Public[T]:\n"
-    "    raise NotImplementedError\n"
+    """\
+
+from external import Parser
+from typing import Literal, TypedDict
+
+from typeforge import Collect, Each, Field, Map, Fields, Record
+from typeforge._markers import All, Any, Assignable, Equal, Not
+
+
+def combine[T](*parsers: Each[Parser[T]]) -> Parser[Collect[T]]:
+    raise NotImplementedError
+
+
+def read[M](mode: M) -> Map[
+    M, Equal[M, Literal["text"]] : str, ... : bytes
+]:
+    raise NotImplementedError
+
+
+def normalize[T](value: T) -> Map[
+    T, Assignable[T, str] : str, ... : bytes
+]:
+    raise NotImplementedError
+
+
+def choose_all[T](value: T) -> Map[
+    T,
+    All[Equal[T, str], Assignable[T, str]] : str,
+    ... : bytes,
+]:
+    raise NotImplementedError
+
+
+def choose_any[T](value: T) -> Map[
+    T,
+    Any[Equal[T, Literal["text"]], Equal[T, bytes]] : str,
+    ... : float,
+]:
+    raise NotImplementedError
+
+
+def reject_bytes[T](value: T) -> Map[
+    T, Not[Equal[T, bytes]] : str, ... : bytes
+]:
+    raise NotImplementedError
+
+
+def serialize[T](value: T) -> Map[T, int : float, ... : T]:
+    raise NotImplementedError
+
+
+class User(TypedDict):
+    name: str
+    age: int
+
+
+type Public[T] = Record((Field[field.name, field.type] for field in Fields[T]))
+
+
+def publicize[T](value: T) -> Public[T]:
+    raise NotImplementedError
+"""
 ).lstrip()
 
 

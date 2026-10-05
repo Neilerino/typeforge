@@ -1,7 +1,7 @@
 from typing import Annotated, Literal, TypedDict
 
 from pydantic import BaseModel, TypeAdapter
-from typeforge import Doc, Drop, Field, Key, Map, MapFields, Value
+from typeforge import Doc, Drop, Field, Fields, Map, Record
 from typeforge._markers import Equal
 from typeforge.pydantic import Schema
 
@@ -12,14 +12,14 @@ class User(TypedDict):
 
 
 type Public[T] = Annotated[
-    MapFields[
-        T,
+    Record(
         Map[
-            Key,
-            Equal[Key, Literal["password"]] : Drop,
-            ... : Field[Key, Value],
-        ],
-    ],
+            field.name,
+            Equal[field.name, Literal["password"]] : Drop,
+            ... : Field[field.name, field.type],
+        ]
+        for field in Fields[T]
+    ),
     Doc("A public user without private credentials."),
 ]
 

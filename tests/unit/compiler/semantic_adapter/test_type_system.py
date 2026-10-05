@@ -13,20 +13,23 @@ from typeforge.semantics import (
     AssignableExpression,
     CaseExpression,
     FieldExpression,
-    KeyReference,
+    FieldNameReference,
+    FieldTypeReference,
     MapExpression,
-    MapFieldsExpression,
     MapNoMatch,
     ParameterizedTypeShape,
+    RecordExpression,
     RecordFamily,
     RecordField,
     RecordShape,
     ResolvedType,
     SemanticIssueCode,
     TypeReference,
-    ValueReference,
+    TypeSymbol,
     evaluate,
 )
+
+FIELD = TypeSymbol(("test-field",), "field")
 
 INT: StaticType = NamedType("int", ("object",))
 STR: StaticType = NamedType("str", ("object",))
@@ -144,11 +147,11 @@ def test_map_rejects_a_known_uncovered_subject() -> None:
 
 def test_map_fields_rejects_non_record_input() -> None:
     result = evaluate(
-        MapFieldsExpression(
+        RecordExpression(
             record=type_reference(INT),
+            binding=FIELD,
             transform=FieldExpression(
-                name=KeyReference(),
-                value=ValueReference(),
+                name=FieldNameReference(FIELD), value=FieldTypeReference(FIELD)
             ),
         ),
         COMPILER_TYPE_SYSTEM,

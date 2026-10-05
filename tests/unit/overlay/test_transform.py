@@ -285,30 +285,32 @@ assert_type(
 
 
 def test_schema_boundaries_are_erased_from_model_fields_in_overlay() -> None:
-    source = (
-        "from pydantic import BaseModel\n"
-        "from typing import TypedDict\n"
-        "from typeforge._markers import Equal\nfrom typeforge import Field, Key, Map,"
-        "MapFields, Value\n"
-        "from typeforge.pydantic import Schema\n"
-        "\n"
-        "type Wire[T] = Map[T, bytes : str, ... : int]\n"
-        "\n"
-        "class User(TypedDict):\n"
-        "    name: str\n"
-        "\n"
-        "type Public[T] = MapFields[T, Field[Key, Value]]\n"
-        "\n"
-        "class Payload(BaseModel):\n"
-        "    wire: Schema[Wire[bytes]]\n"
-        "    direct: Schema[Map[int, Equal[int, int] : str, ..."
-        " : bytes]]\n"
-        "    public: Schema[Public[User]]\n"
-        "\n"
-        "    def parse(self, value: Schema[Wire[bytes]]) -> "
-        "Schema[Map[int, Equal[int, int] : str, ... : bytes]]: "
-        "...\n"
-    )
+    source = """\
+from pydantic import BaseModel
+from typing import TypedDict
+from typeforge._markers import Equal
+from typeforge import Field, Map, Fields, Record
+from typeforge.pydantic import Schema
+
+type Wire[T] = Map[T, bytes:str, ...:int]
+
+
+class User(TypedDict):
+    name: str
+
+
+type Public[T] = Record((Field[field.name, field.type] for field in Fields[T]))
+
+
+class Payload(BaseModel):
+    wire: Schema[Wire[bytes]]
+    direct: Schema[Map[int, Equal[int, int] : str, ...:bytes]]
+    public: Schema[Public[User]]
+
+    def parse(
+        self, value: Schema[Wire[bytes]]
+    ) -> Schema[Map[int, Equal[int, int] : str, ...:bytes]]: ...
+"""
 
     transformed = transform_source(source, Path("models.py"))
 
@@ -323,6 +325,8 @@ def test_schema_boundaries_are_erased_from_model_fields_in_overlay() -> None:
     assert "    wire: str" in document.generated_text
     assert "    direct: str" in document.generated_text
     assert "    public: Public_User" in document.generated_text
-    assert "def parse(self, value: str) -> str" in document.generated_text
+    assert (
+        "def parse(\n        self, value: str\n    ) -> str" in document.generated_text
+    )
     assert "Schema[" not in document.generated_text
     ast.parse(document.generated_text, filename="models.py", type_comments=True)

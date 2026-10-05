@@ -3,9 +3,12 @@ from typing import Annotated, Literal
 import pytest
 
 from pydantic import AfterValidator, TypeAdapter, ValidationError
-from typeforge import Key, Map
+from typeforge import Map
 from typeforge._markers import All, Assignable, Equal
+from typeforge._record import FieldSymbol, SymbolicField
 from typeforge.pydantic import Input, Schema
+
+UNBOUND_FIELD = SymbolicField(SymbolicField, (FieldSymbol(),))
 
 
 def test_input_selects_first_case_and_never_retries_after_output_failure() -> None:
@@ -85,7 +88,9 @@ def test_input_predicate_short_circuit_skips_unbound_operand() -> None:
         Schema[
             Map[
                 Input,
-                All[Equal[Input, int], Equal[Key, Key]] : bytes,
+                All[
+                    Equal[Input, int], Equal[UNBOUND_FIELD.name, UNBOUND_FIELD.name]
+                ] : bytes,
                 ...:str,
             ]
         ]

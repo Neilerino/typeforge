@@ -75,18 +75,18 @@ def test_compile_source_keeps_record_origins_in_specialized_snapshot() -> None:
 
 def test_shared_derived_records_keep_only_their_alias_and_input_origins() -> None:
     source = dedent("""\
-        from typing import TypedDict
-        from typeforge import Field, Key, MapFields, Value
-        class Payload(TypedDict):
-            value: int
-        class Message(TypedDict):
-            text: bytes
-        type Copy[T] = MapFields[T, Field[Key, Value]]
-        type Stringify[T] = MapFields[T, Field[Key, str]]
-        def copy[T](value: T) -> Copy[T]: ...
-        def copy_again[T](value: T) -> Copy[T]: ...
-        def ordinary(value: Payload) -> Payload: ...
-        """)
+from typing import TypedDict
+from typeforge import Field, Fields, Record
+class Payload(TypedDict):
+    value: int
+class Message(TypedDict):
+    text: bytes
+type Copy[T] = Record((Field[field.name, field.type] for field in Fields[T]))
+type Stringify[T] = Record((Field[field.name, str] for field in Fields[T]))
+def copy[T](value: T) -> Copy[T]: ...
+def copy_again[T](value: T) -> Copy[T]: ...
+def ordinary(value: Payload) -> Payload: ...
+""")
 
     plan = compile_source(source, Path("records.py"), maximum_arity=1).unwrap()
 
@@ -144,12 +144,12 @@ def test_shared_derived_records_keep_only_their_alias_and_input_origins() -> Non
 
 def test_derived_record_origins_follow_source_order_when_alias_precedes_input() -> None:
     source = dedent("""\
-        from typing import TypedDict
-        from typeforge import Field, Key, MapFields, Value
-        type Copy[T] = MapFields[T, Field[Key, Value]]
-        class Payload(TypedDict):
-            value: int
-        """)
+from typing import TypedDict
+from typeforge import Field, Fields, Record
+type Copy[T] = Record((Field[field.name, field.type] for field in Fields[T]))
+class Payload(TypedDict):
+    value: int
+""")
 
     plan = compile_source(source, Path("records.py"), maximum_arity=1).unwrap()
 
@@ -228,23 +228,23 @@ def test_equal_methods_in_different_classes_keep_their_own_origins(
 
 def test_compilation_preserves_metadata_when_rewriting_classes_and_methods() -> None:
     source = dedent("""\
-        from typing import TypedDict
-        from typeforge import Collect, Each, Field, Key, MapFields, Value
-        class Payload(TypedDict):
-            value: int
-        type Copy[T] = MapFields[T, Field[Key, Value]]
-        @decorate
-        class Consumer[U](Base, metaclass=Meta):
-            cached: Copy[Payload] = ...
-            @custom
-            async def collect[*Ts](
-                self: object, *values: Each[Ts], label: str = 'label'
-            ) -> Collect[Ts]: ...
-            @custom
-            async def read(
-                self: object, *, value: Copy[Payload] = ...
-            ) -> Copy[Payload]: ...
-        """)
+from typing import TypedDict
+from typeforge import Collect, Each, Field, Fields, Record
+class Payload(TypedDict):
+    value: int
+type Copy[T] = Record((Field[field.name, field.type] for field in Fields[T]))
+@decorate
+class Consumer[U](Base, metaclass=Meta):
+    cached: Copy[Payload] = ...
+    @custom
+    async def collect[*Ts](
+        self: object, *values: Each[Ts], label: str = 'label'
+    ) -> Collect[Ts]: ...
+    @custom
+    async def read(
+        self: object, *, value: Copy[Payload] = ...
+    ) -> Copy[Payload]: ...
+""")
 
     plan = compile_source(source, Path("metadata.py"), maximum_arity=1).unwrap()
 
@@ -280,18 +280,20 @@ def test_compilation_preserves_metadata_when_rewriting_classes_and_methods() -> 
 
 def test_record_failure_propagates_before_specialization(tmp_path: Path) -> None:
     source = dedent("""\
-        from typing import TypedDict
-        from typeforge import Field, Key, MapFields, Value
-        class Payload(TypedDict):
-            value: int
-        type Copy = MapFields[Payload, Field[Key, Value]]
-        """)
+from typing import TypedDict
+from typeforge import Field, Fields, Record
+class Payload(TypedDict):
+    value: int
+type Copy = Record((Field[field.name, field.type] for field in Fields[Payload]))
+""")
     path = tmp_path / "records.py"
     path.write_text(source, encoding="utf-8")
     expected = RecordMaterializationError(
         declaration="Copy",
-        expression="MapFields[Payload, Field[Key, Value]]",
-        message="MapFields aliases require exactly one type parameter",
+        expression=(
+            "Record((Field[field.name, field.type] for field in Fields[Payload]))"
+        ),
+        message="record aliases require exactly one type parameter",
     )
 
     adapted = adapt_source_module(parse_source(source, path).unwrap().source)
@@ -402,18 +404,18 @@ def test_collapsing_equal_schema_results_retains_all_three_authored_causes() -> 
         ),
         pytest.param(
             dedent("""\
-                from typeforge.pydantic import Schema
-                from typing import TypedDict
-                from typeforge import Field, Key, MapFields, Value
-                class Payload(TypedDict):
-                    value: int
-                type Copy[T] = MapFields[T, Field[Key, Value]]
-                class Consumer:
-                    field: Schema[list[Copy[Payload]]]
-                    def parse(
-                        self: object, value: Schema[list[int]]
-                    ) -> Schema[int]: ...
-                """),
+from typeforge.pydantic import Schema
+from typing import TypedDict
+from typeforge import Field, Fields, Record
+class Payload(TypedDict):
+    value: int
+type Copy[T] = Record((Field[field.name, field.type] for field in Fields[T]))
+class Consumer:
+    field: Schema[list[Copy[Payload]]]
+    def parse(
+        self: object, value: Schema[list[int]]
+    ) -> Schema[int]: ...
+"""),
             "Copy_Payload",
             id="record-alias-rewrite",
         ),

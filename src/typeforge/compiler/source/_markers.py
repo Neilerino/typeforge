@@ -37,13 +37,10 @@ MARKER_SIGNATURES = {
     ),
     MarkerKind.CASE: MarkerArity(2, 2, "two type arguments"),
     MarkerKind.DEFAULT: MarkerArity(1, 1, "one type argument"),
-    MarkerKind.MAP_FIELDS: MarkerArity(2, 2, "two type arguments"),
     MarkerKind.FIELD: MarkerArity(2, 2, "two type arguments"),
     MarkerKind.OPTIONAL_FIELD: MarkerArity(2, 2, "two type arguments"),
     MarkerKind.READONLY_FIELD: MarkerArity(2, 2, "two type arguments"),
     MarkerKind.DROP: MarkerArity(0, 0, "no type arguments"),
-    MarkerKind.KEY: MarkerArity(0, 0, "no type arguments"),
-    MarkerKind.VALUE: MarkerArity(0, 0, "no type arguments"),
 }
 
 
@@ -122,13 +119,6 @@ class MapMarker:
 
 
 @dataclass(frozen=True, slots=True)
-class MapFieldsMarker:
-    source: str
-    record: SourceTypeExpression
-    transform: SourceTypeExpression
-
-
-@dataclass(frozen=True, slots=True)
 class FieldMarker:
     source: str
     key: SourceTypeExpression
@@ -154,16 +144,6 @@ class DropMarker:
     source: str
 
 
-@dataclass(frozen=True, slots=True)
-class KeyMarker:
-    source: str
-
-
-@dataclass(frozen=True, slots=True)
-class ValueMarker:
-    source: str
-
-
 type NormalizedMarker = (
     EachMarker
     | CollectMarker
@@ -175,13 +155,10 @@ type NormalizedMarker = (
     | MapMarker
     | CaseMarker
     | DefaultMarker
-    | MapFieldsMarker
     | FieldMarker
     | OptionalFieldMarker
     | ReadonlyFieldMarker
     | DropMarker
-    | KeyMarker
-    | ValueMarker
 )
 
 
@@ -235,8 +212,6 @@ def normalize_marker(expression: MarkerTypeExpression) -> NormalizedMarker:
             return CaseMarker(source, arguments[0], arguments[1])
         case MarkerKind.DEFAULT:
             return DefaultMarker(source, arguments[0])
-        case MarkerKind.MAP_FIELDS:
-            return MapFieldsMarker(source, arguments[0], arguments[1])
         case MarkerKind.FIELD:
             return FieldMarker(source, arguments[0], arguments[1])
         case MarkerKind.OPTIONAL_FIELD:
@@ -245,10 +220,6 @@ def normalize_marker(expression: MarkerTypeExpression) -> NormalizedMarker:
             return ReadonlyFieldMarker(source, arguments[0], arguments[1])
         case MarkerKind.DROP:
             return DropMarker(source)
-        case MarkerKind.KEY:
-            return KeyMarker(source)
-        case MarkerKind.VALUE:
-            return ValueMarker(source)
 
 
 def _validate_arity(expression: MarkerTypeExpression) -> None:

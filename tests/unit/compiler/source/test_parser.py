@@ -7,6 +7,7 @@ from typeforge.compiler.source import (
     MarkerKind,
     MarkerTypeExpression,
     ParameterKind,
+    RecordTypeExpression,
     RuntimeInputTypeExpression,
     SchemaTypeExpression,
     SourceReadError,
@@ -130,19 +131,23 @@ def test_read_failures_are_typed() -> None:
 
 def test_annotated_metadata_is_transparent_to_the_compiler_frontend() -> None:
     sources = (
-        "from typing import Annotated\n"
-        "from typeforge import Doc, Field, Key, MapFields, Value\n"
-        "type Copy[T] = Annotated[\n"
-        "    MapFields[T, Field[Key, Value]],\n"
-        '    "custom metadata",\n'
-        '    Doc("Copies every field."),\n'
-        "]\n",
-        "import typing_extensions as te\n"
-        "from typeforge import Field, Key, MapFields, Value\n"
-        "type Copy[T] = te.Annotated[\n"
-        "    MapFields[T, Field[Key, Value]],\n"
-        '    "custom metadata",\n'
-        "]\n",
+        """\
+from typing import Annotated
+from typeforge import Doc, Field, Fields, Record
+type Copy[T] = Annotated[
+    Record((Field[field.name, field.type] for field in Fields[T])),
+    "custom metadata",
+    Doc("Copies every field."),
+]
+""",
+        """\
+import typing_extensions as te
+from typeforge import Field, Fields, Record
+type Copy[T] = te.Annotated[
+    Record((Field[field.name, field.type] for field in Fields[T])),
+    "custom metadata",
+]
+""",
     )
 
     for source in sources:
@@ -150,8 +155,7 @@ def test_annotated_metadata_is_transparent_to_the_compiler_frontend() -> None:
 
         assert isinstance(result, Success)
         alias = result.unwrap().source.aliases[0]
-        assert isinstance(alias.value, MarkerTypeExpression)
-        assert alias.value.marker is MarkerKind.MAP_FIELDS
+        assert isinstance(alias.value, RecordTypeExpression)
 
 
 def test_annotated_typed_dict_field_preserves_field_qualifiers() -> None:
@@ -191,7 +195,7 @@ def test_full_typeforge_syntax_is_recognized_in_type_aliases() -> None:
         MarkerKind.COLLECT,
     }
     assert module.aliases[0].type_parameters[0].name == "T"
-    assert module.aliases[0].span.start.line == 17
+    assert module.aliases[0].span.start.line == 8
 
 
 def test_typed_dict_fields_preserve_shape_modifiers() -> None:
@@ -211,7 +215,7 @@ def test_typed_dict_fields_preserve_shape_modifiers() -> None:
         ("retries", "int", False, False),
         ("owner", "str", False, True),
     )
-    assert typed_dict.fields[0].span.start.line == 43
+    assert typed_dict.fields[0].span.start.line == 37
     derived = result.unwrap().source.typed_dicts[1]
     assert derived.name == "ExtendedPayload"
     assert derived.bases == (("Payload",),)

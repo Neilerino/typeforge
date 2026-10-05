@@ -13,6 +13,7 @@ from typeforge.compiler.source._model import (
     CaptureTypeExpression,
     ClassDeclaration,
     ClassField,
+    FieldReferenceTypeExpression,
     FunctionDeclaration,
     IdentifierOccurrence,
     MarkerKind,
@@ -21,6 +22,7 @@ from typeforge.compiler.source._model import (
     Parameter,
     ParameterKind,
     RawTypeExpression,
+    RecordTypeExpression,
     ReturnSite,
     RuntimeInputTypeExpression,
     SchemaTypeExpression,
@@ -66,6 +68,7 @@ type FrontendError = SourceReadError | SourceSyntaxError
 class _ImportBindings:
     names: tuple[tuple[str, tuple[str, ...]], ...]
     captures: tuple[tuple[str, CaptureTypeExpression], ...] = ()
+    fields: tuple[tuple[str, FieldReferenceTypeExpression], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -387,7 +390,7 @@ def _type_function_body(
 
 
 def _type_function_return(
-    path: Path, node: ast.FunctionDef | ast.AsyncFunctionDef
+    path: Path, node: ast.FunctionDef | ast.AsyncFunctionDef, bindings: _ImportBindings
 ) -> ast.expr:
     body = _type_function_body(node)
     if not body or not isinstance(body[-1], ast.Return) or body[-1].value is None:
@@ -397,25 +400,77 @@ def _type_function_return(
         )
 
     returned = body[-1].value
-    for item in ast.walk(returned):
-        if isinstance(
-            item,
-            ast.Call
-            | ast.Lambda
-            | ast.ListComp
-            | ast.SetComp
-            | ast.DictComp
-            | ast.GeneratorExp
-            | ast.NamedExpr
-            | ast.IfExp
-            | ast.BoolOp
-            | ast.Compare,
-        ) or (isinstance(item, ast.BinOp) and not isinstance(item.op, ast.BitOr)):
-            raise _AnnotationSyntaxError(
-                "unsupported type_function construction expression", _span(path, item)
-            )
-
+    _validate_construction_expression(path, returned, bindings)
     return returned
+
+
+def _validate_construction_expression(
+    path: Path, node: ast.AST, bindings: _ImportBindings
+) -> None:
+    if isinstance(node, ast.Call):
+        generator = _record_generator(path, node, bindings)
+        _validate_construction_expression(path, generator.elt, bindings)
+        _validate_construction_expression(path, generator.generators[0].iter, bindings)
+        return
+
+    if isinstance(
+        node,
+        ast.Lambda
+        | ast.ListComp
+        | ast.SetComp
+        | ast.DictComp
+        | ast.GeneratorExp
+        | ast.NamedExpr
+        | ast.IfExp
+        | ast.BoolOp
+        | ast.Compare,
+    ) or (isinstance(node, ast.BinOp) and not isinstance(node.op, ast.BitOr)):
+        raise _AnnotationSyntaxError(
+            "unsupported type_function construction expression", _span(path, node)
+        )
+
+    for child in ast.iter_child_nodes(node):
+        _validate_construction_expression(path, child, bindings)
+
+
+def _record_generator(
+    path: Path, node: ast.Call, bindings: _ImportBindings
+) -> ast.GeneratorExp:
+    if not (
+        isinstance(node.func, ast.Name | ast.Attribute)
+        and _resolve_ast_name(node.func, bindings) == ("typeforge", "Record")
+        and len(node.args) == 1
+        and not node.keywords
+        and isinstance(node.args[0], ast.GeneratorExp)
+    ):
+        raise _AnnotationSyntaxError(
+            "unsupported type_function construction; Record requires a Fields "
+            "generator",
+            _span(path, node),
+        )
+
+    generator = node.args[0]
+    if len(generator.generators) != 1:
+        raise _AnnotationSyntaxError(
+            "Record currently requires one Fields iteration", _span(path, generator)
+        )
+
+    iteration = generator.generators[0]
+    if not (
+        isinstance(iteration.target, ast.Name)
+        and not iteration.ifs
+        and not iteration.is_async
+        and isinstance(iteration.iter, ast.Subscript)
+        and isinstance(iteration.iter.value, ast.Name | ast.Attribute)
+        and _resolve_ast_name(iteration.iter.value, bindings) == ("typeforge", "Fields")
+        and not isinstance(iteration.iter.slice, ast.Tuple)
+    ):
+        raise _AnnotationSyntaxError(
+            "Record requires one named binding over Fields[T], without filters",
+            _span(path, generator),
+        )
+
+    return generator
 
 
 def _capture_bindings(
@@ -501,7 +556,7 @@ def _parse_type_function(
     bindings: _ImportBindings,
 ) -> TypeAliasDeclaration:
     _validate_type_function_signature(path, node, scope)
-    returned = _type_function_return(path, node)
+    returned = _type_function_return(path, node, bindings)
     parameters = tuple(
         _parse_type_parameter(source, parameter)
         for parameter in node.type_params
@@ -927,6 +982,36 @@ def _parse_type_parameter(
     )
 
 
+def _parse_record(
+    path: Path, source: str, node: ast.Call, bindings: _ImportBindings
+) -> RecordTypeExpression:
+    generator = _record_generator(path, node, bindings)
+    iteration = generator.generators[0]
+    assert isinstance(iteration.target, ast.Name)
+    assert isinstance(iteration.iter, ast.Subscript)
+    record = _parse_annotation(path, source, iteration.iter.slice, bindings)
+    assert record is not None
+    name = iteration.target.id
+    declaration = _span(path, iteration.target)
+    binding = FieldReferenceTypeExpression(name, declaration, name, declaration)
+    local = replace(
+        bindings,
+        fields=(*bindings.fields, (name, binding)),
+        names=tuple(item for item in bindings.names if item[0] != name),
+        captures=tuple(item for item in bindings.captures if item[0] != name),
+    )
+    _validate_construction_expression(path, generator.elt, local)
+    transform = _parse_annotation(path, source, generator.elt, local)
+    assert transform is not None
+    return RecordTypeExpression(
+        ast.get_source_segment(source, node) or ast.unparse(node),
+        _span(path, node),
+        record,
+        binding,
+        transform,
+    )
+
+
 def _parse_annotation(
     path: Path,
     source: str,
@@ -959,6 +1044,23 @@ def _parse_annotation(
         return StarredTypeExpression(rendered, span, item)
 
     if isinstance(node, ast.Name | ast.Attribute):
+        field_name = (
+            node.id
+            if isinstance(node, ast.Name)
+            else (node.value.id if isinstance(node.value, ast.Name) else None)
+        )
+        field = (
+            dict(bindings.fields).get(field_name) if field_name is not None else None
+        )
+        if field is not None:
+            attribute = node.attr if isinstance(node, ast.Attribute) else None
+            if attribute not in (None, "name", "type"):
+                raise _AnnotationSyntaxError(
+                    "unsupported symbolic field attribute", span
+                )
+
+            return replace(field, source=rendered, span=span, attribute=attribute)
+
         if (
             isinstance(node, ast.Name)
             and (capture := dict(bindings.captures).get(node.id)) is not None
@@ -972,6 +1074,15 @@ def _parse_annotation(
             name=name,
             qualified_name=_resolve_name(name, bindings),
         )
+        if name_expression.qualified_name in {
+            ("typeforge", "MapFields"),
+            ("typeforge", "Key"),
+            ("typeforge", "Value"),
+        }:
+            raise _AnnotationSyntaxError(
+                "field authoring requires Record and Fields", span
+            )
+
         if _is_runtime_input(name_expression):
             return RuntimeInputTypeExpression(rendered, span)
 
@@ -985,6 +1096,9 @@ def _parse_annotation(
             )
 
         return name_expression
+
+    if isinstance(node, ast.Call):
+        return _parse_record(path, source, node, bindings)
 
     if isinstance(node, ast.Subscript):
         constructor = _parse_annotation(path, source, node.value, bindings)

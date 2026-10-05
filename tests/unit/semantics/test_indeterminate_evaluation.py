@@ -10,6 +10,8 @@ from tests.unit.semantics.test_migration_spec import (
 )
 from typeforge import semantics as s
 
+FIELD = s.TypeSymbol(("test-field",), "field")
+
 ITEM = s.CaptureReference(s.TypeSymbol((__name__,), "Item"))
 
 
@@ -104,9 +106,9 @@ def test_uncertain_case_stops_at_the_next_definite_match() -> None:
         (
             s.CaseExpression(condition(None), s.TypeReference("str")),
             s.CaseExpression(s.TypeReference("int"), s.TypeReference("float")),
-            s.CaseExpression(condition(None), s.KeyReference()),
+            s.CaseExpression(condition(None), s.FieldNameReference(FIELD)),
         ),
-        s.KeyReference(),
+        s.FieldNameReference(FIELD),
     )
 
     assert s.evaluate(expression, NameTypeSystem()) == Success(
@@ -137,7 +139,9 @@ def test_decisive_conditions_skip_later_failures(
     kind: type[s.AllExpression[str]] | type[s.AnyExpression[str]],
 ) -> None:
     decisive = kind is s.AnyExpression
-    expression = kind((condition(None), condition(decisive), s.KeyReference()))
+    expression = kind(
+        (condition(None), condition(decisive), s.FieldNameReference(FIELD))
+    )
     assert s.evaluate(expression, NameTypeSystem()) == Success(decisive)
 
 
@@ -146,10 +150,14 @@ def test_unknown_conditions_do_not_skip_reachable_failures(
     kind: type[s.AllExpression[str]] | type[s.AnyExpression[str]],
 ) -> None:
     expression = kind(
-        (condition(None), s.KeyReference(), condition(kind is s.AnyExpression))
+        (
+            condition(None),
+            s.FieldNameReference(FIELD),
+            condition(kind is s.AnyExpression),
+        )
     )
     assert s.evaluate(expression, NameTypeSystem()) == Failure(
-        s.UnboundKeySemanticError("Key requires MapFields")
+        s.UnboundFieldSemanticError("field 'field' is unbound")
     )
 
 
@@ -178,9 +186,9 @@ def test_definite_earlier_case_skips_unknown_and_failing_outputs(
         s.TypeReference("int"),
         (
             s.CaseExpression(test, s.TypeReference("float")),
-            s.CaseExpression(condition(None), s.KeyReference()),
+            s.CaseExpression(condition(None), s.FieldNameReference(FIELD)),
         ),
-        s.KeyReference(),
+        s.FieldNameReference(FIELD),
     )
     assert s.evaluate(expression, NameTypeSystem()) == Success(s.ResolvedType("float"))
 
@@ -189,7 +197,7 @@ def test_two_uncertain_cases_preserve_order_and_default() -> None:
     expression = s.MapExpression(
         s.TypeReference("int"),
         (
-            s.CaseExpression(condition(False), s.KeyReference()),
+            s.CaseExpression(condition(False), s.FieldNameReference(FIELD)),
             s.CaseExpression(condition(None), s.TypeReference("str")),
             s.CaseExpression(
                 s.EqualExpression(unknown("U"), s.TypeReference("int")),
@@ -378,7 +386,7 @@ def test_same_symbol_repeated_capture_remains_definite() -> None:
                 ITEM,
             ),
         ),
-        s.KeyReference(),
+        s.FieldNameReference(FIELD),
     )
     assert s.evaluate(expression, NameTypeSystem()) == Success(unknown().value)
 
@@ -393,7 +401,7 @@ def test_known_capture_mismatch_survives_a_later_unknown() -> None:
         (
             s.CaseExpression(
                 s.ParameterizedTypePattern("tuple", (ITEM,) * 3),
-                s.KeyReference(),
+                s.FieldNameReference(FIELD),
             ),
         ),
         s.TypeReference("bytes"),
@@ -448,7 +456,7 @@ def test_reachable_non_type_output_fails_before_evaluating_the_remainder() -> No
     expression = s.MapExpression(
         unknown(),
         (s.CaseExpression(s.TypeReference("int"), s.FieldName("invalid")),),
-        s.KeyReference(),
+        s.FieldNameReference(FIELD),
     )
     assert s.evaluate(expression, NameTypeSystem()) == Failure(
         s.ExpectedTypeSemanticError("indeterminate Map outputs must evaluate to types")
@@ -456,7 +464,9 @@ def test_reachable_non_type_output_fails_before_evaluating_the_remainder() -> No
 
 
 def test_union_non_type_member_fails_before_evaluating_later_members() -> None:
-    expression = s.UnionExpression[str]((s.FieldName("invalid"), s.KeyReference()))
+    expression = s.UnionExpression[str](
+        (s.FieldName("invalid"), s.FieldNameReference(FIELD))
+    )
     assert s.evaluate(expression, NameTypeSystem()) == Failure(
         s.ExpectedTypeSemanticError("union members must evaluate to types")
     )
@@ -597,7 +607,7 @@ def test_opaque_parameter_cannot_capture_unknown_type_arguments() -> None:
     assert s.evaluate(
         expression,
         NameTypeSystem(),
-        s.EvaluationContext(value=s.ResolvedType("unrelated")),
+        s.EvaluationContext(fields=((FIELD, s.RecordField("field", "unrelated")),)),
     ) == Failure(
         s.UnresolvedCaptureSemanticError(
             "cannot capture type arguments from an unresolved type parameter"

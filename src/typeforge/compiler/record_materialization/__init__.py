@@ -3,7 +3,7 @@
 from typeforge.compiler.record_materialization._materialization import (
     build_record_shapes,
     derive_record_shapes,
-    is_map_fields_alias,
+    is_record_alias,
     materialize_record_transforms,
 )
 from typeforge.compiler.record_materialization._models import (
@@ -20,6 +20,6 @@ __all__ = [
     "RecordMaterializationError",
     "build_record_shapes",
     "derive_record_shapes",
-    "is_map_fields_alias",
+    "is_record_alias",
     "materialize_record_transforms",
 ]

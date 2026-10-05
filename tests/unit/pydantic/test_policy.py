@@ -10,6 +10,8 @@ from typeforge.pydantic._policy import (
     no_match_issue,
 )
 
+FIELD = s.TypeSymbol(("test-field",), "field")
+
 
 @pytest.mark.parametrize(
     ("default", "constraints", "bound", "expected"),
@@ -71,12 +73,12 @@ def test_policy_accepts_speculative_no_match_but_rejects_the_selected_path() -> 
 def test_speculative_policy_does_not_suppress_unrelated_semantic_failures() -> None:
     expression = s.MapExpression(
         s.InputReference(),
-        (s.CaseExpression(s.ExactTypePattern("int"), s.KeyReference()),),
+        (s.CaseExpression(s.ExactTypePattern("int"), s.FieldNameReference(FIELD)),),
     )
     result = s.Evaluator(NameTypeSystem()).evaluate(expression)
 
     assert isinstance(result, Failure)
-    assert isinstance(result.failure(), s.UnboundKeySemanticError)
+    assert isinstance(result.failure(), s.UnboundFieldSemanticError)
 
 
 @pytest.mark.parametrize(
@@ -86,7 +88,7 @@ def test_speculative_policy_does_not_suppress_unrelated_semantic_failures() -> N
         (InputTestKind.INPUT, None),
         (InputTestKind.PREDICATE, None),
         (InputTestKind.PARAMETERIZED, "unsupported_runtime_pattern"),
-        (InputTestKind.UNBOUND_VALUE, "unbound_value"),
+        (InputTestKind.UNBOUND_FIELD, "unbound_field"),
         (InputTestKind.UNSUPPORTED, "unsupported_runtime_pattern"),
     ],
 )

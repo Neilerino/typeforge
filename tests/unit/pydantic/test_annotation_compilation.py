@@ -5,10 +5,13 @@ from pydantic_core import CoreSchema
 from returns.result import Failure
 
 from pydantic import GetCoreSchemaHandler
-from typeforge import Key, Map
+from typeforge import Map
 from typeforge._markers import Case, Default, Equal
 from typeforge._markers import Map as CanonicalMap
+from typeforge._record import FieldSymbol, SymbolicField
 from typeforge.pydantic._compile import compile_annotation
+
+UNBOUND_FIELD = SymbolicField(SymbolicField, (FieldSymbol(),))
 
 
 class ForbiddenHandler(GetCoreSchemaHandler):
@@ -24,7 +27,11 @@ class ForbiddenHandler(GetCoreSchemaHandler):
             "parsing",
             "invalid_marker",
         ),
-        (Map[int, Equal[Key, Key] : str], "evaluation", "unbound_key"),
+        (
+            Map[int, Equal[UNBOUND_FIELD.name, UNBOUND_FIELD.name] : str],
+            "evaluation",
+            "unbound_field",
+        ),
         (Map[object, int:str], "evaluation", "map_no_match"),
         (Equal[int, int], "evaluation", "expected_type"),
     ],

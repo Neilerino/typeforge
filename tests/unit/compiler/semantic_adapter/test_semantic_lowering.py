@@ -15,10 +15,12 @@ from typeforge.compiler.semantic_adapter import (
 from typeforge.compiler.source import (
     AppliedTypeExpression,
     CaptureTypeExpression,
+    FieldReferenceTypeExpression,
     MarkerKind,
     MarkerTypeExpression,
     NameTypeExpression,
     RawTypeExpression,
+    RecordTypeExpression,
     RuntimeInputTypeExpression,
     SourcePosition,
     SourceSpan,
@@ -32,23 +34,28 @@ from typeforge.semantics import (
     EvaluationContext,
     FieldExpression,
     FieldName,
+    FieldNameReference,
+    FieldTypeReference,
     InputReference,
-    KeyReference,
     MapExpression,
-    MapFieldsExpression,
     ParameterizedTypePattern,
     ParameterizedTypeTemplate,
+    RecordExpression,
     RecordFamily,
     RecordField,
     RecordShape,
     ResolvedType,
     TypeReference,
     TypeSymbol,
-    ValueReference,
     evaluate,
 )
 
 SPAN = SourceSpan(Path("records.py"), SourcePosition(1, 0), SourcePosition(1, 1))
+
+
+FIELD = TypeSymbol(
+    (str(SPAN.path), str(SPAN.start.line), str(SPAN.start.column)), "field"
+)
 
 
 def test_names_lower_to_bound_or_named_type_references() -> None:
@@ -195,14 +202,16 @@ def test_map_case_preserves_string_literal_field_names() -> None:
     )
     expression = marker(
         MarkerKind.MAP,
-        marker(MarkerKind.KEY),
+        FieldReferenceTypeExpression(
+            "field.name", SPAN, "field", SPAN, attribute="name"
+        ),
         marker(MarkerKind.CASE, source, target),
     )
 
     assert lower_semantic_expression(
         expression, (), role="field-name"
     ) == MapExpression(
-        KeyReference(),
+        FieldNameReference(FIELD),
         (CaseExpression(FieldName("source"), FieldName("target")),),
     )
 
@@ -213,34 +222,46 @@ def test_record_markers_lower_to_the_shared_semantic_model() -> None:
         name="Payload",
         fields=(),
     )
-    expression = marker(
-        MarkerKind.MAP_FIELDS,
+    expression = RecordTypeExpression(
+        "Record(...)",
+        SPAN,
         name("T"),
+        FieldReferenceTypeExpression("field", SPAN, "field", SPAN),
         marker(
             MarkerKind.FIELD,
-            marker(MarkerKind.KEY),
+            FieldReferenceTypeExpression(
+                "field.name", SPAN, "field", SPAN, attribute="name"
+            ),
             marker(
                 MarkerKind.MAP,
-                marker(MarkerKind.VALUE),
+                FieldReferenceTypeExpression(
+                    "field.type", SPAN, "field", SPAN, attribute="type"
+                ),
                 marker(MarkerKind.CASE, name("datetime"), name("str")),
-                marker(MarkerKind.DEFAULT, marker(MarkerKind.VALUE)),
+                marker(
+                    MarkerKind.DEFAULT,
+                    FieldReferenceTypeExpression(
+                        "field.type", SPAN, "field", SPAN, attribute="type"
+                    ),
+                ),
             ),
         ),
     )
 
-    expected: MapFieldsExpression[StaticType] = MapFieldsExpression(
+    expected: RecordExpression[StaticType] = RecordExpression(
         TypeReference(payload),
+        FIELD,
         FieldExpression(
-            KeyReference(),
+            FieldNameReference(FIELD),
             MapExpression(
-                ValueReference(),
+                FieldTypeReference(FIELD),
                 (
                     CaseExpression(
                         TypeReference(NamedType("datetime")),
                         TypeReference(NamedType("str")),
                     ),
                 ),
-                ValueReference(),
+                FieldTypeReference(FIELD),
             ),
         ),
         "JsonPayload",
@@ -376,10 +397,14 @@ def test_literal_type_output_inside_a_transformed_field() -> None:
     literal = application("Literal", RawTypeExpression('"accepted"', SPAN))
     expression = marker(
         MarkerKind.FIELD,
-        marker(MarkerKind.KEY),
+        FieldReferenceTypeExpression(
+            "field.name", SPAN, "field", SPAN, attribute="name"
+        ),
         marker(
             MarkerKind.MAP,
-            marker(MarkerKind.VALUE),
+            FieldReferenceTypeExpression(
+                "field.type", SPAN, "field", SPAN, attribute="type"
+            ),
             marker(MarkerKind.CASE, name("int"), literal),
             marker(MarkerKind.DEFAULT, name("bytes")),
         ),
@@ -389,7 +414,7 @@ def test_literal_type_output_inside_a_transformed_field() -> None:
         lower_semantic_expression(expression, ()),
         COMPILER_TYPE_SYSTEM,
         EvaluationContext[StaticType](
-            key="original", value=ResolvedType(NamedType("int"))
+            fields=((FIELD, RecordField("original", NamedType("int"))),)
         ),
     )
 
@@ -405,15 +430,35 @@ def test_key_map_can_compare_literal_field_types() -> None:
     literal = application("Literal", RawTypeExpression('"accepted"', SPAN))
     expression = marker(
         MarkerKind.MAP,
-        marker(MarkerKind.KEY),
+        FieldReferenceTypeExpression(
+            "field.name", SPAN, "field", SPAN, attribute="name"
+        ),
         marker(
             MarkerKind.CASE,
-            marker(MarkerKind.EQUAL, marker(MarkerKind.VALUE), literal),
-            marker(MarkerKind.FIELD, marker(MarkerKind.KEY), name("str")),
+            marker(
+                MarkerKind.EQUAL,
+                FieldReferenceTypeExpression(
+                    "field.type", SPAN, "field", SPAN, attribute="type"
+                ),
+                literal,
+            ),
+            marker(
+                MarkerKind.FIELD,
+                FieldReferenceTypeExpression(
+                    "field.name", SPAN, "field", SPAN, attribute="name"
+                ),
+                name("str"),
+            ),
         ),
         marker(
             MarkerKind.DEFAULT,
-            marker(MarkerKind.FIELD, marker(MarkerKind.KEY), name("bytes")),
+            marker(
+                MarkerKind.FIELD,
+                FieldReferenceTypeExpression(
+                    "field.name", SPAN, "field", SPAN, attribute="name"
+                ),
+                name("bytes"),
+            ),
         ),
     )
     literal_type = ParameterizedType(NamedType("Literal"), (NamedType('"accepted"'),))
@@ -421,5 +466,7 @@ def test_key_map_can_compare_literal_field_types() -> None:
     assert evaluate(
         lower_semantic_expression(expression, ()),
         COMPILER_TYPE_SYSTEM,
-        EvaluationContext[StaticType](key="value", value=ResolvedType(literal_type)),
+        EvaluationContext[StaticType](
+            fields=((FIELD, RecordField("value", literal_type)),)
+        ),
     ) == Success(RecordField("value", NamedType("str")))

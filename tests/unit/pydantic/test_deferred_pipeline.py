@@ -14,11 +14,14 @@ from pydantic import (
     TypeAdapter,
     ValidationError,
 )
-from typeforge import Capture, Field, Key, Map, MapFields, Value
+from typeforge import Capture, Field, Fields, Map, Record
 from typeforge._markers import All, Assignable, Equal, Not
 from typeforge._markers import Any as AnyCondition
 from typeforge._markers import Map as CanonicalMap
+from typeforge._record import FieldSymbol, SymbolicField
 from typeforge.pydantic import Input, Schema
+
+UNBOUND_FIELD = SymbolicField(SymbolicField, (FieldSymbol(),))
 
 Item = Capture("Item")
 
@@ -71,7 +74,7 @@ def test_selected_failure_never_runs_later_outputs_and_has_authored_location() -
 def test_reached_predicate_failure_is_not_a_mismatch() -> None:
     type Selected = Map[
         Input,
-        All[Equal[Input, int], Equal[Key, Key]] : bytes,
+        All[Equal[Input, int], Equal[UNBOUND_FIELD.name, UNBOUND_FIELD.name]] : bytes,
         ...:str,
     ]
     adapter = TypeAdapter(Schema[Selected])
@@ -79,7 +82,7 @@ def test_reached_predicate_failure_is_not_a_mismatch() -> None:
     with pytest.raises(ValidationError) as failure:
         adapter.validate_python(3)
 
-    assert failure.value.errors()[0]["type"] == "typeforge_unbound_key"
+    assert failure.value.errors()[0]["type"] == "typeforge_unbound_field"
     assert failure.value.errors()[0]["input"] == 3
 
 
@@ -89,8 +92,11 @@ def test_predicate_order_and_nested_short_circuiting() -> None:
             Map[
                 Input,
                 Assignable[Input, int] : int,
-                AnyCondition[Not[Equal[Input, int]], Equal[Key, Key]] : str,
-                Equal[Key, Key] : bytes,
+                AnyCondition[
+                    Not[Equal[Input, int]],
+                    Equal[UNBOUND_FIELD.name, UNBOUND_FIELD.name],
+                ] : str,
+                Equal[UNBOUND_FIELD.name, UNBOUND_FIELD.name] : bytes,
             ]
         ]
     )
@@ -103,13 +109,13 @@ def test_union_tests_short_circuit_shared_predicates() -> None:
         Schema[
             Map[
                 Input,
-                int | Equal[Key, Key] : int,
+                int | Equal[UNBOUND_FIELD.name, UNBOUND_FIELD.name] : int,
                 ...:str,
             ]
         ]
     )
     assert adapter.validate_python(3) == 3
-    with pytest.raises(ValidationError, match="typeforge_unbound_key"):
+    with pytest.raises(ValidationError, match="typeforge_unbound_field"):
         adapter.validate_python("text")
 
 
@@ -214,8 +220,8 @@ def test_empty_deferred_map_is_an_uninhabited_validator() -> None:
 
 
 def test_unbound_capture_is_invalid_without_inspecting_input_values() -> None:
-    with pytest.raises(PydanticSchemaGenerationError, match="unbound_value"):
-        TypeAdapter(Schema[Map[Input, Value:str]])
+    with pytest.raises(PydanticSchemaGenerationError, match="unbound_field"):
+        TypeAdapter(Schema[Map[Input, UNBOUND_FIELD.type : str]])
 
 
 def test_nested_maps_observe_same_raw_value_and_container_items_observe_each_item() -> (
@@ -237,20 +243,16 @@ def test_input_inside_annotated_output_and_record_field_preserves_context() -> N
         count: int
         label: str
 
-    type Transformed = MapFields[
-        Source,
+    type Transformed = Record(
         Field[
-            Key,
+            field.name,
             Annotated[
-                Map[
-                    Input,
-                    Equal[Input, Value] : Value,
-                    ...:bytes,
-                ],
+                Map[Input, Equal[Input, field.type] : field.type, ...:bytes],
                 AfterValidator(lambda value: value),
             ],
-        ],
-    ]
+        ]
+        for field in Fields[Source]
+    )
     adapter = TypeAdapter(Schema[Transformed])
     assert adapter.validate_python({"count": 3, "label": "ok"}) == {
         "count": 3,

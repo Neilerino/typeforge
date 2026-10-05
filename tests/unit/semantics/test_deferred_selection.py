@@ -7,6 +7,8 @@ from returns.result import Failure, Result, Success
 from tests.unit.semantics.test_migration_spec import NameTypeSystem
 from typeforge import semantics as s
 
+FIELD = s.TypeSymbol(("test-field",), "field")
+
 
 @dataclass
 class Observer:
@@ -27,12 +29,12 @@ def test_resumption_selects_once_without_evaluating_output_and_retains_bindings(
 ):
     cases = (
         s.CaseExpression(s.ExactTypePattern("bytes"), s.type_ref("bytes")),
-        s.CaseExpression(s.ExactTypePattern("str"), s.KeyReference()),
+        s.CaseExpression(s.ExactTypePattern("str"), s.FieldNameReference(FIELD)),
         s.CaseExpression(s.ExactTypePattern("int"), s.type_ref("int")),
     )
     context = s.EvaluationContext(
-        value=s.ResolvedType("float"),
         captures=((s.TypeSymbol((__name__,), "Item"), s.ResolvedType("str")),),
+        fields=((FIELD, s.RecordField("field", "float")),),
     )
     plan = s.DeferredMap(cases, s.type_ref("default"), context)
     observer = Observer((Success(False), Success(True)))
@@ -40,7 +42,7 @@ def test_resumption_selects_once_without_evaluating_output_and_retains_bindings(
     selected = evaluator.select_deferred_map(plan, "raw-type", observer).unwrap()
     assert selected.case_index == 1
     assert selected.output is cases[1].output
-    assert selected.context.value is context.value
+    assert selected.context.fields is context.fields
     assert selected.context.captures is context.captures
     assert selected.context.input_type == s.ResolvedType("raw-type")
     assert observer.visited == [case.test for case in cases[:2]]
@@ -52,7 +54,7 @@ def test_predicates_use_bound_input_and_short_circuit_without_observation() -> N
     predicate = s.AnyExpression(
         (
             s.EqualExpression(s.InputReference(), s.type_ref("int")),
-            s.EqualExpression(s.KeyReference(), s.KeyReference()),
+            s.EqualExpression(s.FieldNameReference(FIELD), s.FieldNameReference(FIELD)),
         )
     )
     output = s.type_ref("chosen")
@@ -65,7 +67,7 @@ def test_predicates_use_bound_input_and_short_circuit_without_observation() -> N
         evaluator.select_deferred_map(plan, "int", observer).unwrap().output is output
     )
     failure = evaluator.select_deferred_map(plan, "str", observer).failure()
-    assert isinstance(failure, s.UnboundKeySemanticError)
+    assert isinstance(failure, s.UnboundFieldSemanticError)
     assert observer.visited == []
 
 
@@ -116,7 +118,7 @@ def test_deferred_backend_preserves_plans_in_templates_without_eager_bounds() ->
     deferred_types = DeferredTypes()
     expression = s.MapExpression(
         s.InputReference(),
-        (s.CaseExpression(s.type_ref("str"), s.KeyReference()),),
+        (s.CaseExpression(s.type_ref("str"), s.FieldNameReference(FIELD)),),
     )
     template = s.ParameterizedTypeTemplate("list", (expression,))
     type_system = NameTypeSystem(

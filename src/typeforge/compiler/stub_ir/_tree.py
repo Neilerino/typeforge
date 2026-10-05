@@ -20,7 +20,6 @@ from typeforge.compiler.stub_ir._model import (
     HomogeneousTuple,
     LiteralType,
     MapCase,
-    MapFieldsType,
     MapType,
     NotPredicate,
     OverloadDeclaration,
@@ -138,11 +137,6 @@ def _rewrite_type_children(
                 required,
                 readonly,
             )
-        case MapFieldsType(record, field_transform):
-            return MapFieldsType(
-                rewrite(record),
-                rewrite(field_transform),
-            )
         case (
             TypeName()
             | TypeVariable()
@@ -216,9 +210,6 @@ def walk_type(expression: StubTypeExpression) -> Iterator[StubTypeExpression]:
         case FieldType(name, value):
             yield from walk_type(name)
             yield from walk_type(value)
-        case MapFieldsType(record, transform):
-            yield from walk_type(record)
-            yield from walk_type(transform)
         case (
             TypeName()
             | TypeVariable()

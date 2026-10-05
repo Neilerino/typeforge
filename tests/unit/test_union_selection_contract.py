@@ -133,14 +133,18 @@ def test_known_uncovered_subject_fails_entire_expression(
 
 def test_uncovered_field_transform_preserves_authored_failure(tmp_path: Path) -> None:
     source = tmp_path / "record.py"
-    transform = "MapFields[T, Field[Key, Map[Value, int: bytes]]]"
+    transform = (
+        "Record((Field[field.name, Map[field.type, int:bytes]] for field in Fields[T]))"
+    )
     source.write_text(
-        "from typing import TypedDict\n"
-        "from typeforge import Field, Key, Map, MapFields, Value\n"
-        "class Source(TypedDict):\n"
-        "    value: int | str\n"
-        f"type Transform[T] = {transform}\n"
-        "def read(value: Transform[Source]) -> None: ...\n"
+        f"""\
+from typing import TypedDict
+from typeforge import Field, Map, Fields, Record
+class Source(TypedDict):
+    value: int | str
+type Transform[T] = {transform}
+def read(value: Transform[Source]) -> None: ...
+"""
     )
 
     result = generate_module(source, maximum_arity=1)
