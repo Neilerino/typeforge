@@ -162,8 +162,7 @@ def test_alias_binding_works_with_field_subjects_without_executing_source(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "records.py"
-    path.write_text("""\
-from typing import TypedDict, Literal
+    path.write_text("""from typing import TypedDict, Literal
 from typeforge import Map, Field, Fields, Record
 from typeforge._markers import Equal
 
@@ -179,7 +178,7 @@ type Selected[T] = Record(
     (
         Map[
             field.name,
-            Name : Field[field.name, Map[field.type, Integer:str, ...:bytes]],
+            Name : Field(name=field.name, type=Map[field.type, Integer:str, ...:bytes]),
         ]
         for field in Fields[T]
     )

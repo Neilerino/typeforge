@@ -14,6 +14,7 @@ from typing import (
 )
 
 from typeforge._capture import Capture, CaptureSymbol
+from typeforge._field import UNCHANGED, FieldReplacementTemplate, FieldTemplate
 from typeforge._record import (
     FieldNameTemplate,
     FieldSymbol,
@@ -138,6 +139,34 @@ def _validate_template(value: object, parameters: tuple[TypeVar, ...]) -> None:
         return
 
     origin = get_origin(value)
+    if origin is FieldReplacementTemplate:
+        arguments = get_args(value)
+        if len(arguments) != 5 or not all(
+            argument is UNCHANGED or isinstance(argument, bool)
+            for argument in arguments[3:]
+        ):
+            raise TypeFunctionConstructionError("invalid field replacement template")
+
+        _validate_template(arguments[0], parameters)
+        if arguments[1] is not UNCHANGED:
+            _validate_template(arguments[1], parameters)
+
+        if arguments[2] is not UNCHANGED:
+            _validate_template(arguments[2], parameters)
+
+        return
+
+    if origin is FieldTemplate:
+        arguments = get_args(value)
+        if len(arguments) != 4 or not all(
+            isinstance(argument, bool) for argument in arguments[2:]
+        ):
+            raise TypeFunctionConstructionError("invalid Field template")
+
+        _validate_template(arguments[0], parameters)
+        _validate_template(arguments[1], parameters)
+        return
+
     if origin in (SymbolicField, FieldNameTemplate, FieldTypeTemplate):
         arguments = get_args(value)
         if len(arguments) != 1 or not isinstance(arguments[0], FieldSymbol):

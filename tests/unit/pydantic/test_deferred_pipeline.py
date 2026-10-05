@@ -244,13 +244,13 @@ def test_input_inside_annotated_output_and_record_field_preserves_context() -> N
         label: str
 
     type Transformed = Record(
-        Field[
-            field.name,
-            Annotated[
+        Field(
+            name=field.name,
+            type=Annotated[
                 Map[Input, Equal[Input, field.type] : field.type, ...:bytes],
                 AfterValidator(lambda value: value),
             ],
-        ]
+        )
         for field in Fields[Source]
     )
     adapter = TypeAdapter(Schema[Transformed])

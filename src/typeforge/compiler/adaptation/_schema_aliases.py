@@ -10,7 +10,9 @@ from typeforge.compiler.adaptation._models import AdaptationError
 from typeforge.compiler.source import (
     AppliedTypeExpression,
     CaptureTypeExpression,
+    FieldConstructionTypeExpression,
     FieldReferenceTypeExpression,
+    FieldReplacementTypeExpression,
     MarkerKind,
     MarkerNormalizationError,
     MarkerTypeExpression,
@@ -179,6 +181,15 @@ def _rewrite_children(
     rewrite: Callable[[SourceTypeExpression], SourceTypeExpression],
 ) -> SourceTypeExpression:
     match expression:
+        case FieldConstructionTypeExpression(name=name, value=value):
+            return replace(expression, name=rewrite(name), value=rewrite(value))
+        case FieldReplacementTypeExpression(field=field, name=name, value=value):
+            return replace(
+                expression,
+                field=rewrite(field),
+                name=None if name is None else rewrite(name),
+                value=None if value is None else rewrite(value),
+            )
         case RecordTypeExpression(record=record, transform=transform):
             return replace(
                 expression, record=rewrite(record), transform=rewrite(transform)

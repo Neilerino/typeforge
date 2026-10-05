@@ -317,8 +317,7 @@ def test_schema_boundaries_resolve_in_model_fields_and_generated_stubs(
     source = tmp_path / "models.py"
     source.write_text(
         (
-            """\
-from pydantic import BaseModel
+            """from pydantic import BaseModel
 from typing import TypedDict
 from typeforge._markers import Equal
 from typeforge import Field, Map, Capture, Fields, Record
@@ -333,7 +332,7 @@ class User(TypedDict):
     name: str
 
 
-type Public[T] = Record((Field[field.name, field.type] for field in Fields[T]))
+type Public[T] = Record(Field(name=field.name, type=field.type) for field in Fields[T])
 
 
 class Payload(BaseModel):

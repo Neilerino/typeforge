@@ -88,7 +88,7 @@ def test_map_fields_transform_must_produce_a_field_or_drop() -> None:
 
 
 def test_map_fields_rejects_duplicate_renames() -> None:
-    from typing import Literal, TypedDict
+    from typing import TypedDict
 
     class Payload(TypedDict):
         left: int
@@ -97,7 +97,7 @@ def test_map_fields_rejects_duplicate_renames() -> None:
     with pytest.raises(PydanticSchemaGenerationError, match=r"duplicate_field.*'same'"):
         TypeAdapter(
             Schema[
-                Record(Field[Literal["same"], field.type] for field in Fields[Payload])
+                Record(Field(name="same", type=field.type) for field in Fields[Payload])
             ]
         )
 

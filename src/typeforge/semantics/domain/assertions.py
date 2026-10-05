@@ -1,5 +1,7 @@
 """Assertions for values produced during semantic evaluation."""
 
+from keyword import iskeyword
+
 from typeforge.semantics.domain.exceptions import (
     ExpectedConditionSemanticError,
     ExpectedFieldNameSemanticError,
@@ -65,6 +67,11 @@ def expect_field_name[T](
     message: str = "field name must evaluate to FieldName",
 ) -> FieldName:
     if isinstance(value, FieldName):
+        if not value.value.isidentifier() or iskeyword(value.value):
+            raise ExpectedFieldNameSemanticError(
+                "field name must be a Python identifier"
+            )
+
         return value
 
     raise ExpectedFieldNameSemanticError(message)

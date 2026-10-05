@@ -34,7 +34,6 @@ from typeforge.compiler.source import (
     DropMarker,
     EachMarker,
     EqualMarker,
-    FieldMarker,
     MapMarker,
     MarkerKind,
     MarkerNormalizationError,
@@ -42,9 +41,7 @@ from typeforge.compiler.source import (
     NameTypeExpression,
     NormalizedMarker,
     NotMarker,
-    OptionalFieldMarker,
     RawTypeExpression,
-    ReadonlyFieldMarker,
     RuntimeInputTypeExpression,
     SchemaTypeExpression,
     SourceModule,
@@ -659,13 +656,7 @@ def _adapt_alias_fallback(
         ):
             return TypeName("bool")
 
-        case (
-            CaseMarker(output=value)
-            | DefaultMarker(output=value)
-            | FieldMarker(value=value)
-            | OptionalFieldMarker(value=value)
-            | ReadonlyFieldMarker(value=value)
-        ):
+        case CaseMarker(output=value) | DefaultMarker(output=value):
             return _adapt_alias_fallback(
                 declaration,
                 value,

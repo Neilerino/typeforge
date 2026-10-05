@@ -15,6 +15,7 @@ from typeforge.compiler.semantic_adapter import (
 from typeforge.compiler.source import (
     AppliedTypeExpression,
     CaptureTypeExpression,
+    FieldConstructionTypeExpression,
     FieldReferenceTypeExpression,
     MarkerKind,
     MarkerTypeExpression,
@@ -227,8 +228,9 @@ def test_record_markers_lower_to_the_shared_semantic_model() -> None:
         SPAN,
         name("T"),
         FieldReferenceTypeExpression("field", SPAN, "field", SPAN),
-        marker(
-            MarkerKind.FIELD,
+        FieldConstructionTypeExpression(
+            "Field(...)",
+            SPAN,
             FieldReferenceTypeExpression(
                 "field.name", SPAN, "field", SPAN, attribute="name"
             ),
@@ -395,8 +397,9 @@ def test_literal_case_and_default_outputs_remain_types() -> None:
 
 def test_literal_type_output_inside_a_transformed_field() -> None:
     literal = application("Literal", RawTypeExpression('"accepted"', SPAN))
-    expression = marker(
-        MarkerKind.FIELD,
+    expression = FieldConstructionTypeExpression(
+        "Field(...)",
+        SPAN,
         FieldReferenceTypeExpression(
             "field.name", SPAN, "field", SPAN, attribute="name"
         ),
@@ -442,8 +445,9 @@ def test_key_map_can_compare_literal_field_types() -> None:
                 ),
                 literal,
             ),
-            marker(
-                MarkerKind.FIELD,
+            FieldConstructionTypeExpression(
+                "Field(...)",
+                SPAN,
                 FieldReferenceTypeExpression(
                     "field.name", SPAN, "field", SPAN, attribute="name"
                 ),
@@ -452,8 +456,9 @@ def test_key_map_can_compare_literal_field_types() -> None:
         ),
         marker(
             MarkerKind.DEFAULT,
-            marker(
-                MarkerKind.FIELD,
+            FieldConstructionTypeExpression(
+                "Field(...)",
+                SPAN,
                 FieldReferenceTypeExpression(
                     "field.name", SPAN, "field", SPAN, attribute="name"
                 ),

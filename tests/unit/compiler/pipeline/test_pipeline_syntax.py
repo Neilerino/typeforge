@@ -56,10 +56,9 @@ def test_field_maps_can_drop_fields_and_change_modifiers(tmp_path: Path) -> None
     source = tmp_path / "records.py"
     source.write_text(
         (
-            """\
-from typing import Literal, TypedDict
+            """from typing import Literal, TypedDict
 from typeforge._markers import Equal
-from typeforge import Drop, Map, OptionalField, ReadonlyField, Fields, Record
+from typeforge import Drop, Map, Fields, Record, Field
 
 
 class Credentials(TypedDict):
@@ -73,8 +72,11 @@ type Public[T] = Record(
         Map[
             field.name,
             Equal[field.name, Literal["password"]] : Drop,
-            Equal[field.name, Literal["token"]] : ReadonlyField[field.name, field.type],
-            ... : OptionalField[field.name, field.type],
+            Equal[field.name, Literal["token"]] : Field(
+                name=field.name,
+                type=field.type,
+                readonly=True),
+            ... : Field(name=field.name, type=field.type, required=False),
         ]
         for field in Fields[T]
     )
@@ -110,8 +112,7 @@ def test_documented_record_map_compiles_like_its_underlying_expression(
 ) -> None:
     source = tmp_path / "documented_records.py"
     source.write_text(
-        """\
-
+        """
 from typing import Annotated, TypedDict
 from typeforge import Doc, Field, Fields, Record
 
@@ -119,7 +120,7 @@ class User(TypedDict):
     name: str
 
 type Copy[T] = Annotated[
-    Record((Field[field.name, field.type] for field in Fields[T])),
+    Record(Field(name=field.name, type=field.type) for field in Fields[T]),
     Doc("Copies every field without changing its type."),
 ]
 

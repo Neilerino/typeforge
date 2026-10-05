@@ -12,11 +12,10 @@ from typeforge.compiler.pipeline import compile_source, generate_module
 from typeforge.compiler.source import MarkerKind, MarkerTypeExpression, parse_source
 from typeforge.overlay import transform_source
 
-IMPORTS = """\
-from typing import Literal, Never, TypedDict, Annotated
+IMPORTS = """from typing import Literal, Never, TypedDict, Annotated
 from typeforge import Capture, Map
 from typeforge._markers import Equal, Assignable, All, Not
-from typeforge import Field, OptionalField, Drop, Fields, Record
+from typeforge import Field, Drop, Fields, Record
 from typeforge._markers import Case, Default, Map as CanonicalMap
 from typeforge.pydantic import Schema
 Item = Capture("Item")
@@ -136,8 +135,7 @@ def test_record_alias_slices_use_existing_materialization(tmp_path: Path) -> Non
     path = tmp_path / "example.py"
     source = (
         IMPORTS
-        + """\
-class User(TypedDict):
+        + """class User(TypedDict):
     name: str
     password: str
     age: int
@@ -148,8 +146,11 @@ type Public[T] = Record(
         Map[
             field.name,
             Literal["password"] : Drop,
-            Literal["name"] : OptionalField[Literal["display_name"], field.type],
-            ... : Field[field.name, field.type],
+            Literal["name"] : Field(
+                name="display_name",
+                type=field.type,
+                required=False),
+            ... : Field(name=field.name, type=field.type),
         ]
         for field in Fields[T]
     )

@@ -23,17 +23,16 @@ from typeforge.compiler.source import (
     DefaultMarker,
     DropMarker,
     EqualMarker,
-    FieldMarker,
+    FieldConstructionTypeExpression,
     FieldReferenceTypeExpression,
+    FieldReplacementTypeExpression,
     MapMarker,
     MarkerNormalizationError,
     MarkerTypeExpression,
     NameTypeExpression,
     NormalizedMarker,
     NotMarker,
-    OptionalFieldMarker,
     RawTypeExpression,
-    ReadonlyFieldMarker,
     RecordTypeExpression,
     RuntimeInputTypeExpression,
     SchemaTypeExpression,
@@ -57,14 +56,13 @@ from typeforge.semantics import (
     FieldName,
     FieldNameReference,
     FieldReference,
+    FieldReplacementExpression,
     FieldTypeReference,
     InputReference,
     MapExpression,
     NotExpression,
-    OptionalFieldExpression,
     ParameterizedTypePattern,
     ParameterizedTypeTemplate,
-    ReadonlyFieldExpression,
     RecordExpression,
     TypePattern,
     TypeReference,
@@ -138,6 +136,27 @@ def lower_capture_reference(expression: CaptureTypeExpression) -> CaptureReferen
     )
 
 
+@lower_semantic_expression.register
+def _(
+    expression: FieldReplacementTypeExpression,
+    environment: SemanticEnvironment,
+    output_name: str | None = None,
+    *,
+    role: SemanticRole = "type",
+) -> FieldReplacementExpression[StaticType]:
+    return FieldReplacementExpression(
+        lower_semantic_expression(expression.field, environment, role="output"),
+        name=None
+        if expression.name is None
+        else lower_semantic_expression(expression.name, environment, role="field-name"),
+        value=None
+        if expression.value is None
+        else lower_semantic_expression(expression.value, environment, role="output"),
+        required=expression.required,
+        readonly=expression.readonly,
+    )
+
+
 def _field_symbol(expression: FieldReferenceTypeExpression) -> TypeSymbol:
     declaration = expression.declaration
     return TypeSymbol(
@@ -147,6 +166,22 @@ def _field_symbol(expression: FieldReferenceTypeExpression) -> TypeSymbol:
             str(declaration.start.column),
         ),
         expression.name,
+    )
+
+
+@lower_semantic_expression.register
+def _(
+    expression: FieldConstructionTypeExpression,
+    environment: SemanticEnvironment,
+    output_name: str | None = None,
+    *,
+    role: SemanticRole = "type",
+) -> FieldExpression[StaticType]:
+    return FieldExpression(
+        lower_semantic_expression(expression.name, environment, role="field-name"),
+        lower_semantic_expression(expression.value, environment, role="output"),
+        required=expression.required,
+        readonly=expression.readonly,
     )
 
 
@@ -208,6 +243,15 @@ def _(
     *,
     role: SemanticRole = "type",
 ) -> Expression[StaticType]:
+    if role == "field-name" and isinstance(expression, RawTypeExpression):
+        try:
+            name = ast.literal_eval(expression.source)
+        except SyntaxError, ValueError:
+            pass
+        else:
+            if isinstance(name, str):
+                return FieldName(name)
+
     return TypeReference(NamedType(expression.source))
 
 
@@ -276,16 +320,6 @@ def _(
     match marker:
         case DropMarker():
             return DropExpression()
-        case FieldMarker(key=key, value=value):
-            return FieldExpression(lower(key, "field-name"), lower(value, "output"))
-        case OptionalFieldMarker(key=key, value=value):
-            return OptionalFieldExpression(
-                lower(key, "field-name"), lower(value, "output")
-            )
-        case ReadonlyFieldMarker(key=key, value=value):
-            return ReadonlyFieldExpression(
-                lower(key, "field-name"), lower(value, "output")
-            )
         case MapMarker(subject=subject, entries=entries):
             subject_role: SemanticRole = (
                 "field-name" if _is_field_name_expression(subject) else "type"
@@ -484,6 +518,8 @@ def _requires_evaluation(
             MarkerTypeExpression()
             | CaptureTypeExpression()
             | FieldReferenceTypeExpression()
+            | FieldConstructionTypeExpression()
+            | FieldReplacementTypeExpression()
             | RecordTypeExpression()
             | SchemaTypeExpression()
             | RuntimeInputTypeExpression()

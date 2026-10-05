@@ -37,9 +37,6 @@ MARKER_SIGNATURES = {
     ),
     MarkerKind.CASE: MarkerArity(2, 2, "two type arguments"),
     MarkerKind.DEFAULT: MarkerArity(1, 1, "one type argument"),
-    MarkerKind.FIELD: MarkerArity(2, 2, "two type arguments"),
-    MarkerKind.OPTIONAL_FIELD: MarkerArity(2, 2, "two type arguments"),
-    MarkerKind.READONLY_FIELD: MarkerArity(2, 2, "two type arguments"),
     MarkerKind.DROP: MarkerArity(0, 0, "no type arguments"),
 }
 
@@ -119,27 +116,6 @@ class MapMarker:
 
 
 @dataclass(frozen=True, slots=True)
-class FieldMarker:
-    source: str
-    key: SourceTypeExpression
-    value: SourceTypeExpression
-
-
-@dataclass(frozen=True, slots=True)
-class OptionalFieldMarker:
-    source: str
-    key: SourceTypeExpression
-    value: SourceTypeExpression
-
-
-@dataclass(frozen=True, slots=True)
-class ReadonlyFieldMarker:
-    source: str
-    key: SourceTypeExpression
-    value: SourceTypeExpression
-
-
-@dataclass(frozen=True, slots=True)
 class DropMarker:
     source: str
 
@@ -155,9 +131,6 @@ type NormalizedMarker = (
     | MapMarker
     | CaseMarker
     | DefaultMarker
-    | FieldMarker
-    | OptionalFieldMarker
-    | ReadonlyFieldMarker
     | DropMarker
 )
 
@@ -212,12 +185,6 @@ def normalize_marker(expression: MarkerTypeExpression) -> NormalizedMarker:
             return CaseMarker(source, arguments[0], arguments[1])
         case MarkerKind.DEFAULT:
             return DefaultMarker(source, arguments[0])
-        case MarkerKind.FIELD:
-            return FieldMarker(source, arguments[0], arguments[1])
-        case MarkerKind.OPTIONAL_FIELD:
-            return OptionalFieldMarker(source, arguments[0], arguments[1])
-        case MarkerKind.READONLY_FIELD:
-            return ReadonlyFieldMarker(source, arguments[0], arguments[1])
         case MarkerKind.DROP:
             return DropMarker(source)
 

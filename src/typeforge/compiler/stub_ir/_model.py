@@ -121,14 +121,6 @@ class CaptureType:
 
 
 @dataclass(frozen=True, slots=True)
-class FieldType:
-    name: StubTypeExpression
-    value: StubTypeExpression
-    required: bool = True
-    readonly: bool = False
-
-
-@dataclass(frozen=True, slots=True)
 class RuntimeInputType:
     pass
 
@@ -146,7 +138,6 @@ type StubTypeExpression = (
     | UnionExpression
     | MapType
     | CaptureType
-    | FieldType
     | RuntimeInputType
 )
 

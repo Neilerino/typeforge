@@ -93,5 +93,6 @@ TYPE_FORGE = ArchModule(
         ArchFile(name="_type_function"),
         ArchFile(name="_capture"),
         ArchFile(name="_record"),
+        ArchFile(name="_field"),
     ],
 )

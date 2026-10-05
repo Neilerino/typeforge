@@ -152,7 +152,7 @@ def test_schema_adapter_composes_nested_types(
         ("Item", "capture 'Item' is unbound"),
         ("Equal[int, int]", "Schema must evaluate to a type"),
         (
-            "Record((Field[field.name, field.type] for field in Fields[int]))",
+            "Record(Field(name=field.name, type=field.type) for field in Fields[int])",
             "Record requires a supported record type",
         ),
         ("Map[int, int : Equal[int, int]]", "Schema must evaluate to a type"),

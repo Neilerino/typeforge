@@ -10,17 +10,7 @@ from pydantic import (
     ValidationError,
 )
 from pydantic import Field as PydanticField
-from typeforge import (
-    Capture,
-    Doc,
-    Drop,
-    Field,
-    Fields,
-    Map,
-    OptionalField,
-    ReadonlyField,
-    Record,
-)
+from typeforge import Capture, Doc, Drop, Field, Fields, Map, Record
 from typeforge._markers import Equal
 from typeforge.pydantic import Schema
 
@@ -37,10 +27,10 @@ def test_record_transforms_validate_rename_drop_and_preserve_leaf_constraints() 
         Map[
             field.name,
             Equal[field.name, Literal["password"]] : Drop,
-            Equal[field.name, Literal["name"]] : OptionalField[
-                Literal["display_name"], field.type
-            ],
-            ... : Field[field.name, field.type],
+            Equal[field.name, Literal["name"]] : Field(
+                name="display_name", type=field.type, required=False
+            ),
+            ... : Field(name=field.name, type=field.type),
         ]
         for field in Fields[T]
     )
@@ -62,7 +52,8 @@ def test_record_metadata_and_references_survive_repeated_fields_and_rebuild() ->
 
     type Public[T] = Annotated[
         Record(
-            Map[field.name, ... : Field[field.name, field.type]] for field in Fields[T]
+            Map[field.name, ... : Field(name=field.name, type=field.type)]
+            for field in Fields[T]
         ),
         Doc("Public record"),
     ]
@@ -93,7 +84,7 @@ def test_generic_record_fields_allow_origins_and_independent_specializations() -
     class Payload[T](BaseModel):
         value: Schema[
             Record(
-                Map[field.name, ... : Field[field.name, field.type]]
+                Map[field.name, ... : Field(name=field.name, type=field.type)]
                 for field in Fields[T]
             )
         ]
@@ -116,7 +107,7 @@ def test_generic_typed_dict_fields_bind_before_structural_transforms() -> None:
         values: list[T]
 
     type Converted[T] = Record(
-        Field[field.name, Map[field.type, list[Item] : set[Item]]]
+        Field(name=field.name, type=Map[field.type, list[Item] : set[Item]])
         for field in Fields[Items[T]]
     )
 
@@ -150,7 +141,10 @@ def test_record_adaptation_preserves_inherited_qualifiers_and_nested_metadata() 
     ]
     adapter = TypeAdapter[object](
         Schema[
-            Record(ReadonlyField[field.name, field.type] for field in Fields[Payload])
+            Record(
+                Field(name=field.name, type=field.type, readonly=True)
+                for field in Fields[Payload]
+            )
         ]
     )
     assert adapter.validate_python({"note": "x", "identifier": "3", "token": "a"}) == {
@@ -169,7 +163,7 @@ def test_a_map_can_select_an_annotated_record() -> None:
     type Selected = Map[
         int,
         int : Annotated[
-            Record(Field[field.name, field.type] for field in Fields[User]),
+            Record(Field(name=field.name, type=field.type) for field in Fields[User]),
             Doc("Selected record"),
         ],
     ]
@@ -193,7 +187,7 @@ def test_record_middleware_runs_once_without_leaking_into_children() -> None:
         return {"count": value["count"] * 2}
 
     type Selected = Annotated[
-        Record(Field[field.name, field.type] for field in Fields[User]),
+        Record(Field(name=field.name, type=field.type) for field in Fields[User]),
         AfterValidator(inner),
     ]
     adapter = TypeAdapter[object](Annotated[Schema[Selected], AfterValidator(outer)])
@@ -212,14 +206,18 @@ def test_qualified_record_names_and_transform_literals_keep_refs_independent() -
 
     class Pair(BaseModel):
         left: Schema[
-            Record(Field[field.name, field.type] for field in Fields[Left.User])
+            Record(
+                Field(name=field.name, type=field.type) for field in Fields[Left.User]
+            )
         ]
         right: Schema[
-            Record(Field[field.name, field.type] for field in Fields[Right.User])
+            Record(
+                Field(name=field.name, type=field.type) for field in Fields[Right.User]
+            )
         ]
         renamed: Schema[
             Record(
-                Field[Literal["renamed"], Literal["fixed"]]
+                Field(name="renamed", type=Literal["fixed"])
                 for field in Fields[Left.User]
             )
         ]
@@ -252,22 +250,27 @@ def test_invalid_record_uses_do_not_invent_fields_or_defer_unrelated_failures() 
         with pytest.raises(PydanticSchemaGenerationError, match="unsupported_record"):
             TypeAdapter[object](
                 Schema[
-                    Record(Field[field.name, field.type] for field in Fields[record])
+                    Record(
+                        Field(name=field.name, type=field.type)
+                        for field in Fields[record]
+                    )
                 ]
             )
 
     with pytest.raises(PydanticSchemaGenerationError, match="unsupported_record"):
 
         class Payload[T](BaseModel):
-            value: Schema[Record(Field[field.name, T] for field in Fields[int])]
+            value: Schema[
+                Record(Field(name=field.name, type=T) for field in Fields[int])
+            ]
 
 
 @pytest.mark.parametrize(
     ("transform", "code"),
     [
-        ('Field[Literal["same"], field.type]', "duplicate_field"),
+        ('Field(name="same", type=field.type)', "duplicate_field"),
         ("field.type", "expected_field"),
-        ("Field[Literal[3], field.type]", "expected_field_name"),
+        ("Field(name=Literal[3], type=field.type)", "expected_field_name"),
     ],
 )
 def test_invalid_field_transforms_fail_before_validation(
@@ -295,7 +298,7 @@ def test_partial_generic_records_and_defaults_follow_pydantic_lifecycle() -> Non
     class Parent[T, U](BaseModel):
         value: Schema[
             Record(
-                Map[field.name, ... : Field[field.name, field.type]]
+                Map[field.name, ... : Field(name=field.name, type=field.type)]
                 for field in Fields[T]
             )
         ]
@@ -307,7 +310,7 @@ def test_partial_generic_records_and_defaults_follow_pydantic_lifecycle() -> Non
     class Defaulted[T = User](BaseModel):
         value: Schema[
             Record(
-                Map[field.name, ... : Field[field.name, field.type]]
+                Map[field.name, ... : Field(name=field.name, type=field.type)]
                 for field in Fields[T]
             )
         ]
@@ -315,7 +318,7 @@ def test_partial_generic_records_and_defaults_follow_pydantic_lifecycle() -> Non
     class Bound[T: User](BaseModel):
         value: Schema[
             Record(
-                Map[field.name, ... : Field[field.name, field.type]]
+                Map[field.name, ... : Field(name=field.name, type=field.type)]
                 for field in Fields[T]
             )
         ]
@@ -339,7 +342,7 @@ def test_inherited_generic_typed_dict_arguments_bind_before_field_mapping() -> N
         second: list[U]
 
     type Selected[T] = Record(
-        Field[field.name, Map[field.type, list[Item] : set[Item]]]
+        Field(name=field.name, type=Map[field.type, list[Item] : set[Item]])
         for field in Fields[T]
     )
     result = TypeAdapter[object](Schema[Selected[Child[str]]]).validate_python(
@@ -353,7 +356,9 @@ def test_missing_record_field_name_can_be_resolved_by_model_rebuild() -> None:
         field: Later
 
     class Payload(BaseModel):
-        value: Schema[Record(Field[field.name, field.type] for field in Fields[User])]
+        value: Schema[
+            Record(Field(name=field.name, type=field.type) for field in Fields[User])
+        ]
 
     assert not Payload.__pydantic_complete__
     Later = int
@@ -368,7 +373,9 @@ def test_resolved_record_outputs_need_no_validation_callbacks() -> None:
         value: int
 
     adapter = TypeAdapter[object](
-        Schema[Record(Field[field.name, field.type] for field in Fields[User])]
+        Schema[
+            Record(Field(name=field.name, type=field.type) for field in Fields[User])
+        ]
     )
     assert adapter.validate_json('{"value":"3"}') == {"value": 3}
     assert "function-" not in repr(adapter.core_schema)
@@ -386,7 +393,7 @@ def test_copied_model_bound_typevars_keep_pydantic_serialization() -> None:
 
     class Payload[T: Detail](BaseModel):
         value: Schema[
-            Record(Field[field.name, field.type] for field in Fields[Item[T]])
+            Record(Field(name=field.name, type=field.type) for field in Fields[Item[T]])
         ]
 
     raw = {"value": {"detail": ExtraDetail(label="x", extra=3)}}
@@ -417,7 +424,11 @@ def test_unexpected_record_leaf_hook_failure_keeps_exception_identity() -> None:
 
     with pytest.raises(RuntimeError) as captured:
         TypeAdapter[object](
-            Schema[Record(Field[field.name, field.type] for field in Fields[User])]
+            Schema[
+                Record(
+                    Field(name=field.name, type=field.type) for field in Fields[User]
+                )
+            ]
         )
 
     assert captured.value is failure
@@ -434,5 +445,9 @@ def test_unsupported_record_leaf_schema_is_a_typed_emission_failure() -> None:
         PydanticSchemaGenerationError, match=r"emission failed \[expected_type\]"
     ):
         TypeAdapter[object](
-            Schema[Record(Field[field.name, field.type] for field in Fields[User])]
+            Schema[
+                Record(
+                    Field(name=field.name, type=field.type) for field in Fields[User]
+                )
+            ]
         )
