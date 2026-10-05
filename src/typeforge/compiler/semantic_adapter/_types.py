@@ -8,6 +8,7 @@ from typeforge.semantics import RecordShape
 class NamedType:
     name: str
     bases: tuple[str, ...] = ()
+    identity: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

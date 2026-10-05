@@ -13,6 +13,7 @@ from typeforge.semantics.domain.models import (
     IndeterminateCondition,
     IndeterminateType,
     ParameterizedTypePattern,
+    ParameterizedTypeShape,
     ResolvedType,
     TypePattern,
     TypeValue,
@@ -22,6 +23,7 @@ from typeforge.semantics.domain.models import (
 from typeforge.semantics.protocols import TypeSystem
 from typeforge.semantics.type_evaluation import (
     assignable_types,
+    build_type,
     consensus,
     equal_types,
     indeterminate_type,
@@ -44,6 +46,48 @@ class _R_MatchTypePattern[T](NamedTuple):
     @classmethod
     def mismatch(cls) -> _R_MatchTypePattern[T]:
         return cls(matched=False, value_binding=None)
+
+
+def match_map_pattern[T](
+    pattern: TypePattern[T], subject: TypeValue[T], type_system: TypeSystem[T]
+) -> _R_MatchTypePattern[T]:
+    """Resolved fixed selectors use compatibility; captures retain structural rules."""
+    # Partially known shapes retain structural proofs and their provenance;
+    # native variance operations require complete backend types.
+    if isinstance(subject, ResolvedType) and isinstance(
+        pattern, ParameterizedTypePattern
+    ):
+        target = _fixed_pattern_type(pattern, type_system)
+        if target is not None:
+            return _R_MatchTypePattern(assignable_types(subject, target, type_system))
+
+    return match_type_pattern(pattern, subject, type_system)
+
+
+def _fixed_pattern_type[T](
+    pattern: TypePattern[T], type_system: TypeSystem[T]
+) -> TypeValue[T] | None:
+    match pattern:
+        case ExactTypePattern(value=value):
+            return ResolvedType(value)
+        case TypeValueReference(value=value):
+            return value if isinstance(value, ResolvedType) else None
+        case CaptureValuePattern():
+            return None
+        case ParameterizedTypePattern(origin=origin, arguments=arguments):
+            values: list[TypeValue[T]] = []
+            for argument in arguments:
+                argument_type = _fixed_pattern_type(argument, type_system)
+                if argument_type is None:
+                    return None
+
+                values.append(argument_type)
+
+            return build_type(
+                ParameterizedTypeShape(ResolvedType(origin), tuple(values)), type_system
+            )
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
 @singledispatch

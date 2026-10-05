@@ -151,6 +151,20 @@ output aliases still delegate metadata, references, and recursion to Pydantic.
 The runtime union builder flattens and deduplicates in encounter order without
 absorbing explicit members beside Any, preserving later whole-type comparisons.
 
+Resolved fixed generic selectors use assignment compatibility rather than capture
+matching. Shared generic policy receives backend-neutral GenericType facts:
+list/set/dict are invariant, Sequence/frozenset/tuple are covariant, and Mapping
+keys are invariant while values are covariant. Lists and tuples can match
+Sequence; dict can match Mapping. Mutual assignment in invariant positions keeps
+Python's gradual Any rule. Native origins and unsupported facts stay behind
+TypeSystem adapters; imported generic identity is separate from emitted spelling.
+
+This is a finite frontier. Different arguments for an unknown generic origin
+produce a typed diagnostic, including when a fallback exists. Identical types
+can still match without requiring variance facts. Partially known shapes retain
+their structural proofs and provenance; broader variance reasoning for unresolved
+parameters and compatible interface captures belongs to subsequent slices.
+
 Pydantic diagnostic display reconstructs slice branches from canonical typing
 arguments without expanding aliases or interpreting Literal/Annotated payloads.
 Issue data, codes, phases, and validation locations stay unchanged; display does

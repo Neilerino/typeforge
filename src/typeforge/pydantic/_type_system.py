@@ -1,5 +1,6 @@
 """Python typing operations behind the shared TypeSystem interface."""
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import partial
 from operator import getitem
@@ -23,11 +24,15 @@ import typeforge.pydantic._records as _records
 from typeforge.pydantic._policy import generic_fallback
 from typeforge.pydantic._records import UnsupportedRecord, record_shape
 from typeforge.semantics import (
+    GenericFamily,
+    GenericType,
     ParameterizedTypeShape,
     RecordField,
     RecordShape,
     SemanticAdapterError,
     SemanticIssue,
+    UnsupportedExpressionSemanticError,
+    compatible_generics,
 )
 from typeforge.utils.error_handling import safe_result
 from typeforge.utils.iteration import tmap
@@ -101,6 +106,12 @@ def _assignable(source: object, target: object) -> bool:
     if source == target:
         return True
 
+    if get_origin(source) is Annotated:
+        return _assignable(get_args(source)[0], target)
+
+    if get_origin(target) is Annotated:
+        return _assignable(source, get_args(target)[0])
+
     if isinstance(source, type):
         if (target is float or target is complex) and issubclass(source, int):
             return True
@@ -122,6 +133,43 @@ def _assignable(source: object, target: object) -> bool:
         return False
 
     source_origin, target_origin = get_origin(source), get_origin(target)
+    if source_origin is not None and target_origin is not None:
+        return compatible_generics(
+            _generic_type(source), _generic_type(target), RUNTIME_TYPE_SYSTEM
+        )
+
+    if target_origin is not None and isinstance(source, type):
+        primitives = (
+            bool,
+            int,
+            float,
+            complex,
+            str,
+            bytes,
+            bytearray,
+            object,
+            type(None),
+        )
+        if not any(source is primitive for primitive in primitives):
+            raise UnsupportedExpressionSemanticError(
+                f"{source!r} is outside supported generic compatibility"
+            )
+
+        if isinstance(target_origin, type):
+            try:
+                related = issubclass(source, target_origin)
+            except TypeError as error:
+                raise UnsupportedExpressionSemanticError(
+                    f"{source!r} is outside supported generic compatibility"
+                ) from error
+
+            if not related:
+                return False
+
+        raise UnsupportedExpressionSemanticError(
+            f"{source!r} is outside supported generic compatibility"
+        )
+
     source_class, target_class = source_origin or source, target_origin or target
     if isinstance(source_class, type) and isinstance(target_class, type):
         try:
@@ -144,10 +192,9 @@ class RuntimeTypeSystem:
     ) -> Result[bool, SemanticIssue]:
         return Success(left.value == right.value)
 
-    def assignable(
-        self, source: RuntimeType, target: RuntimeType
-    ) -> Result[bool, SemanticIssue]:
-        return Success(_assignable(source.value, target.value))
+    @safe_result(errors=(SemanticIssue,))
+    def assignable(self, source: RuntimeType, target: RuntimeType) -> bool:
+        return _assignable(source.value, target.value)
 
     def union_members(
         self, value: RuntimeType
@@ -240,6 +287,31 @@ class RuntimeTypeSystem:
 
 
 RUNTIME_TYPE_SYSTEM = RuntimeTypeSystem()
+
+
+def _generic_type(value: object) -> GenericType[RuntimeType]:
+    origin = get_origin(value)
+    families = (
+        (list, GenericFamily.LIST),
+        (set, GenericFamily.SET),
+        (dict, GenericFamily.DICT),
+        (frozenset, GenericFamily.FROZENSET),
+        (tuple, GenericFamily.TUPLE),
+        (Sequence, GenericFamily.SEQUENCE),
+        (Mapping, GenericFamily.MAPPING),
+    )
+    family = next((family for native, family in families if origin is native), None)
+    if family is None:
+        raise UnsupportedExpressionSemanticError(
+            f"{origin!r} is outside supported generic compatibility"
+        )
+
+    arguments: tuple[object, ...] = get_args(value)
+    variadic = family is GenericFamily.TUPLE and arguments[-1:] == (Ellipsis,)
+    if variadic:
+        arguments = arguments[:-1]
+
+    return GenericType(family, tmap(concrete_type, arguments), variadic=variadic)
 
 
 @safe_result(errors=(SemanticIssue,))
