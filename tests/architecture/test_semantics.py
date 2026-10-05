@@ -96,7 +96,10 @@ def test_semantics_dependencies_point_toward_the_domain(
         .may_only_depend_on_layers(domain.name, protocols.name)
         .where_layer(map_matching.name)
         .may_only_depend_on_layers(
-            domain.name, protocols.name, SEMANTICS.file("type_evaluation").name
+            domain.name,
+            protocols.name,
+            SEMANTICS.file("type_evaluation").name,
+            SEMANTICS.file("generic_compatibility").name,
         )
         .where_layer(evaluation.name)
         .may_only_depend_on_layers(
