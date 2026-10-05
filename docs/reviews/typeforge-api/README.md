@@ -20,7 +20,7 @@ and test files were unchanged when those artifacts were removed from PR diffs.
 | 05 | Basic generic type functions | 01 | [#5](https://github.com/Neilerino/typeforge/pull/5) |
 | 06 | Named captures and isolation | 05 | [#6](https://github.com/Neilerino/typeforge/pull/6) |
 | 07 | Compatible generic interface captures | 02, 04, 06 | [#7](https://github.com/Neilerino/typeforge/pull/7) |
-| 08 | Alternative capture patterns | 02, 06 | Pending |
+| 08 | Alternative capture patterns | 02, 06 | [#8](https://github.com/Neilerino/typeforge/pull/8) |
 | 09 | Record and Fields goal API | 05 | Pending |
 | 10 | Field construction and immutable edits | 09 | Pending |
 | 11 | Local generic aliases and composition | 06, 09 | Pending |

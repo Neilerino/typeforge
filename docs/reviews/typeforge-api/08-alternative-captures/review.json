@@ -1,0 +1,25 @@
+{
+  "diagram_type": "architecture",
+  "code_revision": "9dc7cf872d8f4b33ac74e17f32b87edaf11c21be",
+  "specification_sha256": "f65cb29695ec3fc92f676667766d0315124f98a67c51b6329df42590ddfa8c79",
+  "artifact_sha256": "caa21ac3b3ab9c10cf856c1793af50a43e86871ad086291d22fc9fa9ea862437",
+  "artifact_bytes": 723059,
+  "validation": "9/9 showcase, 0 errors, 0 warnings",
+  "browser_evidence": "passed",
+  "visual_review": "passed",
+  "correction_rounds": 0,
+  "reviewer": "Codex image-capable review",
+  "inspected_captures": [
+    "architecture.visual-check.1440x900.light.png",
+    "architecture.visual-check.1440x900.dark.png",
+    "architecture.visual-check.2048x1320.light.png",
+    "architecture.visual-check.2048x1320.dark.png"
+  ],
+  "observations": [
+    "All four endpoint light/dark screenshots inspected at original resolution.",
+    "Complete-output path is clear; source links distinguish new data from existing owners and future precision.",
+    "No clipped labels, masked routes, ambiguous corridors, or node intersections.",
+    "All four automated desktop measurements show containment and readability; both endpoint compositions remain balanced.",
+    "Automated visualReview=pending remains unchanged; this is separate perceptual evidence."
+  ]
+}

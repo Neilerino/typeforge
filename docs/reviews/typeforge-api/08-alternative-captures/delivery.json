@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/neilwadden/.codex/visualizations/2026/09/07/01a07d18-ce62-7e82-bf3c-06a7362ad7d9/typeforge-stack/docs/reviews/typeforge-api/08-alternative-captures/architecture.json",
+  "output": "/Users/neilwadden/.codex/visualizations/2026/09/07/01a07d18-ce62-7e82-bf3c-06a7362ad7d9/typeforge-stack/docs/reviews/typeforge-api/08-alternative-captures/architecture.html",
+  "specification": {
+    "sha256": "f65cb29695ec3fc92f676667766d0315124f98a67c51b6329df42590ddfa8c79",
+    "bytes": 9167
+  },
+  "artifact": {
+    "sha256": "caa21ac3b3ab9c10cf856c1793af50a43e86871ad086291d22fc9fa9ea862437",
+    "bytes": 723059
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  },
+  "evidence": {
+    "verified": true,
+    "repository": "https://github.com/Neilerino/typeforge",
+    "revision": "9dc7cf872d8f4b33ac74e17f32b87edaf11c21be",
+    "references": 16
+  }
+}

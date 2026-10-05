@@ -1,0 +1,374 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Slice 08 \u00b7 Correlated capture alternatives \u00b7 C4 code",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "viewBox": [
+      1344,
+      570
+    ],
+    "repository": {
+      "url": "https://github.com/Neilerino/typeforge",
+      "revision": "9dc7cf872d8f4b33ac74e17f32b87edaf11c21be"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [
+      26,
+      65
+    ],
+    "cols": 4,
+    "gapX": 40,
+    "gapY": 82,
+    "cellW": 290,
+    "cellH": 100
+  },
+  "components": [
+    {
+      "id": "overlap_author",
+      "type": "external",
+      "label": "Repeated[T] authoring",
+      "sublabel": "Overlapping patterns; homogeneous pairs",
+      "tag": "USER STORY",
+      "row": 0,
+      "col": 0,
+      "size": [
+        290,
+        100
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_alternative_capture_contract.py",
+          "line": 15,
+          "label": "Accepted overlap + runtime rejection"
+        }
+      ]
+    },
+    {
+      "id": "alternative_lowerers",
+      "type": "frontend",
+      "label": "Compiler / runtime lowerers",
+      "sublabel": "Capture unions become structural alternatives",
+      "tag": "CHANGED",
+      "row": 0,
+      "col": 1,
+      "size": [
+        290,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_lowering.py",
+          "line": 358,
+          "label": "Source selector lowering"
+        },
+        {
+          "path": "src/typeforge/pydantic/_frontend.py",
+          "line": 536,
+          "label": "Runtime pattern lowering"
+        }
+      ]
+    },
+    {
+      "id": "independent_matches",
+      "type": "backend",
+      "label": "Alternative matching",
+      "sublabel": "Each success retains condition and bindings",
+      "tag": "CHANGED",
+      "row": 0,
+      "col": 2,
+      "size": [
+        290,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/map_matching.py",
+          "line": 201,
+          "label": "Alternative matcher"
+        },
+        {
+          "path": "src/typeforge/semantics/map_matching.py",
+          "line": 47,
+          "label": "Independent match results"
+        }
+      ]
+    },
+    {
+      "id": "complete_instantiation",
+      "type": "backend",
+      "label": "Evaluator output instantiation",
+      "sublabel": "Evaluate complete outputs in each context",
+      "tag": "CHANGED",
+      "row": 0,
+      "col": 3,
+      "size": [
+        290,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 518,
+          "label": "Instantiate before union"
+        }
+      ]
+    },
+    {
+      "id": "alternative_pattern_data",
+      "type": "database",
+      "label": "AlternativeTypePattern",
+      "sublabel": "Distinct from an ordinary type union",
+      "tag": "NEW DOMAIN DATA",
+      "row": 1,
+      "col": 0,
+      "size": [
+        290,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/domain/models.py",
+          "line": 79,
+          "label": "Structural alternatives"
+        }
+      ]
+    },
+    {
+      "id": "repeat_capture_invariants",
+      "type": "backend",
+      "label": "Named capture invariants",
+      "sublabel": "Exact repeats; nested reuse; failed isolation",
+      "tag": "EXISTING \u00b7 SLICE 06",
+      "row": 1,
+      "col": 1,
+      "size": [
+        290,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/map_matching.py",
+          "line": 165,
+          "label": "Declaration-scoped reconciliation"
+        }
+      ]
+    },
+    {
+      "id": "selected_contexts",
+      "type": "database",
+      "label": "MapSelection.output_contexts",
+      "sublabel": "Retain successful environments until output",
+      "tag": "NEW SELECTION DATA",
+      "row": 1,
+      "col": 2,
+      "size": [
+        290,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/domain/models.py",
+          "line": 299,
+          "label": "Selected output data"
+        },
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 541,
+          "label": "Bind selection contexts"
+        }
+      ]
+    },
+    {
+      "id": "complete_output_union",
+      "type": "backend",
+      "label": "union_type",
+      "sublabel": "Union results after substitution; keep provenance",
+      "tag": "EXISTING",
+      "row": 1,
+      "col": 3,
+      "size": [
+        290,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/type_evaluation.py",
+          "line": 209,
+          "label": "Shared union construction"
+        }
+      ]
+    },
+    {
+      "id": "generic_capture_bounds",
+      "type": "backend",
+      "label": "Unknown generic bounds",
+      "sublabel": "Conservative declaration; precise applications",
+      "tag": "EXISTING \u00b7 SLICE 05 / 06",
+      "row": 2,
+      "col": 0,
+      "size": [
+        290,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/adaptation/_source_to_ir.py",
+          "line": 357,
+          "label": "Generic recovery / application"
+        }
+      ]
+    },
+    {
+      "id": "overlap_contracts",
+      "type": "security",
+      "label": "Production regressions",
+      "sublabel": "Missing bindings and later errors still fail",
+      "tag": "30 REGRESSIONS",
+      "row": 2,
+      "col": 1,
+      "size": [
+        290,
+        100
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_alternative_capture_contract.py",
+          "line": 180,
+          "label": "Unbound matched alternatives"
+        },
+        {
+          "path": "tests/unit/semantics/test_migration_spec.py",
+          "line": 364,
+          "label": "Later failure after earlier success"
+        }
+      ]
+    },
+    {
+      "id": "callable_precision_frontier",
+      "type": "external",
+      "label": "Later callable precision",
+      "sublabel": "14 input contracts \u00b7 15 complete outputs",
+      "tag": "FUTURE \u00b7 NOT IMPLEMENTED",
+      "row": 2,
+      "col": 2,
+      "size": [
+        290,
+        100
+      ]
+    },
+    {
+      "id": "native_consumers",
+      "type": "external",
+      "label": "Native output consumers",
+      "sublabel": "Pydantic + mypy / pyright / pyrefly",
+      "tag": "EXISTING INTEGRATIONS",
+      "row": 2,
+      "col": 3,
+      "size": [
+        290,
+        100
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_alternative_capture_contract.py",
+          "line": 284,
+          "label": "Three checker projections"
+        },
+        {
+          "path": "tests/unit/test_alternative_capture_contract.py",
+          "line": 142,
+          "label": "Compiler/runtime complete outputs"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "author_lowering",
+      "from": "overlap_author",
+      "to": "alternative_lowerers",
+      "label": "lower"
+    },
+    {
+      "id": "lowering_match_sets",
+      "from": "alternative_lowerers",
+      "to": "independent_matches",
+      "label": "match",
+      "variant": "emphasis"
+    },
+    {
+      "id": "matches_instantiation",
+      "from": "independent_matches",
+      "to": "complete_instantiation",
+      "label": "instantiate",
+      "variant": "emphasis",
+      "labelDy": -44
+    },
+    {
+      "id": "lowering_pattern_data",
+      "from": "alternative_lowerers",
+      "to": "repeat_capture_invariants",
+      "label": "identity",
+      "labelDy": 24
+    },
+    {
+      "id": "matches_selection_data",
+      "from": "independent_matches",
+      "to": "selected_contexts",
+      "label": "contexts",
+      "labelDy": 24
+    },
+    {
+      "id": "instantiation_union",
+      "from": "complete_instantiation",
+      "to": "complete_output_union",
+      "label": "complete results",
+      "labelDy": 24
+    },
+    {
+      "id": "union_native_consumers",
+      "from": "complete_output_union",
+      "to": "native_consumers",
+      "label": "types",
+      "labelDy": 24
+    },
+    {
+      "id": "contexts_precision_frontier",
+      "from": "selected_contexts",
+      "to": "callable_precision_frontier",
+      "label": "later projection",
+      "variant": "dashed",
+      "labelDy": 24
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Author outcome",
+      "items": [
+        "tuple[int, str] \u2192 tuple[int, int] | tuple[str, str].",
+        "One branch has alternatives; separate branches express priority."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Review focus",
+      "items": [
+        "Keep environments separate through nested positions and complete output evaluation.",
+        "A matched unbound output fails; later adapter errors propagate."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Current boundary",
+      "items": [
+        "Known subjects specialize precisely; unknown subjects retain conservative bounds.",
+        "Raw Input does not infer generic arguments; callable precision follows later."
+      ]
+    }
+  ]
+}
