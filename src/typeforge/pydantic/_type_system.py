@@ -80,9 +80,6 @@ def _union(values: tuple[object, ...]) -> object:
     members: list[object] = []
     for value in values:
         for member in _members(value):
-            if member is Any:
-                return Any
-
             if member not in members:
                 members.append(member)
 
