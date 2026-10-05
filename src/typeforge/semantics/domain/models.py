@@ -76,6 +76,13 @@ class ParameterizedTypePattern[T]:
 
 
 @dataclass(frozen=True, slots=True)
+class AlternativeTypePattern[T]:
+    """Unordered structural alternatives with independent capture environments."""
+
+    members: tuple[TypePattern[T], ...]
+
+
+@dataclass(frozen=True, slots=True)
 class UnionExpression[T]:
     members: tuple[Expression[T], ...]
 
@@ -294,12 +301,15 @@ class MapSelection[T]:
 
     A missing case index identifies Default. Static selection may be indeterminate;
     its caller explores the selected output and reachable remainder separately.
+    Multiple output contexts preserve successful alternatives independently until
+    the caller instantiates and unions their complete outputs.
     """
 
     output: Expression[T]
     context: EvaluationContext[T]
     case_index: int | None
     condition: Condition = True
+    output_contexts: tuple[EvaluationContext[T], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -359,6 +369,7 @@ type TypePattern[T] = (
     ExactTypePattern[T]
     | CaptureReference
     | ParameterizedTypePattern[T]
+    | AlternativeTypePattern[T]
     | TypeValueReference[T]
 )
 
@@ -399,5 +410,6 @@ def is_pattern_expr[T](
         ExactTypePattern
         | CaptureReference
         | ParameterizedTypePattern
+        | AlternativeTypePattern
         | TypeValueReference,
     )

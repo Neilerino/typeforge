@@ -485,7 +485,7 @@ class _AnnotationAdapter:
                     default=None if default is None else self._name_expression(default),
                 )
 
-            case s.ParameterizedTypePattern():
+            case s.ParameterizedTypePattern() | s.AlternativeTypePattern():
                 raise invalid(
                     self.origins[id(expression)],
                     "A field name must be Key or a string Literal",
@@ -562,6 +562,12 @@ class _AnnotationAdapter:
                 if len(values) == len(members):
                     return s.ExactTypePattern(
                         RUNTIME_TYPE_SYSTEM.union(values).unwrap()
+                    )
+
+                patterns = tuple(self._pattern(member) for member in members)
+                if all(pattern is not None for pattern in patterns):
+                    return s.AlternativeTypePattern(
+                        tuple(pattern for pattern in patterns if pattern is not None)
                     )
 
             case s.ParameterizedTypeTemplate(origin=origin, arguments=arguments):
