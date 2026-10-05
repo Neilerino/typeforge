@@ -1,0 +1,392 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Slice 07 \u00b7 Sequence interface captures \u00b7 C4 code",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "viewBox": [
+      1344,
+      570
+    ],
+    "repository": {
+      "url": "https://github.com/Neilerino/typeforge",
+      "revision": "7e0f657505f42bdd839258bdea282785c81c804f"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [
+      26,
+      65
+    ],
+    "cols": 4,
+    "gapX": 40,
+    "gapY": 82,
+    "cellW": 290,
+    "cellH": 100
+  },
+  "components": [
+    {
+      "id": "element_author",
+      "type": "external",
+      "label": "Element[T] authoring",
+      "sublabel": "Sequence[Item] discovers elements",
+      "tag": "USER STORY",
+      "row": 0,
+      "col": 0,
+      "sources": [
+        {
+          "path": "tests/unit/test_interface_capture_contract.py",
+          "line": 15,
+          "label": "Accepted list witness"
+        }
+      ],
+      "size": [
+        290,
+        100
+      ]
+    },
+    {
+      "id": "pattern_frontends",
+      "type": "frontend",
+      "label": "Pattern frontends",
+      "sublabel": "Source and runtime \u2192 shared patterns",
+      "tag": "EXISTING",
+      "row": 0,
+      "col": 1,
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_lowering.py",
+          "line": 384,
+          "label": "Source pattern lowering"
+        },
+        {
+          "path": "src/typeforge/pydantic/_frontend.py",
+          "line": 525,
+          "label": "Runtime case patterns"
+        }
+      ],
+      "size": [
+        290,
+        100
+      ]
+    },
+    {
+      "id": "interface_projection",
+      "type": "backend",
+      "label": "_project_interface",
+      "sublabel": "Project element positions; retain identity",
+      "tag": "CHANGED",
+      "row": 0,
+      "col": 2,
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/map_matching.py",
+          "line": 237,
+          "label": "Compatible projection"
+        }
+      ],
+      "size": [
+        290,
+        100
+      ]
+    },
+    {
+      "id": "ordered_outputs",
+      "type": "backend",
+      "label": "Evaluator",
+      "sublabel": "One complete output per subject member",
+      "tag": "EXISTING",
+      "row": 0,
+      "col": 3,
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 428,
+          "label": "Union member selection"
+        },
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 519,
+          "label": "Ordered branch selection"
+        }
+      ],
+      "size": [
+        290,
+        100
+      ]
+    },
+    {
+      "id": "binding_rules",
+      "type": "backend",
+      "label": "Capture bindings",
+      "sublabel": "Repeat exactly; discard failed attempts",
+      "tag": "EXISTING \u00b7 SLICE 06",
+      "row": 1,
+      "col": 0,
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/map_matching.py",
+          "line": 145,
+          "label": "Named capture reconciliation"
+        }
+      ],
+      "size": [
+        290,
+        100
+      ]
+    },
+    {
+      "id": "native_generic_facts",
+      "type": "backend",
+      "label": "TypeSystem.generic_type",
+      "sublabel": "Adapters own origins and tuple markers",
+      "tag": "NEW PROTOCOL METHOD",
+      "row": 1,
+      "col": 1,
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/protocols.py",
+          "line": 83,
+          "label": "Adapter seam"
+        },
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_type_system.py",
+          "line": 85,
+          "label": "Compiler facts"
+        },
+        {
+          "path": "src/typeforge/pydantic/_type_system.py",
+          "line": 264,
+          "label": "Runtime facts"
+        }
+      ],
+      "size": [
+        290,
+        100
+      ]
+    },
+    {
+      "id": "sequence_family_policy",
+      "type": "backend",
+      "label": "sequence_elements",
+      "sublabel": "list / tuple / Sequence \u2192 element union",
+      "tag": "SHARED FINITE POLICY",
+      "row": 1,
+      "col": 2,
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/generic_compatibility.py",
+          "line": 88,
+          "label": "Single family relation"
+        },
+        {
+          "path": "src/typeforge/semantics/type_evaluation.py",
+          "line": 209,
+          "label": "Union provenance"
+        }
+      ],
+      "size": [
+        290,
+        100
+      ]
+    },
+    {
+      "id": "native_type_outputs",
+      "type": "backend",
+      "label": "Existing emission",
+      "sublabel": "Standard .pyi types and Pydantic schemas",
+      "tag": "EXISTING",
+      "row": 1,
+      "col": 3,
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_emission.py",
+          "line": 1,
+          "label": "Static type emission"
+        },
+        {
+          "path": "src/typeforge/pydantic/_emission.py",
+          "line": 1,
+          "label": "Runtime type emission"
+        }
+      ],
+      "size": [
+        290,
+        100
+      ]
+    },
+    {
+      "id": "generic_domain",
+      "type": "database",
+      "label": "GenericType data",
+      "sublabel": "Family, arguments, variadic tuple fact",
+      "tag": "EXISTING \u00b7 SLICE 04",
+      "row": 2,
+      "col": 0,
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/domain/generics.py",
+          "line": 1,
+          "label": "Backend-neutral facts"
+        }
+      ],
+      "size": [
+        290,
+        100
+      ]
+    },
+    {
+      "id": "production_witnesses",
+      "type": "security",
+      "label": "Production contracts",
+      "sublabel": "Correlation, identity, typed failures",
+      "tag": "27 NEW REGRESSIONS",
+      "row": 2,
+      "col": 1,
+      "sources": [
+        {
+          "path": "tests/unit/test_interface_capture_contract.py",
+          "line": 92,
+          "label": "Complete-output contracts"
+        },
+        {
+          "path": "tests/unit/semantics/test_migration_spec.py",
+          "line": 326,
+          "label": "Failure identity and propagation"
+        }
+      ],
+      "size": [
+        290,
+        100
+      ]
+    },
+    {
+      "id": "next_capture_frontiers",
+      "type": "external",
+      "label": "Next capture frontiers",
+      "sublabel": "08 alternatives \u00b7 15 callable precision",
+      "tag": "FUTURE \u00b7 NOT IMPLEMENTED",
+      "row": 2,
+      "col": 2,
+      "size": [
+        290,
+        100
+      ]
+    },
+    {
+      "id": "checker_consumers",
+      "type": "external",
+      "label": "Existing type checkers",
+      "sublabel": "mypy / pyright / pyrefly check outputs",
+      "tag": "3 CHECKER WITNESSES",
+      "row": 2,
+      "col": 3,
+      "sources": [
+        {
+          "path": "tests/unit/test_interface_capture_contract.py",
+          "line": 203,
+          "label": "Accept precise types; reject misuse"
+        }
+      ],
+      "size": [
+        290,
+        100
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "author_patterns",
+      "from": "element_author",
+      "to": "pattern_frontends",
+      "label": "normalize",
+      "labelDy": -44
+    },
+    {
+      "id": "frontends_projection",
+      "from": "pattern_frontends",
+      "to": "interface_projection",
+      "label": "patterns",
+      "variant": "emphasis",
+      "labelDy": -44
+    },
+    {
+      "id": "projection_outputs",
+      "from": "interface_projection",
+      "to": "ordered_outputs",
+      "label": "bindings",
+      "variant": "emphasis",
+      "labelDy": -44
+    },
+    {
+      "id": "frontend_native_facts",
+      "from": "pattern_frontends",
+      "to": "native_generic_facts",
+      "label": "native types",
+      "labelDy": 24
+    },
+    {
+      "id": "facts_sequence_policy",
+      "from": "native_generic_facts",
+      "to": "sequence_family_policy",
+      "label": "facts"
+    },
+    {
+      "id": "projection_sequence_policy",
+      "from": "interface_projection",
+      "to": "sequence_family_policy",
+      "label": "project",
+      "labelDy": 24
+    },
+    {
+      "id": "output_emission",
+      "from": "ordered_outputs",
+      "to": "native_type_outputs",
+      "label": "selected type",
+      "labelDy": 24
+    },
+    {
+      "id": "emission_checkers",
+      "from": "native_type_outputs",
+      "to": "checker_consumers",
+      "label": ".pyi",
+      "labelDy": 24
+    },
+    {
+      "id": "family_future_frontier",
+      "from": "sequence_family_policy",
+      "to": "next_capture_frontiers",
+      "label": "extension seam",
+      "variant": "dashed",
+      "labelDy": 24
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Author outcome",
+      "items": [
+        "list[bool] \u2192 bool; tuple[int, str] \u2192 int | str.",
+        "Separate subject members retain complete correlated outputs."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Review focus",
+      "items": [
+        "One Sequence family relation serves compatibility and capture projection.",
+        "Native facts stay in adapters; semantic provenance survives."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Finite frontier",
+      "items": [
+        "Opaque origins fail; known non-Sequence families mismatch.",
+        "Generic declarations keep honest bounds; callable inference follows later."
+      ]
+    }
+  ]
+}

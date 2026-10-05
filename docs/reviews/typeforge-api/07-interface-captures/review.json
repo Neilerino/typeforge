@@ -1,0 +1,24 @@
+{
+  "diagram_type": "architecture",
+  "code_revision": "7e0f657505f42bdd839258bdea282785c81c804f",
+  "specification_sha256": "5d6c0fb128ad5a0439f416a296a58af5e152e35e673c3b7bd4249de3a610107d",
+  "artifact_sha256": "7dc68dadd6709dc675f683df65ac66c221baf2d277c930dbd7fb650f63f226e1",
+  "artifact_bytes": 723447,
+  "validation": "9/9 showcase, 0 errors, 0 warnings",
+  "browser_evidence": "passed",
+  "visual_review": "passed",
+  "correction_rounds": 0,
+  "reviewer": "Codex image-capable review",
+  "inspected_captures": [
+    "architecture.visual-check.1440x900.light.png",
+    "architecture.visual-check.1440x900.dark.png",
+    "architecture.visual-check.2048x1320.light.png",
+    "architecture.visual-check.2048x1320.dark.png"
+  ],
+  "observations": [
+    "All four endpoint screenshots inspected at original resolution.",
+    "No clipped labels, masked routes, ambiguous corridors, or node intersections.",
+    "Readable and vertically balanced at both endpoint sizes; four automated viewport measurements show no overflow.",
+    "The automated browser receipt retains visualReview=pending; this is a separate perceptual review."
+  ]
+}
