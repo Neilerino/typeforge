@@ -1,0 +1,17 @@
+{
+  "diagram_type": "architecture",
+  "output": "architecture.html",
+  "specification_sha256": "53cd3163ce3796be47a181f62b12ac2e3b1ee325dd27eac9789d8b843ccf41b8",
+  "artifact_sha256": "bae668fe02323130ae13bf27439e04f20b4564889dfb5eb725a3179b3e9228e2",
+  "validation": "9/9 showcase, 0 errors, 0 warnings",
+  "browser_evidence": "passed",
+  "visual_review": "passed",
+  "correction_rounds": 0,
+  "reviewed_captures": [
+    "architecture.visual-check.1440x900.light.png",
+    "architecture.visual-check.1440x900.dark.png",
+    "architecture.visual-check.2048x1320.light.png",
+    "architecture.visual-check.2048x1320.dark.png"
+  ],
+  "observations": "All four endpoint captures were inspected. Runtime and compiler paths, convergence on the shared matcher, capture context, finite IR, source badges, and review cards are legible in both themes. The desktop endpoints fit with no clipping, obscured relationships, or ambiguous corridors. The composition remains balanced at the largest viewport."
+}

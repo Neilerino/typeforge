@@ -1,0 +1,419 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "06 \u00b7 Named captures bind once within an isolated match",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1344,
+      570
+    ],
+    "repository": {
+      "url": "https://github.com/Neilerino/typeforge",
+      "revision": "130a02201fedb9f0e727a143b788633519002d5b"
+    }
+  },
+  "components": [
+    {
+      "id": "capture-next-frontiers",
+      "type": "external",
+      "label": "Interfaces \u00b7 alternatives \u00b7 callables",
+      "sublabel": "Slices 07 / 08 / 15 extend this foundation",
+      "tag": "FUTURE",
+      "pos": [
+        34,
+        40
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "README.md",
+          "label": "Remaining capture frontiers"
+        }
+      ]
+    },
+    {
+      "id": "capture-retained-template",
+      "type": "database",
+      "label": "TypeAliasType template",
+      "sublabel": "Construction once; keep token identity",
+      "tag": "REUSED FROM SLICE 05",
+      "pos": [
+        342,
+        40
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/_type_function.py",
+          "label": "Template validation"
+        }
+      ]
+    },
+    {
+      "id": "capture-binding-data",
+      "type": "database",
+      "label": "CaptureReference / context",
+      "sublabel": "TypeSymbol \u2192 immutable named bindings",
+      "tag": "NEW SHARED DATA",
+      "pos": [
+        678,
+        40
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/domain/models.py",
+          "label": "Symbol and context",
+          "line": 197
+        }
+      ]
+    },
+    {
+      "id": "capture-native-outputs",
+      "type": "frontend",
+      "label": "Typing stubs / CoreSchema",
+      "sublabel": "Existing checkers own ordinary checks",
+      "tag": "EXISTING OUTPUT",
+      "pos": [
+        1014,
+        40
+      ],
+      "size": [
+        296,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_emission.py",
+          "label": "Static output"
+        },
+        {
+          "path": "src/typeforge/pydantic/_emission.py",
+          "label": "Runtime output"
+        }
+      ]
+    },
+    {
+      "id": "capture-author-outcome",
+      "type": "external",
+      "label": "@type_function \u00b7 Capture",
+      "sublabel": "list[int] \u2192 tuple[int, ...] with Item",
+      "tag": "USER OUTCOME",
+      "pos": [
+        34,
+        210
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_named_capture_contract.py",
+          "label": "Authored production examples"
+        }
+      ]
+    },
+    {
+      "id": "capture-runtime-adaptation",
+      "type": "backend",
+      "label": "Capture / runtime adapter",
+      "sublabel": "Immutable token \u2192 scoped reference",
+      "tag": "NEW TOKEN / EXTENDED FRONTEND",
+      "pos": [
+        342,
+        210
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/_capture.py",
+          "label": "Native typing token",
+          "line": 15
+        },
+        {
+          "path": "src/typeforge/pydantic/_frontend.py",
+          "label": "Capture lowering"
+        }
+      ]
+    },
+    {
+      "id": "capture-structural-matcher",
+      "type": "backend",
+      "label": "match_type_pattern",
+      "sublabel": "Exact repetition; discard failed bindings",
+      "tag": "EXTENDED SHARED OWNER",
+      "pos": [
+        678,
+        210
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/map_matching.py",
+          "label": "Tentative matching",
+          "line": 107
+        }
+      ]
+    },
+    {
+      "id": "capture-selected-output",
+      "type": "backend",
+      "label": "Evaluator / capture lookup",
+      "sublabel": "Nested Maps reuse the selected bindings",
+      "tag": "EXTENDED SHARED OWNER",
+      "pos": [
+        1014,
+        210
+      ],
+      "size": [
+        296,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "label": "Selected output context",
+          "line": 519
+        },
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "label": "Unbound capture failure",
+          "line": 243
+        }
+      ]
+    },
+    {
+      "id": "capture-source-declarations",
+      "type": "backend",
+      "label": "_capture_declaration",
+      "sublabel": "Read declaration + use spans; no execution",
+      "tag": "NEW SOURCE FACT",
+      "pos": [
+        34,
+        400
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/source/_parser.py",
+          "label": "Authored declaration",
+          "line": 458
+        },
+        {
+          "path": "src/typeforge/compiler/source/_model.py",
+          "label": "CaptureTypeExpression",
+          "line": 68
+        }
+      ]
+    },
+    {
+      "id": "capture-static-adaptation",
+      "type": "backend",
+      "label": "lower_capture_reference",
+      "sublabel": "Declaration span \u2192 stable TypeSymbol",
+      "tag": "NEW COMPILER LOWERING",
+      "pos": [
+        342,
+        400
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_lowering.py",
+          "label": "Identity conversion",
+          "line": 126
+        }
+      ]
+    },
+    {
+      "id": "capture-finite-ir",
+      "type": "backend",
+      "label": "CaptureType / specialization",
+      "sublabel": "Preserve finite one-token branch outputs",
+      "tag": "UPDATED EXISTING IR",
+      "pos": [
+        678,
+        400
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/stub_ir/_model.py",
+          "label": "Named relationship IR",
+          "line": 119
+        },
+        {
+          "path": "src/typeforge/compiler/specialization/_lowering.py",
+          "label": "Finite specialization",
+          "line": 211
+        }
+      ]
+    },
+    {
+      "id": "capture-review-contracts",
+      "type": "security",
+      "label": "Production / checker contracts",
+      "sublabel": "37 cases plus existing finite integrations",
+      "tag": "VERIFIED BOUNDARY",
+      "pos": [
+        1014,
+        400
+      ],
+      "size": [
+        296,
+        90
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_named_capture_contract.py",
+          "label": "Identity, scope and failure"
+        },
+        {
+          "path": "tests/unit/compiler/pipeline/test_slice_publication.py",
+          "label": "Three checker consumers"
+        },
+        {
+          "path": "tests/unit/proxy/test_server.py",
+          "label": "Existing proxy hover"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "capture-author-runtime",
+      "from": "capture-author-outcome",
+      "to": "capture-runtime-adaptation",
+      "label": "construct",
+      "variant": "emphasis",
+      "labelDy": -39
+    },
+    {
+      "id": "capture-runtime-match",
+      "from": "capture-runtime-adaptation",
+      "to": "capture-structural-matcher",
+      "label": "pattern",
+      "variant": "emphasis"
+    },
+    {
+      "id": "capture-match-output",
+      "from": "capture-structural-matcher",
+      "to": "capture-selected-output",
+      "label": "bindings",
+      "variant": "emphasis"
+    },
+    {
+      "id": "capture-output-emission",
+      "from": "capture-selected-output",
+      "to": "capture-native-outputs",
+      "label": "emit",
+      "variant": "emphasis"
+    },
+    {
+      "id": "capture-runtime-template",
+      "from": "capture-runtime-adaptation",
+      "to": "capture-retained-template",
+      "label": "retain"
+    },
+    {
+      "id": "capture-matcher-context",
+      "from": "capture-structural-matcher",
+      "to": "capture-binding-data",
+      "label": "extend"
+    },
+    {
+      "id": "capture-author-source",
+      "from": "capture-author-outcome",
+      "to": "capture-source-declarations",
+      "label": "parse",
+      "labelDy": 24
+    },
+    {
+      "id": "capture-source-lower",
+      "from": "capture-source-declarations",
+      "to": "capture-static-adaptation",
+      "label": "source facts",
+      "labelDy": -39
+    },
+    {
+      "id": "capture-static-match",
+      "from": "capture-static-adaptation",
+      "to": "capture-structural-matcher",
+      "label": "pattern"
+    },
+    {
+      "id": "capture-static-ir",
+      "from": "capture-static-adaptation",
+      "to": "capture-finite-ir",
+      "label": "same symbol",
+      "labelDy": 69
+    },
+    {
+      "id": "capture-ir-contracts",
+      "from": "capture-finite-ir",
+      "to": "capture-review-contracts",
+      "label": "finite checks",
+      "labelDy": -39
+    },
+    {
+      "id": "capture-template-future",
+      "from": "capture-retained-template",
+      "to": "capture-next-frontiers",
+      "label": "extend",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Reviewer path",
+      "items": [
+        "Normal Python construction remains optional to compile; the compiler only reads source.",
+        "Both frontends converge on declared identity and the existing shared matcher."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Binding rules",
+      "items": [
+        "Same label \u2260 same token; repeated positions require exact type agreement.",
+        "Failed attempts discard bindings. A missing output binding is an error, not a fallback."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Cutover and limits",
+      "items": [
+        "Structural Value and unnamed IR are removed; field Value remains until slice 09.",
+        "Unknown fresh captures keep an object bound; interfaces, alternatives and broader callable precision follow."
+      ]
+    }
+  ]
+}

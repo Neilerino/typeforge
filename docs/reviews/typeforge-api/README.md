@@ -18,7 +18,7 @@ and test files were unchanged when those artifacts were removed from PR diffs.
 | 03 | Transparent aliases and explicit Any unions | 02 | [#3](https://github.com/Neilerino/typeforge/pull/3) |
 | 04 | Generic compatibility | 01 | [#4](https://github.com/Neilerino/typeforge/pull/4) |
 | 05 | Basic generic type functions | 01 | [#5](https://github.com/Neilerino/typeforge/pull/5) |
-| 06 | Named captures and isolation | 05 | Pending |
+| 06 | Named captures and isolation | 05 | [#6](https://github.com/Neilerino/typeforge/pull/6) |
 | 07 | Compatible generic interface captures | 02, 04, 06 | Pending |
 | 08 | Alternative capture patterns | 02, 06 | Pending |
 | 09 | Record and Fields goal API | 05 | Pending |
