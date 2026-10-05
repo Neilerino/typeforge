@@ -5,6 +5,12 @@ stack branch; semantic blockers are recorded separately in the individual ticket
 The library is unreleased: public replacements remove superseded authoring in
 the owning slice, with no compatibility layer or migration-guide work.
 
+Generated diagrams, screenshots, receipts, tickets, and workshop notes live on
+the separate `neil/typeforge-api-review-artifacts` branch and are ignored in
+implementation checkouts. Each PR links to its review materials here. Source
+badges retain the exact code snapshots used to render the diagrams; all source
+and test files were unchanged when those artifacts were removed from PR diffs.
+
 | Slice | User outcome | Semantic blockers | Draft PR |
 |---|---|---|---|
 | 01 | Scalar matching and Is | None | [#1](https://github.com/Neilerino/typeforge/pull/1) |
