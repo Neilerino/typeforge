@@ -1,0 +1,17 @@
+{
+  "diagram_type": "architecture",
+  "output": "architecture.html",
+  "specification_sha256": "d1f08930fd82f3c8bdda8bde94016ec12713602708dbd0363748881c960a8ca3",
+  "artifact_sha256": "967d3d09f977337c0241bdfb8af2297905766a5671ab8d4ac314f0e3f4ed8b1f",
+  "validation": "9/9 showcase, 0 errors, 0 warnings",
+  "browser_evidence": "passed",
+  "visual_review": "passed",
+  "correction_rounds": 0,
+  "reviewed_captures": [
+    "architecture.visual-check.1440x900.light.png",
+    "architecture.visual-check.1440x900.dark.png",
+    "architecture.visual-check.2048x1320.light.png",
+    "architecture.visual-check.2048x1320.dark.png"
+  ],
+  "observations": "All four endpoint screenshots were inspected. Alias expansion, shared evaluation, union construction, parameter binding, source badges, future dependency, and review cards are legible in both themes at laptop and large desktop sizes, with no clipping or obscured relationships."
+}

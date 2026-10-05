@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/neilwadden/.codex/visualizations/2026/09/07/01a07d18-ce62-7e82-bf3c-06a7362ad7d9/typeforge-stack/docs/reviews/typeforge-api/03-transparent-aliases/architecture.json",
+  "output": "/Users/neilwadden/.codex/visualizations/2026/09/07/01a07d18-ce62-7e82-bf3c-06a7362ad7d9/typeforge-stack/docs/reviews/typeforge-api/03-transparent-aliases/architecture.html",
+  "specification": {
+    "sha256": "d1f08930fd82f3c8bdda8bde94016ec12713602708dbd0363748881c960a8ca3",
+    "bytes": 6659
+  },
+  "artifact": {
+    "sha256": "967d3d09f977337c0241bdfb8af2297905766a5671ab8d4ac314f0e3f4ed8b1f",
+    "bytes": 718233
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  },
+  "evidence": {
+    "verified": true,
+    "repository": "https://github.com/Neilerino/typeforge",
+    "revision": "a024ea5fe71eec1905f1003684283dee2ad28b1f",
+    "references": 7
+  }
+}

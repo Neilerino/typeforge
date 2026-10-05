@@ -1,0 +1,281 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Ticket 03 · Transparent aliases · C4 code view",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1344,
+      570
+    ],
+    "repository": {
+      "url": "https://github.com/Neilerino/typeforge",
+      "revision": "a024ea5fe71eec1905f1003684283dee2ad28b1f"
+    }
+  },
+  "components": [
+    {
+      "id": "alias_author",
+      "type": "external",
+      "label": "Developer's alias Map",
+      "sublabel": "Mixed = Any | str; Is[Mixed] → bytes",
+      "tag": "User story",
+      "pos": [
+        34,
+        180
+      ],
+      "size": [
+        210,
+        90
+      ]
+    },
+    {
+      "id": "map_runtime_lowering",
+      "type": "frontend",
+      "label": "_AnnotationAdapter._map()",
+      "sublabel": "Adapt subjects and ordered branches",
+      "tag": "Changed · selection roles",
+      "pos": [
+        342,
+        180
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_frontend.py",
+          "line": 301,
+          "label": "Runtime Map lowering"
+        }
+      ]
+    },
+    {
+      "id": "selection_alias_expansion",
+      "type": "frontend",
+      "label": "_selection_type()",
+      "sublabel": "Expose aliases only for type selection",
+      "tag": "New · role-aware expansion",
+      "pos": [
+        678,
+        180
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_frontend.py",
+          "line": 346,
+          "label": "Selection expansion"
+        }
+      ]
+    },
+    {
+      "id": "alias_child_context",
+      "type": "frontend",
+      "label": "_alias_adapter()",
+      "sublabel": "Cycle check + independent bindings",
+      "tag": "Changed · shared alias owner",
+      "pos": [
+        1014,
+        180
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_frontend.py",
+          "line": 646,
+          "label": "Alias scope"
+        }
+      ]
+    },
+    {
+      "id": "identity_argument_binding",
+      "type": "frontend",
+      "label": "_bind_alias()",
+      "sublabel": "Bind already expanded arguments",
+      "tag": "Changed · preserve TypeVar identity",
+      "pos": [
+        1014,
+        380
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_frontend.py",
+          "line": 674,
+          "label": "Alias parameter binding"
+        }
+      ]
+    },
+    {
+      "id": "source_alias_expansion",
+      "type": "frontend",
+      "label": "expand_schema_aliases()",
+      "sublabel": "Source facts; authored cycle errors",
+      "tag": "Existing · compiler path",
+      "pos": [
+        342,
+        40
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/adaptation/_schema_aliases.py",
+          "line": 29,
+          "label": "Source expansion"
+        }
+      ]
+    },
+    {
+      "id": "shared_alias_selection",
+      "type": "backend",
+      "label": "Evaluator._evaluate_map()",
+      "sublabel": "Same member / whole-Is selection",
+      "tag": "Existing · shared semantics",
+      "pos": [
+        678,
+        40
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 421,
+          "label": "Shared evaluation"
+        }
+      ]
+    },
+    {
+      "id": "explicit_any_union",
+      "type": "backend",
+      "label": "_union()",
+      "sublabel": "RuntimeTypeSystem · retain Any members",
+      "tag": "Changed · stable union construction",
+      "pos": [
+        1014,
+        40
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_type_system.py",
+          "line": 79,
+          "label": "Runtime unions"
+        }
+      ]
+    },
+    {
+      "id": "generic_capture_future",
+      "type": "external",
+      "label": "Generic / capture slices",
+      "sublabel": "Variance, interfaces, named captures",
+      "tag": "Future · tickets 04–08",
+      "pos": [
+        678,
+        380
+      ],
+      "size": [
+        240,
+        90
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "author-map-runtime",
+      "from": "alias_author",
+      "to": "map_runtime_lowering",
+      "label": "subscribe"
+    },
+    {
+      "id": "map-select-types",
+      "from": "map_runtime_lowering",
+      "to": "selection_alias_expansion",
+      "label": "subject / test"
+    },
+    {
+      "id": "selection-alias-scope",
+      "from": "selection_alias_expansion",
+      "to": "alias_child_context",
+      "label": "expand alias"
+    },
+    {
+      "id": "scope-bind-arguments",
+      "from": "alias_child_context",
+      "to": "identity_argument_binding",
+      "label": "arguments",
+      "labelDy": 24
+    },
+    {
+      "id": "source-semantic-aliases",
+      "from": "source_alias_expansion",
+      "to": "shared_alias_selection",
+      "label": "lower / evaluate"
+    },
+    {
+      "id": "runtime-semantic-aliases",
+      "from": "selection_alias_expansion",
+      "to": "shared_alias_selection",
+      "label": "same data"
+    },
+    {
+      "id": "semantic-union-build",
+      "from": "shared_alias_selection",
+      "to": "explicit_any_union",
+      "label": "union()"
+    },
+    {
+      "id": "later-generic-captures",
+      "from": "identity_argument_binding",
+      "to": "generic_capture_future",
+      "variant": "dashed",
+      "label": "extend bindings"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Review alias transparency",
+      "items": [
+        "Ordinary aliases select as their expanded types, including nested generic arguments and Is targets.",
+        "Explicit Any | str survives nested Maps; Is[Any] remains a different comparison."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Review preservation boundaries",
+      "items": [
+        "Selected output aliases keep Pydantic metadata, references, and recursive validation.",
+        "Selection cycles fail at the alias boundary; finite repeated alias applications remain valid."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Review the next extension",
+      "items": [
+        "Both frontends keep the shared evaluator. Compiler never executes the application.",
+        "Tickets 04–08 extend compatibility and capture bindings; they do not require a parallel old API."
+      ]
+    }
+  ]
+}
