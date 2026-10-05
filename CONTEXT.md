@@ -223,7 +223,18 @@ default; Is retains exact whole-type comparison. After checker verification, the
 user chose to follow checker compatibility for bool/int: bool matches bare int,
 and the proposed primitive exception is withdrawn. All three installed checkers
 also accept a custom int subclass. Any and generic compatibility rules are agreed;
-generic interface capture and default lowering still need derisking.
+resolved generic compatibility is implemented. Compatible interface capture and
+callable projection still need their owning slices.
+
+Fixed resolved selectors support list/set/dict invariance, Sequence/frozenset/tuple
+covariance, and Mapping with invariant keys and covariant values. Lists and tuples
+project to Sequence; dict projects to Mapping. Any retains gradual compatibility
+in invariant positions. Unknown generic variance reports a diagnostic rather
+than choosing a fallback. Exact identity remains usable for opaque generic types.
+Partially known shapes retain existing structural proofs and possible-output
+bounds; full unresolved variance reasoning remains with callable precision.
+The [generic contract](tests/unit/test_generic_selection_contract.py) verifies
+compiler/runtime results and direct variance assignments in all three checkers.
 
 Shared evaluation distributes bare selectors over known subject members; unary
 predicates compare the whole subject. Bare union selectors use compatibility

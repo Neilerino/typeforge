@@ -92,6 +92,8 @@ def test_semantics_dependencies_point_toward_the_domain(
         .may_only_depend_on_layers(domain.name)
         .where_layer(SEMANTICS.file("type_evaluation").name)
         .may_only_depend_on_layers(domain.name, protocols.name)
+        .where_layer(SEMANTICS.file("generic_compatibility").name)
+        .may_only_depend_on_layers(domain.name, protocols.name)
         .where_layer(map_matching.name)
         .may_only_depend_on_layers(
             domain.name, protocols.name, SEMANTICS.file("type_evaluation").name
@@ -105,7 +107,12 @@ def test_semantics_dependencies_point_toward_the_domain(
             typeforge.file("utils.error_handling").name,
         )
         .where_layer(interface.name)
-        .may_only_depend_on_layers(domain.name, protocols.name, evaluation.name)
+        .may_only_depend_on_layers(
+            domain.name,
+            protocols.name,
+            evaluation.name,
+            SEMANTICS.file("generic_compatibility").name,
+        )
     )
 
     assert_passes(rule)

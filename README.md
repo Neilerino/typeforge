@@ -128,8 +128,7 @@ class Payload:
 `Is` takes one type argument and binds to its consuming Map. The compiler obtains
 local inheritance facts from declarations without importing application code.
 The former public predicate helpers (`Equal`, `Assignable`, `All`, `Any`, and
-`Not`) have been removed. Generic compatibility is being implemented in the
-following slices; see the recorded decisions.
+`Not`) have been removed.
 
 For known union subjects, bare branches select each member in order. `Is` tests
 the complete original subject, comparing unions without regard to member order:
@@ -161,6 +160,24 @@ class AliasPayload:
 
 Selected output aliases retain Pydantic's constraints and schema references.
 Recursive aliases needed for Typeforge selection report an alias-cycle failure.
+
+Fully specified generic selectors follow the supported Python variance rules:
+
+```python
+from collections.abc import Sequence
+
+class GenericPayload:
+    mutable: Schema[Map[list[bool], list[int]: str, ...: bytes]]  # bytes
+    covariant: Schema[Map[Sequence[bool], Sequence[int]: str, ...: bytes]]  # str
+```
+
+The current frontier includes list, set, dict, frozenset, tuple, Sequence, and
+Mapping. Lists and tuples can match Sequence; dict can match Mapping. Mutable
+containers use invariant arguments; immutable containers use covariance;
+Mapping keeps invariant keys and covariant values. Any retains Python's gradual
+compatibility. Unknown generic variance produces a diagnostic instead of selecting
+a fallback. Identical opaque generic types can still match. Compatible interface
+captures and full reasoning over unresolved parameters remain subsequent slices.
 
 Typeforge overlays project inline Maps in parameters, returns, fields, variable
 annotations, and nested alias values to ordinary checker types. Generated overloads
