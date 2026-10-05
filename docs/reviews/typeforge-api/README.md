@@ -11,7 +11,7 @@ the owning slice, with no compatibility layer or migration-guide work.
 | 02 | Union selection and no-match | 01 | [#2](https://github.com/Neilerino/typeforge/pull/2) |
 | 03 | Transparent aliases and explicit Any unions | 02 | [#3](https://github.com/Neilerino/typeforge/pull/3) |
 | 04 | Generic compatibility | 01 | [#4](https://github.com/Neilerino/typeforge/pull/4) |
-| 05 | Basic generic type functions | 01 | Pending |
+| 05 | Basic generic type functions | 01 | [#5](https://github.com/Neilerino/typeforge/pull/5) |
 | 06 | Named captures and isolation | 05 | Pending |
 | 07 | Compatible generic interface captures | 02, 04, 06 | Pending |
 | 08 | Alternative capture patterns | 02, 06 | Pending |

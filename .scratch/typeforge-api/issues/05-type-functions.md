@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Scalar matching and Is.
 
-**Status:** implemented; draft PR pending
+**Status:** implemented; [draft PR #5](https://github.com/Neilerino/typeforge/pull/5)
 
 - [x] Execute the construction body once to create an immutable template; specialization never replays application code.
 - [x] Parse the agreed restricted compiler forms without importing or executing authored code.
