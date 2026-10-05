@@ -12,7 +12,8 @@ from typeforge.compiler.pipeline import generate_module
 def test_parameterized_types_remain_assignable_to_object(tmp_path: Path) -> None:
     path = tmp_path / "schemas.py"
     path.write_text(
-        """from typeforge import Map, Assignable
+        """from typeforge._markers import Assignable
+from typeforge import Map
 from typeforge.pydantic import Schema
 class Payload:
     value: Schema[Map[int, Assignable[list[int], object] : str, ... : bytes]]
@@ -79,7 +80,8 @@ def test_generic_schema_corrections(
 ) -> None:
     path = tmp_path / "schemas.py"
     path.write_text(
-        "from typeforge import Map, Equal, Assignable, Value\n"
+        "from typeforge._markers import Equal, Assignable\n"
+        "from typeforge import Map, Value\n"
         "from typeforge.pydantic import Schema\n"
         "class Payload[T, U]:\n"
         f"    value: Schema[{expression}]\n"

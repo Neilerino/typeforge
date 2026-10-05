@@ -58,7 +58,8 @@ def test_field_maps_can_drop_fields_and_change_modifiers(tmp_path: Path) -> None
         (
             "\n"
             "from typing import Literal, TypedDict\n"
-            "from typeforge import Drop, Equal, Key, Map, "
+            "from typeforge._markers import Equal\n"
+            "from typeforge import Drop, Key, Map,"
             "MapFields, OptionalField, ReadonlyField, Value\n"
             "\n"
             "class Credentials(TypedDict):\n"

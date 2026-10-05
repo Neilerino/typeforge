@@ -33,8 +33,8 @@ def encode[T](value: T) -> Map[T, int: str, ...: T]:
 
 
 def test_nested_annotations_methods_and_schema_edits_do_not_overlap() -> None:
-    source = """\
-from typeforge import Map, Equal
+    source = """from typeforge._markers import Equal
+from typeforge import Map
 from typeforge.pydantic import Schema
 class Example[T]:
     field: tuple[Map[T, int: str, ...: bytes], Map[T, str: int]]
@@ -151,7 +151,8 @@ def test_qualified_maps_project_without_changing_value_slices(
 
 
 def test_assignability_guard_keeps_existing_conservative_verification() -> None:
-    source = """from typeforge import Assignable, Map
+    source = """from typeforge._markers import Assignable
+from typeforge import Map
 def encode[T](value: T) -> MAPPING:
     if isinstance(value, int):
         return str(value)
@@ -199,9 +200,9 @@ def test_real_checkers_accept_nested_union_maps_and_reject_wrong_returns(
     tmp_path: Path,
     checker: str,
 ) -> None:
-    source = """\
-from typing import assert_type
-from typeforge import Map, Equal
+    source = """from typing import assert_type
+from typeforge import Map
+from typeforge._markers import Equal
 type Numeric = Equal[int]
 class Encoder:
     payload: list[Map[int, int: str | None, ...: bytes]]

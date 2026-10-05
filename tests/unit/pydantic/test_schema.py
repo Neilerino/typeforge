@@ -9,7 +9,8 @@ from pydantic import (
     TypeAdapter,
     ValidationError,
 )
-from typeforge import All, Any, Assignable, Equal, Map, Not
+from typeforge import Map
+from typeforge._markers import All, Any, Assignable, Equal, Not
 from typeforge.pydantic import Schema
 
 

@@ -98,8 +98,18 @@ def _union(values: tuple[object, ...]) -> object:
 
 
 def _assignable(source: object, target: object) -> bool:
-    if source is Never or target is Any or target is object or source == target:
+    if source is Never or source is Any or target is Any or target is object:
         return True
+
+    if source == target:
+        return True
+
+    if isinstance(source, type):
+        if (target is float or target is complex) and issubclass(source, int):
+            return True
+
+        if target is complex and issubclass(source, float):
+            return True
 
     if get_origin(source) is Union:
         return all(_assignable(member, target) for member in get_args(source))

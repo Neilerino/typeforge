@@ -4,7 +4,7 @@ from collections.abc import Callable
 from types import NoneType
 from typing import Annotated, Literal, Union, cast, get_args, get_origin
 
-from typeforge._markers import Case, Default, Map
+from typeforge._markers import Case, Default, Equal, Map
 
 
 def format_annotation(value: object) -> str:
@@ -14,7 +14,7 @@ def format_annotation(value: object) -> str:
     if origin is Map and arguments:
         subject, *entries = arguments
         parts = [format_annotation(subject)]
-        parts.extend(_format_branch(entry) for entry in entries)
+        parts.extend(_format_branch(entry, subject=subject) for entry in entries)
         return f"Map[{', '.join(parts)}]"
 
     if origin is Literal:
@@ -56,11 +56,19 @@ def format_annotation(value: object) -> str:
     return repr(value)
 
 
-def _format_branch(value: object) -> str:
+def _format_branch(value: object, *, subject: object) -> str:
     origin = get_origin(value)
     arguments: tuple[object, ...] = get_args(value)
     if origin is Case and len(arguments) == 2:
         selector, output = arguments
+        operands: tuple[object, ...] = get_args(selector)
+        if (
+            get_origin(selector) is Equal
+            and len(operands) == 2
+            and operands[0] is subject
+        ):
+            return f"Is[{format_annotation(operands[1])}]: {format_annotation(output)}"
+
         return f"{format_annotation(selector)}: {format_annotation(output)}"
 
     if origin is Default and len(arguments) == 1:

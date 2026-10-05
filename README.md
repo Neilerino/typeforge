@@ -111,20 +111,25 @@ the expression. The supported examples pass the existing lint rules; raw slices
 still require Typeforge projection before ordinary type checking. See the
 [tested tooling and diagnostic behavior](CONTEXT.md#tooling-and-diagnostics).
 
-Reusable unary predicate aliases bind to the subject of the consuming Map in
-both compiler and Pydantic frontends:
+Bare selectors use Python assignment compatibility. `bool` matches `int`,
+subclasses match their bases, and `int` matches `float` under Python's numeric
+widening rules. `Any` is compatible in either direction. Use `Is[Type]` when the
+complete subject must equal a type exactly:
 
 ```python
-from typeforge import Assignable, Map
+from typeforge import Is, Map
+from typeforge.pydantic import Schema
 
-type Numeric = Assignable[int]
-type Encoded[T] = Map[T, Numeric: str, ...: bytes]
+class Payload:
+    compatible: Schema[Map[bool, int: str, ...: bytes]]  # str
+    exact: Schema[Map[bool, Is[int]: str, ...: bytes]]  # bytes
 ```
 
-Generic predicate aliases such as `type Is[T] = Equal[T]` and compounds using
-`All`, `Any`, and `Not` follow the same rule. Nested Maps bind their own subjects;
-explicit binary operands stay explicit. A unary predicate used outside a selector
-fails as unbound. Existing union restrictions still apply.
+`Is` takes one type argument and binds to its consuming Map. The compiler obtains
+local inheritance facts from declarations without importing application code.
+The former public predicate helpers (`Equal`, `Assignable`, `All`, `Any`, and
+`Not`) have been removed. Generic compatibility, union equivalence, and aliases
+are being implemented in the following slices; see the recorded decisions.
 
 Typeforge overlays project inline Maps in parameters, returns, fields, variable
 annotations, and nested alias values to ordinary checker types. Generated overloads
@@ -148,8 +153,7 @@ guarantee. See the [callable support limits](CONTEXT.md#callable-support)
 before relying on these forms to reproduce `Schema` selection.
 
 Slice branches are the public authoring syntax. `Case` and `Default` are no
-longer exported; replace `Case[selector, output]` with `selector: output` and
-`Default[output]` with `...: output`. Internal branch data remains unchanged.
+longer exported. Internal branch data remains unchanged.
 See the [authoring contract](CONTEXT.md#map-authoring)
 and [union limitations](CONTEXT.md#union-support-and-open-decisions).
 
@@ -170,10 +174,8 @@ result_2 = serialize("test") # bytes
 result_3 = serialize([123]) # float | bytes | list[int]
 ```
 
-Each selector can be an exact or structural type pattern or a boolean
-predicate composed with `Equal`, `Assignable`, `All`, `Any`, and `Not`. Branches
-share one declaration order, and the first matching pattern or true predicate
-wins.
+Each selector is a compatible type pattern or an exact `Is[Type]` selector.
+Branches share one declaration order, and the first matching branch wins.
 
 Choose a return type from a boolean flag:
 
@@ -362,10 +364,10 @@ validation does not retry another case or the default. Nested Maps see the same
 raw value until output validation begins, while Input inside a container's item
 schema observes each item.
 
-Supported tests include exact Python types, unions, `Annotated` wrappers,
-`Literal` values, `Input` as a catch-all, and `Equal`, `Assignable`, `All`, `Any`,
-and `Not` predicates. Exact type tests distinguish `bool` from `int`; use
-`Assignable` to accept subclasses. Literals compare both type and value:
+Supported raw Input tests include Python types, unions, `Annotated` wrappers,
+`Literal` values, `Input` as a catch-all, and exact `Is` selectors. Raw Input
+type tests currently distinguish `bool` from `int`. Literals compare both type
+and value:
 `Literal[1]` does not match `True`, `1.0`, or an integer enum member. Annotation
 validators are not executed to choose a case.
 
@@ -416,7 +418,7 @@ relationships have no Pydantic model-field semantics.
 For generated typing interfaces, a schema Map over runtime `Input` emits its
 possible output types. An unresolved generic parameter keeps its identity:
 `Map[T, int : str, ... : bytes]` emits `str | bytes`, while
-`Map[T, Equal[T, T] : str, ... : bytes]` emits only `str`. Earlier definite
+`Map[T, Is[T] : str, ... : bytes]` emits only `str`. Earlier definite
 matches still stop selection. Nested schema aliases expand before evaluation;
 alias cycles report the authored cycle path.
 
