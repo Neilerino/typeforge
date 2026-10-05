@@ -201,14 +201,31 @@ path. Generated interfaces contain standard type aliases and specialized usages.
 
 The basic compiler frontier is a module-level synchronous function with no value
 parameters, no other decorators, unconstrained ordinary type parameters without
-defaults, an optional docstring, capture declarations, and one final return of a
+defaults, an optional docstring, capture declarations, local type aliases, and one
+final return of a
 typing expression.
 Supported expressions include Map, Is, unions, generic types, and subscription of
 other type functions. Unsupported source produces authored diagnostics without an
 execution fallback. Record supports one unfiltered generator over Fields with a
-single name binding. Local aliases extend this frontier in their own slice.
+single name binding.
 Runtime acceptance of extra
 Python construction statements does not imply compiler support.
+
+Local aliases retain qualified lexical names, type parameters, and authored spans
+in the source model. Their unconstrained ordinary parameters shadow enclosing
+parameters and capture bindings. The compiler requires explicit alias arguments.
+Source adaptation expands local aliases before binding outer parameters, then
+expands type-function composition before classifying record templates. Existing
+alias expansion owns substitution, arity checks, selector binding, and cycles.
+Capture and field declaration identities survive expansion. Local aliases emit
+no independent public declarations.
+
+This ordering lets a local Visible = Public[T] alias supply Fields[Visible], and
+lets a type function return another record template directly. The existing record
+materializer still owns the finite visible-TypedDict frontier and family output.
+Runtime uses Python's native lexical alias identities and the existing frontend
+binding policy, including its ordinary bare-alias fallback; specialization never
+replays the construction body.
 
 ### Named type captures
 
