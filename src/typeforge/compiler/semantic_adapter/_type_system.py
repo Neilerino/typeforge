@@ -81,6 +81,18 @@ class CompilerTypeSystem:
     ) -> Result[StaticType, SemanticIssue]:
         return Success(ParameterizedType(shape.origin, shape.arguments))
 
+    @safe_result(errors=(SemanticIssue,))
+    def generic_type(
+        self, shape: ParameterizedTypeShape[StaticType]
+    ) -> GenericType[StaticType] | None:
+        if (
+            not isinstance(shape.origin, NamedType)
+            or generic_family(shape.origin.identity or shape.origin.name) is None
+        ):
+            return None
+
+        return _generic_type(ParameterizedType(shape.origin, shape.arguments))
+
 
 def _equal(left: StaticType, right: StaticType) -> bool:
     match left, right:

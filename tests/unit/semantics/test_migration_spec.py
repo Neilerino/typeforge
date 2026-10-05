@@ -33,6 +33,7 @@ from typeforge.semantics import (
     Expression,
     FieldExpression,
     FieldName,
+    GenericType,
     InputReference,
     KeyReference,
     MapExpression,
@@ -110,6 +111,11 @@ class NameTypeSystem:
     ) -> Result[ParameterizedTypeShape[str] | None, SemanticIssue]:
         return Success(self._parameterized_types.get(value))
 
+    def generic_type(
+        self, shape: ParameterizedTypeShape[str]
+    ) -> Result[GenericType[str] | None, SemanticIssue]:
+        return Success(None)
+
     def build(self, shape: ParameterizedTypeShape[str]) -> Result[str, SemanticIssue]:
         value = next(
             (
@@ -172,6 +178,11 @@ class PythonTypeSystem:
     ) -> Result[ParameterizedTypeShape[object] | None, SemanticIssue]:
         return Success(self._parameterized_types.get(value))
 
+    def generic_type(
+        self, shape: ParameterizedTypeShape[object]
+    ) -> Result[GenericType[object] | None, SemanticIssue]:
+        return Success(None)
+
     def build(
         self, shape: ParameterizedTypeShape[object]
     ) -> Result[object, SemanticIssue]:
@@ -197,6 +208,7 @@ type AdapterOperation = Literal[
     "record",
     "inspect",
     "build",
+    "generic_type",
 ]
 
 
@@ -255,6 +267,14 @@ class FailureInjectionTypeSystemProxy[T]:
 
         return self._type_system.build(shape)
 
+    def generic_type(
+        self, shape: ParameterizedTypeShape[T]
+    ) -> Result[GenericType[T] | None, SemanticIssue]:
+        if self._operation == "generic_type":
+            return Failure(self._issue)
+
+        return self._type_system.generic_type(shape)
+
 
 @pytest.mark.parametrize(
     ("operation", "expression"),
@@ -301,6 +321,43 @@ def test_adapter_failures_propagate_unchanged(
 
     assert isinstance(result, Failure)
     assert result.failure() is issue
+
+
+def test_interface_capture_facts_failure_propagates_before_fallback() -> None:
+    issue = SemanticAdapterError("generic facts are unavailable")
+    expression = MapExpression(
+        TypeReference("list[int]"),
+        (CaseExpression(ParameterizedTypePattern("Sequence", (ITEM,)), ITEM),),
+        default=TypeReference("bytes"),
+    )
+    adapter = NameTypeSystem(
+        parameterized_types=(("list[int]", ParameterizedTypeShape("list", ("int",))),)
+    )
+    result = evaluate(
+        expression,
+        FailureInjectionTypeSystemProxy(adapter, "generic_type", issue),
+    )
+    assert isinstance(result, Failure)
+    assert result.failure() is issue
+
+
+def test_interface_capture_does_not_hide_unexpected_adapter_exceptions() -> None:
+    class BrokenFactsTypeSystem(NameTypeSystem):
+        def generic_type(
+            self, shape: ParameterizedTypeShape[str]
+        ) -> Result[GenericType[str] | None, SemanticIssue]:
+            raise ValueError("broken facts implementation")
+
+    adapter = BrokenFactsTypeSystem(
+        parameterized_types=(("list[int]", ParameterizedTypeShape("list", ("int",))),)
+    )
+    expression = MapExpression(
+        TypeReference("list[int]"),
+        (CaseExpression(ParameterizedTypePattern("Sequence", (ITEM,)), ITEM),),
+        default=TypeReference("bytes"),
+    )
+    with pytest.raises(ValueError, match="broken facts implementation"):
+        evaluate(expression, adapter)
 
 
 @pytest.mark.parametrize(

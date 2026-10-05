@@ -3,10 +3,12 @@
 from functools import singledispatch
 from typing import NamedTuple, assert_never
 
+from typeforge.semantics.domain.assertions import expect_possible_type
 from typeforge.semantics.domain.exceptions import (
     UnresolvedCaptureSemanticError,
     UnsupportedExpressionSemanticError,
 )
+from typeforge.semantics.domain.generics import GenericFamily, GenericType
 from typeforge.semantics.domain.models import (
     CaptureBindings,
     CaptureReference,
@@ -25,6 +27,7 @@ from typeforge.semantics.domain.models import (
     TypeValueReference,
     UnresolvedType,
 )
+from typeforge.semantics.generic_compatibility import sequence_elements
 from typeforge.semantics.protocols import TypeSystem
 from typeforge.semantics.type_evaluation import (
     assignable_types,
@@ -35,6 +38,7 @@ from typeforge.semantics.type_evaluation import (
     inspect_type,
     is_symbol,
     merge_captures,
+    union_type,
 )
 
 
@@ -193,17 +197,26 @@ def _[T](
         return _PatternMatch(IndeterminateCondition(), captures=captures)
 
     shape = inspect_type(subject, type_system)
-    if shape is None or len(shape.arguments) != len(pattern.arguments):
+    if shape is None:
         return _PatternMatch[T].mismatch()
 
     origin_match = equal_types(shape.origin, ResolvedType(pattern.origin), type_system)
+    arguments = shape.arguments
     if origin_match is False:
+        projected = _project_interface(pattern, shape, type_system)
+        if projected is None:
+            return _PatternMatch[T].mismatch()
+
+        arguments = projected
+        origin_match = True
+
+    if len(arguments) != len(pattern.arguments):
         return _PatternMatch[T].mismatch()
 
     uncertain = isinstance(origin_match, IndeterminateCondition)
     current_captures = captures
     for nested_pattern, nested_subject in zip(
-        pattern.arguments, shape.arguments, strict=True
+        pattern.arguments, arguments, strict=True
     ):
         nested_match = match_type_pattern(
             nested_pattern, nested_subject, type_system, current_captures
@@ -219,6 +232,50 @@ def _[T](
         IndeterminateCondition() if uncertain else True,
         current_captures,
     )
+
+
+def _project_interface[T](
+    pattern: ParameterizedTypePattern[T],
+    source: ParameterizedTypeShape[TypeValue[T]],
+    type_system: TypeSystem[T],
+) -> tuple[TypeValue[T], ...] | None:
+    target = type_system.generic_type(
+        ParameterizedTypeShape(pattern.origin, ())
+    ).unwrap()
+    if target is None or target.family is not GenericFamily.SEQUENCE:
+        return None
+
+    native = ParameterizedTypeShape(
+        expect_possible_type(source.origin, "generic origin must be a type").value,
+        tuple(
+            expect_possible_type(argument, "generic arguments must be types").value
+            for argument in source.arguments
+        ),
+    )
+    facts = type_system.generic_type(native).unwrap()
+    if facts is None:
+        raise UnsupportedExpressionSemanticError(
+            "source generic origin is outside supported interface capture"
+        )
+
+    # Native tuple markers have no semantic element position. Keep the original
+    # argument values so unknown symbols and union provenance survive projection.
+    elements = sequence_elements(
+        GenericType(
+            facts.family,
+            source.arguments[: len(facts.arguments)],
+            variadic=facts.variadic,
+        )
+    )
+    if elements is None:
+        return None
+
+    if len(pattern.arguments) != 1:
+        raise UnsupportedExpressionSemanticError(
+            "Sequence interface capture requires one argument"
+        )
+
+    return (union_type(elements, type_system, "Sequence elements must be types"),)
 
 
 def _possible_captures[T](

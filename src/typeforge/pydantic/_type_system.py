@@ -261,6 +261,15 @@ class RuntimeTypeSystem:
         )
 
     @safe_result(errors=(SemanticIssue,))
+    def generic_type(
+        self, shape: ParameterizedTypeShape[RuntimeType]
+    ) -> GenericType[RuntimeType] | None:
+        if _generic_family(shape.origin.value) is None:
+            return None
+
+        return _generic_facts(shape.origin.value, shape.arguments)
+
+    @safe_result(errors=(SemanticIssue,))
     def build(self, shape: ParameterizedTypeShape[RuntimeType]) -> RuntimeType:
         def construct(origin: object, arguments: tuple[object, ...]) -> object:
             if origin is Union:
@@ -290,7 +299,10 @@ RUNTIME_TYPE_SYSTEM = RuntimeTypeSystem()
 
 
 def _generic_type(value: object) -> GenericType[RuntimeType]:
-    origin = get_origin(value)
+    return _generic_facts(get_origin(value), tmap(concrete_type, get_args(value)))
+
+
+def _generic_family(origin: object) -> GenericFamily | None:
     families = (
         (list, GenericFamily.LIST),
         (set, GenericFamily.SET),
@@ -300,18 +312,27 @@ def _generic_type(value: object) -> GenericType[RuntimeType]:
         (Sequence, GenericFamily.SEQUENCE),
         (Mapping, GenericFamily.MAPPING),
     )
-    family = next((family for native, family in families if origin is native), None)
+    return next((family for native, family in families if origin is native), None)
+
+
+def _generic_facts(
+    origin: object, arguments: tuple[RuntimeType, ...]
+) -> GenericType[RuntimeType]:
+    family = _generic_family(origin)
     if family is None:
         raise UnsupportedExpressionSemanticError(
             f"{origin!r} is outside supported generic compatibility"
         )
 
-    arguments: tuple[object, ...] = get_args(value)
-    variadic = family is GenericFamily.TUPLE and arguments[-1:] == (Ellipsis,)
+    variadic = (
+        family is GenericFamily.TUPLE
+        and bool(arguments)
+        and arguments[-1].value is Ellipsis
+    )
     if variadic:
         arguments = arguments[:-1]
 
-    return GenericType(family, tmap(concrete_type, arguments), variadic=variadic)
+    return GenericType(family, arguments, variadic=variadic)
 
 
 @safe_result(errors=(SemanticIssue,))
