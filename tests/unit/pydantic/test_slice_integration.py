@@ -66,22 +66,19 @@ def test_deferred_empty_endpoints_and_unary_none_predicates() -> None:
             adapter.validate_python(1)
 
 
-def test_static_union_alias_identity_and_input_observation_keep_distinct_roles() -> (
-    None
-):
+def test_static_and_input_selection_expand_ordinary_union_aliases() -> None:
     type Numbers = int | str
 
-    # Ordinary static aliases remain opaque; observing Input unwraps leaf aliases.
     exact = TypeAdapter[object](Schema[Map[Numbers, Numbers:bytes, ...:float]])
-    opaque_subject = TypeAdapter[object](Schema[Map[Numbers, int:bytes, ...:float]])
-    opaque_target = TypeAdapter[object](
+    expanded_subject = TypeAdapter[object](Schema[Map[Numbers, int:bytes, ...:float]])
+    expanded_target = TypeAdapter[object](
         Schema[Map[int, Assignable[Numbers] : bytes, ...:float]]
     )
     observed = TypeAdapter[object](Schema[Map[Input, Numbers : int | str]])
 
     assert exact.validate_python("3") == b"3"
-    assert opaque_subject.validate_python("3") == 3.0
-    assert opaque_target.validate_python("3") == 3.0
+    assert expanded_subject.validate_python("3") == b"3"
+    assert expanded_target.validate_python("3") == b"3"
     assert observed.validate_python("3") == "3"
     assert observed.validate_python(3) == 3
     assert observed.dump_json("3") == b'"3"'

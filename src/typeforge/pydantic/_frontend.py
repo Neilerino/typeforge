@@ -304,7 +304,7 @@ class _AnnotationAdapter:
         if not arguments:
             raise invalid(value, "Map requires a subject")
 
-        subject = self.adapt(arguments[0])
+        subject = self._selection_type(self.adapt(arguments[0]))
         cases: list[s.CaseExpression[RuntimeType]] = []
         default: s.Expression[RuntimeType] | None = None
         for entry in arguments[1:]:
@@ -327,19 +327,9 @@ class _AnnotationAdapter:
         return s.MapExpression(subject, tuple(cases), default)
 
     def _input_test(self, test: s.Expression[RuntimeType]) -> s.Expression[RuntimeType]:
-        """Expose aliases in raw tests using the same argument-binding owner."""
+        """Expose selection types while ignoring raw-test annotation metadata."""
+        test = self._selection_type(test)
         match test:
-            case s.TypeReference(value=value):
-                origin = get_origin(value.value) or value.value
-                if isinstance(origin, TypeAliasType):
-                    child = self._alias_adapter(
-                        value.annotation, origin, get_args(value.value)
-                    )
-                    return child._input_test(child.adapt(_alias_value(origin)))
-
-                if origin is Union or origin is Annotated:
-                    return self._input_test(self.adapt(value.value))
-
             case s.AnnotatedExpression(value=value):
                 return self._input_test(value)
 
@@ -352,6 +342,74 @@ class _AnnotationAdapter:
                 pass
 
         return test
+
+    def _selection_type(
+        self, expression: s.Expression[RuntimeType]
+    ) -> s.Expression[RuntimeType]:
+        """Expand ordinary aliases only where Typeforge needs their type identity.
+
+        Output aliases remain annotations delegated to Pydantic. Selection uses
+        the same argument-binding and cycle boundary as operator aliases.
+        """
+        match expression:
+            case s.TypeReference(value=value):
+                origin = get_origin(value.value) or value.value
+                if isinstance(origin, TypeAliasType):
+                    result = self._selection_alias(value.annotation, origin)
+                elif isinstance(value.annotation, TypeVar):
+                    return expression
+                elif _type_arguments(value.value):
+                    result = self._selection_type(
+                        s.ParameterizedTypeTemplate(
+                            concrete_type(origin),
+                            tuple(self.adapt(arg) for arg in get_args(value.value)),
+                        )
+                    )
+                else:
+                    return expression
+
+            case s.AnnotatedExpression(value=value):
+                result = replace(expression, value=self._selection_type(value))
+
+            case s.UnionExpression(members=members):
+                result = replace(
+                    expression,
+                    members=tuple(self._selection_type(arg) for arg in members),
+                )
+
+            case s.ParameterizedTypeTemplate(origin=origin, arguments=arguments):
+                if isinstance(origin.value, TypeAliasType):
+                    authored = self.origins[id(expression)]
+                    result = self._selection_alias(authored, origin.value)
+                else:
+                    result = replace(
+                        expression,
+                        arguments=tuple(self._selection_type(arg) for arg in arguments),
+                    )
+
+            case s.MapExpression(cases=cases, default=default):
+                result = replace(
+                    expression,
+                    cases=tuple(
+                        replace(case, output=self._selection_type(case.output))
+                        for case in cases
+                    ),
+                    default=None if default is None else self._selection_type(default),
+                )
+
+            case _:
+                return expression
+
+        self.origins[id(result)] = self.origins.get(id(expression), expression)
+        return result
+
+    def _selection_alias(
+        self, value: object, alias: TypeAliasType
+    ) -> s.Expression[RuntimeType]:
+        child = self._alias_adapter(
+            value, alias, get_args(value), expand_arguments=True
+        )
+        return child._selection_type(child.adapt(_alias_value(alias)))
 
     def _field(
         self, value: object, origin: object, arguments: tuple[object, ...]
@@ -451,7 +509,7 @@ class _AnnotationAdapter:
     def _case_test(
         self, value: object, subject: s.Expression[RuntimeType]
     ) -> s.Expression[RuntimeType] | s.TypePattern[RuntimeType]:
-        expression = self.adapt(value, selector_subject=subject)
+        expression = self._selection_type(self.adapt(value, selector_subject=subject))
         result = self._pattern(expression) or expression
         if isinstance(result, s.ExactTypePattern):
             result = s.TypeReference(result.value)
@@ -513,9 +571,9 @@ class _AnnotationAdapter:
             except TypeError as error:
                 raise invalid(value, str(error)) from error
 
-            left, right = selector_subject, self.adapt(target)
+            left, right = selector_subject, self._selection_type(self.adapt(target))
         elif len(arguments) == 2:
-            left, right = (self.adapt(arg) for arg in arguments)
+            left, right = (self._selection_type(self.adapt(arg)) for arg in arguments)
         else:
             raise invalid(value, "Binary predicates require two operands")
 
@@ -586,30 +644,40 @@ class _AnnotationAdapter:
         return child.adapt(_alias_value(alias), selector_subject=selector_subject)
 
     def _alias_adapter(
-        self, value: object, alias: TypeAliasType, arguments: tuple[object, ...]
+        self,
+        value: object,
+        alias: TypeAliasType,
+        arguments: tuple[object, ...],
+        *,
+        expand_arguments: bool = False,
     ) -> _AnnotationAdapter:
         if alias in self.aliases:
             raise SchemaIssue(
                 "alias_cycle",
                 "parsing",
                 value,
-                "recursive aliases containing Typeforge operators are not supported",
+                "recursive aliases used in Typeforge selection are not supported",
             )
 
+        supplied = self._arguments(arguments)
+        if expand_arguments:
+            supplied = tuple(self._selection_type(item) for item in supplied)
+
         child = _AnnotationAdapter(
-            origins=self.origins, bindings=self.bindings, aliases=(*self.aliases, alias)
+            origins=self.origins,
+            bindings=dict(self.bindings),
+            aliases=(*self.aliases, alias),
         )
-        self._bind_alias(value, alias, arguments, child)
+        self._bind_alias(value, alias, supplied, child)
         return child
 
     def _bind_alias(
         self,
         value: object,
         alias: TypeAliasType,
-        arguments: tuple[object, ...],
+        supplied: tuple[s.Expression[RuntimeType], ...],
         child: _AnnotationAdapter,
     ) -> None:
-        supplied = self._arguments(arguments)
         index = 0
         for position, parameter in enumerate(alias.__type_params__):
             if isinstance(parameter, TypeVarTuple):

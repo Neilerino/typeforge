@@ -128,8 +128,8 @@ class Payload:
 `Is` takes one type argument and binds to its consuming Map. The compiler obtains
 local inheritance facts from declarations without importing application code.
 The former public predicate helpers (`Equal`, `Assignable`, `All`, `Any`, and
-`Not`) have been removed. Generic compatibility and transparent runtime aliases
-are being implemented in the following slices; see the recorded decisions.
+`Not`) have been removed. Generic compatibility is being implemented in the
+following slices; see the recorded decisions.
 
 For known union subjects, bare branches select each member in order. `Is` tests
 the complete original subject, comparing unions without regard to member order:
@@ -144,6 +144,23 @@ A known member without a matching branch or fallback fails the whole Map.
 For example, `Schema[Map[int | str, int: bytes]]` fails compilation and runtime
 schema construction, including when nested in an outer union. Selecting an
 explicit `Never` remains distinct and uses ordinary Python union simplification.
+
+Ordinary aliases expand for selection in both compiler and runtime. Explicit
+members beside `Any` are preserved for later exact comparison:
+
+```python
+from typing import Any
+
+type Numbers = int | str
+type Mixed = Any | str
+
+class AliasPayload:
+    value: Schema[Map[Numbers, int: bytes, ...: float]]  # bytes | float
+    exact: Schema[Map[Mixed, Is[str | Any]: bytes, ...: float]]  # bytes
+```
+
+Selected output aliases retain Pydantic's constraints and schema references.
+Recursive aliases needed for Typeforge selection report an alias-cycle failure.
 
 Typeforge overlays project inline Maps in parameters, returns, fields, variable
 annotations, and nested alias values to ordinary checker types. Generated overloads
@@ -386,11 +403,12 @@ and value:
 validators are not executed to choose a case.
 
 `None` and empty slice endpoints both mean the None type: `Map[Input, :,
-...: str]` accepts None or a string. Ordinary type aliases retain their identity
-in static runtime selection; Input tests unwrap them to observe their leaf types.
+...: str]` accepts None or a string. Ordinary type aliases expand for static and
+raw Input selection; raw tests observe their leaf types.
 Selected output aliases keep Pydantic's constraints and schema references.
-Union selectors therefore have consumer-specific behavior, and runtime union
-construction absorbs `typing.Any`. The [union support boundary](CONTEXT.md#union-support-and-open-decisions)
+Raw Input type observation and static compatibility remain distinct. Union
+construction preserves explicit members beside `typing.Any`. The
+[union support boundary](CONTEXT.md#union-support-and-agreed-future-contracts)
 records the supported cases and remaining cross-consumer restrictions.
 
 Parameterized value-time patterns such as `list[int]` and `list[Value]` fail
