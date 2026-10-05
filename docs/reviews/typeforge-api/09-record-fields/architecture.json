@@ -1,0 +1,285 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "09 · Record construction and scoped fields",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Neilerino/typeforge",
+      "revision": "54f79352abc6b25cd6eef0949be1168eb4e2772a"
+    },
+    "viewBox": [
+      1360,
+      850
+    ]
+  },
+  "components": [
+    {
+      "id": "record_construct",
+      "type": "frontend",
+      "label": "Record + Fields",
+      "sublabel": "Consume one symbolic iteration",
+      "tag": "NEW · IMPORT CONSTRUCTION",
+      "pos": [
+        70,
+        85
+      ],
+      "size": [
+        320,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/_record.py",
+          "line": 68,
+          "label": "Fields iterator"
+        },
+        {
+          "path": "src/typeforge/_record.py",
+          "line": 99,
+          "label": "Record template"
+        }
+      ]
+    },
+    {
+      "id": "record_native_adapter",
+      "type": "backend",
+      "label": "_AnnotationAdapter",
+      "sublabel": "Lower retained typing arguments",
+      "tag": "RUNTIME FRONTEND",
+      "pos": [
+        70,
+        300
+      ],
+      "size": [
+        320,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_frontend.py",
+          "line": 226,
+          "label": "Scoped field lowering"
+        }
+      ]
+    },
+    {
+      "id": "record_source_parser",
+      "type": "frontend",
+      "label": "_parse_record",
+      "sublabel": "Parse a lexical field binding",
+      "tag": "COMPILER · NO EXECUTION",
+      "pos": [
+        970,
+        85
+      ],
+      "size": [
+        320,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/source/_parser.py",
+          "line": 985,
+          "label": "Source comprehension"
+        }
+      ]
+    },
+    {
+      "id": "record_source_lower",
+      "type": "backend",
+      "label": "lower_semantic_expression",
+      "sublabel": "Retain declaration identity",
+      "tag": "COMPILER FRONTEND",
+      "pos": [
+        970,
+        300
+      ],
+      "size": [
+        320,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_lowering.py",
+          "line": 141,
+          "label": "Scoped field symbol"
+        },
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_lowering.py",
+          "line": 172,
+          "label": "Record lowering"
+        }
+      ]
+    },
+    {
+      "id": "record_family_policy",
+      "type": "backend",
+      "label": "TypeSystem.record",
+      "sublabel": "TypedDict family adapters",
+      "tag": "EXISTING · FAMILY BOUNDARY",
+      "pos": [
+        520,
+        85
+      ],
+      "size": [
+        320,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_records.py",
+          "line": 44,
+          "label": "Runtime reflection"
+        },
+        {
+          "path": "src/typeforge/compiler/record_materialization/_materialization.py",
+          "line": 171,
+          "label": "Compiler discovery"
+        }
+      ]
+    },
+    {
+      "id": "record_shared_eval",
+      "type": "backend",
+      "label": "Evaluator._record",
+      "sublabel": "Bind original field; keep or Drop",
+      "tag": "SHARED · ONE EVALUATOR",
+      "pos": [
+        520,
+        495
+      ],
+      "size": [
+        320,
+        110
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 261,
+          "label": "Field traversal"
+        },
+        {
+          "path": "src/typeforge/semantics/domain/models.py",
+          "line": 194,
+          "label": "Scoped expression data"
+        }
+      ]
+    },
+    {
+      "id": "record_runtime_output",
+      "type": "backend",
+      "label": "emit_output",
+      "sublabel": "Native Pydantic record schema",
+      "tag": "EXISTING · VALIDATION",
+      "pos": [
+        70,
+        710
+      ],
+      "size": [
+        320,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_emission.py",
+          "line": 21,
+          "label": "Backend emission"
+        }
+      ]
+    },
+    {
+      "id": "record_static_output",
+      "type": "backend",
+      "label": "typed_dict_declaration",
+      "sublabel": "Portable specialized TypedDict",
+      "tag": "EXISTING · CHECKER OUTPUT",
+      "pos": [
+        970,
+        710
+      ],
+      "size": [
+        320,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/record_materialization/_materialization.py",
+          "line": 139,
+          "label": "TypedDict declaration"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "record_import_template",
+      "from": "record_construct",
+      "to": "record_native_adapter",
+      "label": "Immutable template",
+      "labelDy": 70
+    },
+    {
+      "id": "record_parse_lower",
+      "from": "record_source_parser",
+      "to": "record_source_lower",
+      "label": "Source expression",
+      "labelDy": 70
+    },
+    {
+      "id": "record_native_eval",
+      "from": "record_native_adapter",
+      "to": "record_shared_eval",
+      "label": "RecordExpression"
+    },
+    {
+      "id": "record_source_eval",
+      "from": "record_source_lower",
+      "to": "record_shared_eval",
+      "label": "RecordExpression"
+    },
+    {
+      "id": "record_family_eval",
+      "from": "record_family_policy",
+      "to": "record_shared_eval",
+      "label": "RecordShape",
+      "labelDy": 70
+    },
+    {
+      "id": "record_native_emit",
+      "from": "record_shared_eval",
+      "to": "record_runtime_output",
+      "label": "Preserved fields"
+    },
+    {
+      "id": "record_static_emit",
+      "from": "record_shared_eval",
+      "to": "record_static_output",
+      "label": "Named specialization"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Author outcome",
+      "items": [
+        "Public[T] drops password and passes through each remaining field with flags and metadata intact."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Review contract",
+      "items": [
+        "Construction runs once; rebuilds reuse the template. Invalid fields and duplicate names remain typed failures."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Next slices",
+      "items": [
+        "10 adds field edits; 11 adds local aliases; 12–13 derisk field and record unions. Future Protocols keep a separate family adapter."
+      ]
+    }
+  ]
+}

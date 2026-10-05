@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "perceptual-review",
+  "artifact": {
+    "sha256": "9bc39ef617a82de7aeb0815d121c3671871b3fcc09e18b2142443fcb2b733f59",
+    "bytes": 714863
+  },
+  "diagram_type": "architecture",
+  "validation": "9/9 showcase, 0 errors, 0 warnings",
+  "browser_evidence": "passed",
+  "visual_review": "passed",
+  "correction_rounds": 1,
+  "scope": {
+    "state": "READ, Still, Classic",
+    "viewports": [
+      [
+        1440,
+        900
+      ],
+      [
+        1600,
+        1000
+      ],
+      [
+        1920,
+        1080
+      ],
+      [
+        2048,
+        1320
+      ]
+    ],
+    "visuallyInspected": [
+      "1440x900 light",
+      "1440x900 dark",
+      "2048x1320 light",
+      "2048x1320 dark"
+    ]
+  },
+  "observations": [
+    "Both frontend paths converge on shared field evaluation; routes and labels are clear.",
+    "No clipped nodes, cards, source badges, or navigation controls in the four inspected captures.",
+    "The largest viewport uses the available vertical space; both themes preserve contrast."
+  ],
+  "automatedEvidence": "architecture.visual-check.json",
+  "note": "Automated visualReview remains pending; this separate record reports inspection of the actual screenshots."
+}

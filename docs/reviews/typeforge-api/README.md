@@ -21,7 +21,7 @@ and test files were unchanged when those artifacts were removed from PR diffs.
 | 06 | Named captures and isolation | 05 | [#6](https://github.com/Neilerino/typeforge/pull/6) |
 | 07 | Compatible generic interface captures | 02, 04, 06 | [#7](https://github.com/Neilerino/typeforge/pull/7) |
 | 08 | Alternative capture patterns | 02, 06 | [#8](https://github.com/Neilerino/typeforge/pull/8) |
-| 09 | Record and Fields goal API | 05 | Pending |
+| 09 | Record and Fields goal API | 05 | [#9](https://github.com/Neilerino/typeforge/pull/9) |
 | 10 | Field construction and immutable edits | 09 | Pending |
 | 11 | Local generic aliases and composition | 06, 09 | Pending |
 | 12 | Union-valued field transforms and Drop | 02, 10, 11 | Pending |

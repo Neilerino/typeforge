@@ -4,9 +4,9 @@
 
 **Blocked by:** 05 — Basic generic type functions.
 
-**Status:** ready-for-agent
+**Status:** implemented — all repository checks pass
 
-- [ ] Support the accepted type_function comprehension, field passthrough, and Drop filtering.
-- [ ] Preserve requiredness, readonly state, and metadata for passed-through fields.
-- [ ] Keep record-family adaptation separate so future Protocol support remains possible.
-- [ ] Remove MapFields and ambient field bindings and migrate repository consumers in the same slice.
+- [x] Support the accepted type_function comprehension, field passthrough, and Drop filtering.
+- [x] Preserve requiredness, readonly state, and metadata for passed-through fields.
+- [x] Keep record-family adaptation separate so future Protocol support remains possible.
+- [x] Remove MapFields and ambient field bindings and migrate repository consumers in the same slice.
