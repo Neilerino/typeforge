@@ -305,6 +305,47 @@ def update_user(changes: Patch[User]) -> None:
 # Hovering over `Patch` shows its documentation.
 ```
 
+## Reusable type functions
+
+A type function gives a type definition its own scope and returns a reusable
+template. Runtime construction happens once during import; subscription and value
+validation specialize that template without running the body again.
+
+```python
+from typeforge import Map, type_function
+from typeforge.pydantic import Schema
+from pydantic import TypeAdapter
+
+@type_function
+def Selected[T]():
+    return Map[T, int: str, ...: bytes]
+
+TypeAdapter(Schema[Selected[int]]).validate_python("hello")  # "hello"
+
+@type_function
+def Items[T]():
+    return list[Selected[T]]
+
+type TextItems = Items[int]  # compiler output: list[str]
+```
+
+Compilation and source files are optional for runtime use. The compiler reads the
+supported construction syntax without importing or executing the application and
+emits ordinary typing aliases and specialized annotations for existing checkers.
+An unresolved Selected[T] has the output bound str | bytes.
+
+The basic compiler scope supports a module-level synchronous function with no
+value parameters or other decorators, unconstrained ordinary type parameters
+without defaults, an optional docstring, and one final return of a type expression.
+Map, Is, unions, ordinary generic types, and subscription of other type functions
+work. Named captures, local aliases, and Record/Fields arrive in later slices.
+
+Runtime construction can use additional Python statements when they produce a
+valid template. It rejects invalid returned structures and foreign unbound
+parameters; symbolic parameter and Map truthiness is invalid. Use Map for
+selection that depends on unresolved types. Runtime acceptance of additional
+construction code does not establish compiler support.
+
 ## Pydantic integration
 
 Install the optional Pydantic extra, then wrap a Typeforge expression in
