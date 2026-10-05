@@ -9,7 +9,7 @@ the owning slice, with no compatibility layer or migration-guide work.
 |---|---|---|---|
 | 01 | Scalar matching and Is | None | [#1](https://github.com/Neilerino/typeforge/pull/1) |
 | 02 | Union selection and no-match | 01 | [#2](https://github.com/Neilerino/typeforge/pull/2) |
-| 03 | Transparent aliases and explicit Any unions | 02 | Pending |
+| 03 | Transparent aliases and explicit Any unions | 02 | [#3](https://github.com/Neilerino/typeforge/pull/3) |
 | 04 | Generic compatibility | 01 | Pending |
 | 05 | Basic generic type functions | 01 | Pending |
 | 06 | Named captures and isolation | 05 | Pending |

@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 — Union selection and no-match.
 
-**Status:** implemented; draft PR pending
+**Status:** implemented — [draft PR #3](https://github.com/Neilerino/typeforge/pull/3)
 
 **Derisking required:** Verify union selection, correlation, identity, and failure behavior across the relevant compiler, runtime, and checker paths during this slice.
 
