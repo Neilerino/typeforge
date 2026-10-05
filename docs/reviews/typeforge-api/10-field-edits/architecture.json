@@ -1,0 +1,337 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "10 / Field construction and immutable edits",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1390,
+      635
+    ],
+    "repository": {
+      "url": "https://github.com/Neilerino/typeforge",
+      "revision": "b3e56912772f0f1997c31e363baa89c066bffb8b"
+    }
+  },
+  "components": [
+    {
+      "id": "field-keyword-template",
+      "type": "frontend",
+      "label": "Field / FieldValue.replace",
+      "sublabel": "Immutable typing templates",
+      "tag": "new entry or explicit overrides",
+      "pos": [
+        60,
+        30
+      ],
+      "size": [
+        350,
+        110
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/_field.py",
+          "line": 16,
+          "end_line": 106,
+          "label": "Field values and edits"
+        },
+        {
+          "path": "src/typeforge/_field.py",
+          "line": 108,
+          "end_line": 131,
+          "label": "Keyword factory and name transport"
+        }
+      ]
+    },
+    {
+      "id": "field-authored-ast",
+      "type": "frontend",
+      "label": "_parse_field / _parse_field_replacement",
+      "sublabel": "Keyword AST and lexical targets",
+      "tag": "compiler never executes application code",
+      "pos": [
+        940,
+        30
+      ],
+      "size": [
+        405,
+        110
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/source/_parser.py",
+          "line": 989,
+          "end_line": 1083,
+          "label": "Parse field construction and edits"
+        },
+        {
+          "path": "src/typeforge/compiler/source/_model.py",
+          "line": 81,
+          "end_line": 99,
+          "label": "Owned source expressions"
+        }
+      ]
+    },
+    {
+      "id": "field-runtime-lowering",
+      "type": "backend",
+      "label": "_AnnotationAdapter",
+      "sublabel": "Templates \u2192 semantic expressions",
+      "tag": "existing runtime frontend",
+      "pos": [
+        60,
+        185
+      ],
+      "size": [
+        350,
+        110
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_frontend.py",
+          "line": 267,
+          "end_line": 289,
+          "label": "Replacement template lowering"
+        },
+        {
+          "path": "src/typeforge/pydantic/_frontend.py",
+          "line": 458,
+          "end_line": 474,
+          "label": "Keyword field lowering"
+        }
+      ]
+    },
+    {
+      "id": "field-source-lowering",
+      "type": "backend",
+      "label": "lower_semantic_expression",
+      "sublabel": "Owned AST \u2192 semantic expressions",
+      "tag": "existing compiler frontend",
+      "pos": [
+        940,
+        185
+      ],
+      "size": [
+        405,
+        110
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_lowering.py",
+          "line": 130,
+          "end_line": 190,
+          "label": "Lower field overrides and flags"
+        }
+      ]
+    },
+    {
+      "id": "field-expression-data",
+      "type": "backend",
+      "label": "FieldReplacementExpression",
+      "sublabel": "FieldExpression + optional overrides",
+      "tag": "shared data; absent differs from None",
+      "pos": [
+        500,
+        185
+      ],
+      "size": [
+        365,
+        110
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/domain/models.py",
+          "line": 149,
+          "end_line": 162,
+          "label": "Shared field expression data"
+        }
+      ]
+    },
+    {
+      "id": "field-evaluation-owner",
+      "type": "backend",
+      "label": "Evaluator._replace_field",
+      "sublabel": "Preserve unedited RecordField data",
+      "tag": "replace type, retain flags, consume Drop",
+      "pos": [
+        500,
+        345
+      ],
+      "size": [
+        365,
+        110
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 343,
+          "end_line": 387,
+          "label": "Construct and immutably edit fields"
+        },
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 261,
+          "end_line": 298,
+          "label": "Existing Record context and collisions"
+        }
+      ]
+    },
+    {
+      "id": "field-schema-consumer",
+      "type": "backend",
+      "label": "_RecordAnnotation",
+      "sublabel": "Native validation and metadata",
+      "tag": "existing family output",
+      "pos": [
+        60,
+        505
+      ],
+      "size": [
+        350,
+        110
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_emission.py",
+          "line": 53,
+          "end_line": 72,
+          "label": "Existing native TypedDict schema output"
+        }
+      ]
+    },
+    {
+      "id": "field-checker-consumer",
+      "type": "backend",
+      "label": "_typed_dict_field_type",
+      "sublabel": "Required / NotRequired / ReadOnly",
+      "tag": "existing portable checker output",
+      "pos": [
+        940,
+        505
+      ],
+      "size": [
+        405,
+        110
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/record_materialization/_materialization.py",
+          "line": 154,
+          "end_line": 176,
+          "label": "Standard field modifier emission"
+        },
+        {
+          "path": "tests/unit/test_field_edit_contract.py",
+          "line": 408,
+          "label": "Three checker acceptance contracts"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Runtime construction and lowering",
+      "wraps": [
+        "field-keyword-template",
+        "field-runtime-lowering"
+      ],
+      "pad": 23
+    },
+    {
+      "kind": "region",
+      "label": "Compiler parsing and lowering",
+      "wraps": [
+        "field-authored-ast",
+        "field-source-lowering"
+      ],
+      "pad": 23
+    },
+    {
+      "kind": "region",
+      "label": "Shared semantics",
+      "wraps": [
+        "field-expression-data",
+        "field-evaluation-owner"
+      ],
+      "pad": 23
+    }
+  ],
+  "connections": [
+    {
+      "id": "field-template-to-runtime",
+      "from": "field-keyword-template",
+      "to": "field-runtime-lowering",
+      "label": "inert alias data",
+      "labelDy": 24,
+      "variant": "emphasis"
+    },
+    {
+      "id": "field-ast-to-source",
+      "from": "field-authored-ast",
+      "to": "field-source-lowering",
+      "label": "owned source data",
+      "labelDy": 24,
+      "variant": "emphasis"
+    },
+    {
+      "id": "field-runtime-to-model",
+      "from": "field-runtime-lowering",
+      "to": "field-expression-data",
+      "label": "lower"
+    },
+    {
+      "id": "field-source-to-model",
+      "from": "field-source-lowering",
+      "to": "field-expression-data",
+      "label": "lower"
+    },
+    {
+      "id": "field-model-to-evaluator",
+      "from": "field-expression-data",
+      "to": "field-evaluation-owner",
+      "label": "evaluate in field context",
+      "labelDy": 24,
+      "variant": "emphasis"
+    },
+    {
+      "id": "field-evaluator-to-schema",
+      "from": "field-evaluation-owner",
+      "to": "field-schema-consumer",
+      "label": "edited RecordShape"
+    },
+    {
+      "id": "field-evaluator-to-checker",
+      "from": "field-evaluation-owner",
+      "to": "field-checker-consumer",
+      "label": "edited RecordShape"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Author outcome",
+      "items": [
+        "Field(name=..., type=...) creates explicit data; required=True, readonly=False.",
+        "field.replace(type=bytes) keeps its original name and flags."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Review the invariants",
+      "items": [
+        "Replacing type replaces metadata; wrapping field.type preserves metadata at the nested position.",
+        "Only replacement type consumes Drop; invalid names, flags and collisions fail."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Existing owners and next slices",
+      "items": [
+        "Both frontends share evaluation and existing TypedDict family adapters.",
+        "11: local aliases. 12: union field edits and Drop. 13: correlated record unions."
+      ]
+    }
+  ]
+}

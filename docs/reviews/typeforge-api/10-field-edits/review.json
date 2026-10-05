@@ -1,0 +1,27 @@
+{
+  "diagram_type": "architecture",
+  "c4_level": 4,
+  "source_revision": "b3e56912772f0f1997c31e363baa89c066bffb8b",
+  "specification_sha256": "754c96a648b1a0f797981559c1d7e3b638103fa91ab7ea181929073a78a939cb",
+  "artifact_sha256": "0cfe59f4661c00f7478ea058b5aec0b25bbc23ef7a4c5e5f8a7821e001d42e42",
+  "artifact_bytes": 718498,
+  "validation": "9/9 showcase, 0 errors, 0 warnings",
+  "browser_evidence": "passed",
+  "browser_receipt": "architecture.visual-check.json",
+  "visual_review": "passed",
+  "correction_rounds": 1,
+  "artifact_correction_rounds": 2,
+  "inspected_captures": [
+    "architecture.visual-check.1440x900.light.png",
+    "architecture.visual-check.1440x900.dark.png",
+    "architecture.visual-check.2048x1320.light.png",
+    "architecture.visual-check.2048x1320.dark.png"
+  ],
+  "scope": "Image-capable review of all four original-resolution browser captures; static READ view in both endpoint sizes and themes.",
+  "observations": [
+    "All eight code components, their source badges and the three context cards are visible together.",
+    "Labels and arrows remain distinct; no route crosses an unrelated node and no relationship label masks another route.",
+    "The largest desktop capture uses the available height with a balanced diagram and footer; both themes have readable contrast."
+  ],
+  "limits": "The automatic receipt retains visualReview=pending. This separate review records screenshot inspection, not interactive focus, search, passport or export testing."
+}
