@@ -145,17 +145,23 @@ def adapt_source_module(
             continue
 
         origin_count_before_alias = len(origins)
-        lowered_alias = TypeAliasDeclaration(
-            name=alias.name,
-            value=_adapt_alias_fallback(
+        parameters = tuple(parameter.name for parameter in alias.type_parameters)
+        if alias.is_type_function:
+            value = _resolve_type_function_application(
+                alias.value, alias.name, parameters, type_context, origins
+            )
+        else:
+            value = _adapt_alias_fallback(
                 declaration=alias.name,
                 expression=alias.value,
-                type_parameters=tuple(
-                    parameter.name for parameter in alias.type_parameters
-                ),
+                type_parameters=parameters,
                 origins=origins,
                 type_context=type_context,
-            ),
+            )
+
+        lowered_alias = TypeAliasDeclaration(
+            name=alias.name,
+            value=value,
             type_parameters=tuple(
                 parameter.declaration for parameter in alias.type_parameters
             ),
@@ -324,6 +330,46 @@ def adapt_source_module(
     )
 
 
+def _is_type_function_application(
+    expression: NameTypeExpression | AppliedTypeExpression,
+    type_context: SourceTypeContext,
+) -> bool:
+    name = (
+        expression.constructor
+        if isinstance(expression, AppliedTypeExpression)
+        else expression
+    )
+    return isinstance(name, NameTypeExpression) and any(
+        alias.is_type_function and alias.qualified_name == name.name
+        for alias in type_context.aliases
+    )
+
+
+def _resolve_type_function_application(
+    expression: SourceTypeExpression,
+    declaration: str,
+    type_parameters: tuple[str, ...],
+    type_context: SourceTypeContext,
+    origins: list[GeneratedElementOrigin[SourceSpan]] | None,
+) -> StubTypeExpression:
+    boundary = SchemaTypeExpression(expression.source, expression.span, (expression,))
+    parameter_names = {(name,) for name in type_parameters}
+    aliases = tuple(
+        alias
+        for alias in type_context.aliases
+        if alias.qualified_name not in parameter_names
+    )
+    return adapt_schema_expression(
+        boundary,
+        aliases,
+        declaration=declaration,
+        environment=type_context.types,
+        type_parameters=type_parameters,
+        preserve_type_variables=True,
+        origins=origins,
+    ).unwrap()
+
+
 def _collect_semantic_relationship_aliases(
     aliases: tuple[SourceTypeAlias, ...],
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
@@ -332,6 +378,9 @@ def _collect_semantic_relationship_aliases(
 ) -> tuple[SemanticRelationshipAlias, ...]:
     semantic: list[SemanticRelationshipAlias] = []
     for alias in aliases:
+        if alias.is_type_function:
+            continue
+
         value = schema_inner_expression(
             expand_schema_aliases(
                 alias.value,
@@ -728,6 +777,11 @@ def _(
     *,
     type_context: SourceTypeContext,
 ) -> StubTypeExpression:
+    if _is_type_function_application(expression, type_context):
+        return _resolve_type_function_application(
+            expression, declaration, type_parameters, type_context, origins
+        )
+
     expanded = expand_schema_aliases(
         expression, type_context.aliases, declaration=declaration, predicates_only=True
     ).unwrap()
@@ -807,6 +861,11 @@ def _(
     *,
     type_context: SourceTypeContext,
 ) -> StubTypeExpression:
+    if _is_type_function_application(expression, type_context):
+        return _resolve_type_function_application(
+            expression, declaration, type_parameters, type_context, origins
+        )
+
     expanded = expand_schema_aliases(
         expression, type_context.aliases, declaration=declaration, predicates_only=True
     ).unwrap()

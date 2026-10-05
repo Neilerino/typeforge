@@ -14,6 +14,7 @@ from typeforge._markers import (
     ReadonlyField,
     Value,
 )
+from typeforge._type_function import TypeFunctionConstructionError, type_function
 
 if not TYPE_CHECKING:
     # Checkers retain the inert object alias; runtime subscriptions normalize slices.
@@ -31,5 +32,7 @@ __all__ = [
     "MapFields",
     "OptionalField",
     "ReadonlyField",
+    "TypeFunctionConstructionError",
     "Value",
+    "type_function",
 ]

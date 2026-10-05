@@ -170,6 +170,43 @@ arguments without expanding aliases or interpreting Literal/Annotated payloads.
 Issue data, codes, phases, and validation locations stay unchanged; display does
 not add authored-state storage to the runtime constructor or semantic evaluator.
 
+## Reusable type functions
+
+The public type_function decorator constructs a template once during an ordinary
+Python import. It returns an immutable TypeAliasType with the function's original
+type parameter identities. Closure cells for those parameters are replaced in a
+construction-only function copy by immutable GenericAlias bridges; the authored
+function and unrelated closure cells are not mutated. These symbols reject
+truthiness. Map annotations reject truthiness too. Specialization uses existing
+alias binding and shared evaluation rather than replaying the construction body.
+The base constructor depends only on the standard library; Schema remains the
+optional Pydantic evaluation boundary.
+
+Alias creation uses the authored globals for Python's native module identity,
+executing only Typeforge's factory code in that namespace. Unrelated closure cells
+remain lazy, including cells whose values have not been assigned at construction.
+
+Runtime accepts ordinary construction code that returns a valid typing template.
+It validates the returned structure, keeps Literal payloads and Annotated metadata
+opaque, and rejects foreign unbound parameters. Unexpected application exceptions
+propagate unchanged. Compilation, source access, and saved artifacts are optional.
+
+The compiler recognizes the decorator by resolved import identity and turns a
+supported return expression into a Source TypeAliasDeclaration, retaining its
+authored span and a type-function distinction. Existing schema alias expansion,
+cycle checks, semantic lowering, evaluation, and emission own specialization and
+output bounds. Type functions do not enter the legacy callable relationship alias
+path. Generated interfaces contain standard type aliases and specialized usages.
+
+The basic compiler frontier is a module-level synchronous function with no value
+parameters, no other decorators, unconstrained ordinary type parameters without
+defaults, an optional docstring, and one final return of a typing expression.
+Supported expressions include Map, Is, unions, generic types, and subscription of
+other type functions. Unsupported source produces authored diagnostics without an
+execution fallback. Capture declarations, local aliases, and record construction
+extend this frontier in their respective slices. Runtime acceptance of extra
+Python construction statements does not imply compiler support.
+
 ## Library and project output
 
 Published library stubs must be deterministic from library source and configuration. Consumer call sites must never influence them, and consumers should not need to run the Typeforge compiler.
