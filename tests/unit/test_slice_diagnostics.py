@@ -97,7 +97,11 @@ def test_deferred_no_match_uses_slice_display_and_preserves_field_location() -> 
 def test_errors_inside_union_branches_preserve_authored_utf8_spans(
     expression: str,
 ) -> None:
-    source = f"from typeforge import All, Equal, Map\ntype Résultat = {expression}\n"
+    source = (
+        "from typeforge import Map\n"
+        "from typeforge._markers import All, Equal\n"
+        f"type Résultat = {expression}\n"
+    )
     path = Path("authored.py")
     for result in (parse_source(source, path), compile_source(source, path, 2)):
         assert isinstance(result, Failure)
@@ -112,8 +116,8 @@ def test_errors_inside_union_branches_preserve_authored_utf8_spans(
 
 
 def test_predicate_alias_failure_keeps_the_authored_literal_expression() -> None:
-    source = """\
-from typeforge import Equal, Map
+    source = """from typeforge._markers import Equal
+from typeforge import Map
 type Text = Equal["café"]
 type Result[T] = Map[T, Text: bytes, ...: str]
 """

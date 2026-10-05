@@ -3,9 +3,9 @@ from typing import Annotated, TypeVar
 import pytest
 from returns.result import Failure
 
-from typeforge import Equal, Map
+from typeforge import Map
 from typeforge import semantics as s
-from typeforge._markers import Case, Default
+from typeforge._markers import Case, Default, Equal
 from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic._errors import SchemaIssue
 from typeforge.pydantic._frontend import adapt_annotation

@@ -3,7 +3,8 @@ from typing import Annotated, Literal
 import pytest
 
 from pydantic import AfterValidator, TypeAdapter, ValidationError
-from typeforge import All, Assignable, Equal, Key, Map
+from typeforge import Key, Map
+from typeforge._markers import All, Assignable, Equal
 from typeforge.pydantic import Input, Schema
 
 

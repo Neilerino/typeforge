@@ -5,24 +5,19 @@ from typing import Annotated, get_args, get_origin
 import pytest
 
 from typeforge import (
-    All,
-    Any,
-    Assignable,
     Collect,
     Doc,
     Drop,
     Each,
-    Equal,
     Field,
     Key,
     Map,
     MapFields,
-    Not,
     OptionalField,
     ReadonlyField,
     Value,
 )
-from typeforge._markers import Case, Default
+from typeforge._markers import All, Any, Assignable, Case, Default, Equal, Not
 
 
 def test_variadic_markers_preserve_arguments() -> None:

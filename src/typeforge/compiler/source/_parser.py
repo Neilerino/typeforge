@@ -811,6 +811,14 @@ def _parse_annotation(
                 argument_values.append(argument)
 
         arguments = tuple(argument_values)
+        if (
+            isinstance(node.value, ast.Name | ast.Attribute)
+            and _resolve_name(_expression_name(node.value), bindings)
+            == ("typeforge", "Is")
+            and len(arguments) != 1
+        ):
+            raise _AnnotationSyntaxError("Is requires one type argument", span)
+
         if _is_schema_boundary(constructor):
             return SchemaTypeExpression(
                 source=rendered,
@@ -960,6 +968,22 @@ def _marker_kind(expression: SourceTypeExpression) -> MarkerKind | None:
         "Default",
     }:
         return None
+
+    if qualified_name == ("typeforge", "Is"):
+        return MarkerKind.EQUAL
+
+    if qualified_name[:-1] == ("typeforge",) and qualified_name[-1] in {
+        "Equal",
+        "Assignable",
+        "All",
+        "Any",
+        "Not",
+    }:
+        raise _AnnotationSyntaxError(
+            f"{qualified_name[-1]} is no longer a public selector; "
+            "use a bare type or Is[Type]",
+            expression.span,
+        )
 
     return marker_names.get(qualified_name[-1])
 

@@ -12,13 +12,14 @@ from pydantic import (
     TypeAdapter,
     ValidationError,
 )
-from typeforge import All, Assignable, Equal, Key, Map, Not
+from typeforge import Is, Key, Map
+from typeforge._markers import All, Assignable, Equal, Not
 from typeforge.pydantic import Schema
 
 
 def test_generic_no_default_map_specializes_and_rejects_unmatched_any() -> None:
     class Payload[T](BaseModel):
-        value: Schema[Map[T, int:str, bytes:int]]
+        value: Schema[Map[T, Is[int] : str, Is[bytes] : int]]
 
     assert Payload[int].model_validate({"value": "3"}).value == "3"
     assert Payload[bytes].model_validate({"value": "3"}).value == 3
@@ -56,16 +57,16 @@ def test_fallback_bounds_defaults_and_constraints_select_map_outputs() -> None:
     assert Defaulted[bytes].model_validate({"value": "3"}).value == b"3"
 
 
-def test_any_fallback_follows_exact_cases_and_authored_default() -> None:
+def test_any_fallback_follows_compatible_cases_and_authored_order() -> None:
     class Payload[T](BaseModel):
         value: Schema[Map[T, int:str, ...:bytes]]
 
     class ExplicitAny[T](BaseModel):
         value: Schema[Map[T, int:bytes, Any:str]]
 
-    assert Payload.model_validate({"value": "3"}).value == b"3"
-    assert Payload[Any].model_validate({"value": "3"}).value == b"3"
-    assert ExplicitAny.model_validate({"value": "3"}).value == "3"
+    assert Payload.model_validate({"value": "3"}).value == "3"
+    assert Payload[Any].model_validate({"value": "3"}).value == "3"
+    assert ExplicitAny.model_validate({"value": "3"}).value == b"3"
     assert ExplicitAny[int].model_validate({"value": "3"}).value == b"3"
 
 
@@ -74,7 +75,7 @@ def test_partial_inheritance_and_specializations_keep_field_schemas_isolated(
     first: type,
 ) -> None:
     class Payload[T, U](BaseModel):
-        value: Schema[Map[T, int:str, bytes:int]]
+        value: Schema[Map[T, Is[int] : str, Is[bytes] : int]]
         items: list[Schema[U]]
 
     class Partial[U](Payload[int, U]):
@@ -114,7 +115,7 @@ def test_generic_output_does_not_defer_an_unrelated_concrete_no_match() -> None:
     with pytest.raises(PydanticSchemaGenerationError, match=r"\[map_no_match\]"):
 
         class Payload[T](BaseModel):
-            value: Schema[Map[Any, int:T]]
+            value: Schema[Map[Any, Is[int] : T]]
 
 
 def test_selected_typevar_retains_pydantic_model_bound_serialization() -> None:
@@ -138,7 +139,7 @@ def test_selected_typevar_retains_pydantic_model_bound_serialization() -> None:
 
 @pytest.mark.parametrize(
     "expression",
-    [Map[Any, int:str], Map[int, int : Map[Any, bytes:str]]],
+    [Map[Any, Is[int] : str], Map[int, int : Map[Any, Is[bytes] : str]]],
 )
 def test_direct_and_nested_no_match_report_authored_map(expression: object) -> None:
     with pytest.raises(
@@ -158,7 +159,7 @@ def test_selected_never_is_not_misreported_as_no_match(expression: object) -> No
 
 def test_no_match_stops_evaluation_before_later_operand_failure() -> None:
     with pytest.raises(PydanticSchemaGenerationError, match=r"\[map_no_match\]"):
-        TypeAdapter[object](Schema[Map[int, Equal[Map[Any, int:str], Key] : str]])
+        TypeAdapter[object](Schema[Map[int, Equal[Map[Any, Is[int] : str], Key] : str]])
 
 
 def test_conditions_short_circuit_and_union_subjects_share_evaluation() -> None:

@@ -94,6 +94,15 @@ type Any[*Conditions] = Annotated[
         "```"
     ),
 ]
+type Is[Target] = Annotated[
+    bool,
+    Doc(
+        "Matches the complete original Map subject exactly against Target. "
+        "Bare selectors use Python assignment compatibility; Is preserves an "
+        "exact whole-type comparison. Use one type argument inside a Map selector."
+    ),
+]
+
 type Not[Condition] = Annotated[
     bool,
     Doc(
@@ -118,9 +127,9 @@ type Map[Subject, *Cases] = Annotated[
     object,
     Doc(
         "Transforms `Subject` through ordered `selector: output` branches. "
-        "Selectors may be exact or structural patterns or Typeforge boolean "
-        "predicates. Unary predicates bind the enclosing subject. The first "
-        "matching branch supplies the output; `...: output` supplies a final "
+        "Bare selectors use Python assignment compatibility; Is[Type] compares "
+        "the complete subject exactly. Structural patterns can capture types. "
+        "The first matching branch supplies the output; `...: output` supplies a final "
         "fallback, and an omitted fallback preserves no-match/Never policy. The "
         "runtime constructor normalizes slices before generic substitution. None "
         "and empty endpoints denote the None type; string selectors require "

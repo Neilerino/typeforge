@@ -7,6 +7,30 @@ Use this reference when changing Map authoring, selection, or consumer support.
 For module ownership, read [DESIGN.md](DESIGN.md); for runnable authoring examples,
 read [README.md](README.md#examples).
 
+For evolving selector semantics, minimize Typeforge-specific checking and retain
+existing checkers as the owners of ordinary Python inference and expression
+compatibility. See the [delegation discussion](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#proxy-delegation-and-verification-boundary)
+before promising unresolved match-type verification beyond representable output
+bounds and supported generated checks.
+The agreed scope allows unresolved internal relationships with useful standard
+projections and supported generated obligations. Document bound-only checking;
+full Scala-style dependent verification is not promised.
+
+The [initial API decisions](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md) are complete
+as of 2026-09-30; scalar matching and the selector cutover are implemented; later slices remain
+pending. Read the agreed
+batches before changing selector APIs, field construction, type-function scope,
+or callable input contracts. The support descriptions below describe current
+implementation unless explicitly identified as an agreed future contract.
+
+Before implementing captures, type functions, field edits, or callable projections,
+read the [derisking findings](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/type-function-derisking.md). Bounded
+prototype/checker witnesses pass. The [agreed runtime boundary](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#runtime-construction-and-compiler-support)
+keeps compilation optional and distinguishes runtime template construction from
+the compiler's supported source forms. Compatibility frontiers and full
+compiler/proxy integration remain implementation gates; the prototype is not
+production support.
+
 ## Language
 
 **Runtime Input**:
@@ -34,23 +58,39 @@ contributes no output type.
 An ordered Map whose case selection awaits Runtime Input. Its cases, default,
 and available bindings remain meaningful while selection is deferred.
 
+**Whole-subject predicate**:
+A predicate that tests the complete Map subject, including a union as a whole,
+rather than independently testing each union member.
+
+**Union equivalence**:
+The agreed comparison of unions as sets of member types: member order and
+repetition do not distinguish them. Current compiler limitations are recorded
+under G2 below.
+
+**Ordinary type alias**:
+A name bound to a type that expands to that type for selection under the agreed
+contract. NewType results are distinct and are outside this transparency rule;
+current alias-selection limitations are recorded under G3 below.
+
 ## Map authoring
 
-Use `Map` for conditional mapping and `Equal` for equality predicates.
+Use `Map` for conditional mapping and `Is` for exact whole-type matching.
 
 ```python
-from typeforge import Assignable, Map
+from typeforge import Is, Map
 
-type Encoded[T] = Map[T, int: str, Assignable[bytes]: str, ...: T]
+type Encoded[T] = Map[T, int: str, Is[bytes]: str, ...: T]
 ```
 
 - **Branches:** supply a subject and at least one ordered branch. First match wins;
   the optional `...: output` fallback counts as a branch and must be last.
   Public authoring accepts slices; Case/Default are private normalized data.
-- **Selectors:** concrete selectors match exactly; structural selectors such as
-  `list[Value]` capture types. `Equal[list[Value]]` requires an existing Value
-  binding. Callable overloads have the [limits below](#callable-support).
-- **Scope:** unary Equal/Assignable binds the whole enclosing Map subject, through
+- **Selectors:** bare scalar selectors use assignment compatibility, including
+  inheritance, bool/int, numeric widening, and Any. `Is[Type]` compares the whole
+  subject exactly. Structural selectors such as `list[Value]` retain their existing
+  capture behavior until the named-capture slice. Callable overloads have the
+  [limits below](#callable-support).
+- **Scope:** Is binds the whole enclosing Map subject, through
   aliases and All/Any/Not. Binary operands remain explicit. Nested Maps establish
   their own subjects; outputs receive no implicit binding. Key/Value retain
   their field and capture roles.
@@ -117,6 +157,21 @@ Unbounded structural outputs can fail emission. Overload subtype matching cannot
 exclude bool from int; predicate candidate discovery and Assignable/isinstance
 verification also have precision limits.
 
+The [agreed projection policy](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#d6--callable-precision)
+uses a conservative possible-output union when standard typing cannot express
+the precise relationship. Retain or improve precision wherever it is supported;
+projection limits must not redefine Map selection. Implementation is pending.
+For callable Maps without a default, known unsupported inputs fail under the
+agreed future contract. Project the accepted input domain into standard parameter
+types where possible. If coverage cannot be represented soundly, require a bound,
+specialization, or fallback. Possible normal outputs alone do not prove input
+acceptance. See the [final callable decisions](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#final-callable-decision-batch--agreed-2026-09-30)
+for guard checking and the existing bound-only verification limits.
+For Each/Collect, an aggregate possible-output tuple is acceptable when individual
+argument types are unavailable. Preserve per-position mapping when enough type
+information and a faithful representation are available; the configured arity
+limit alone does not make argument types unknowable.
+
 For specialization changes, use [publication regressions](tests/unit/compiler/pipeline/test_slice_publication.py)
 to check finite arities, deterministic stubs, and all three checkers. Changes to
 callable selection belong to the [separate proposal](docs/ideas/callable-map-semantics-cutover.md);
@@ -138,7 +193,7 @@ For record changes, use [field regressions](tests/unit/test_slice_fields.py) and
 G5/G6 below. Inherited-record callable dispatch has an additional limit:
 base-first overload ordering can hide a derived-record overload.
 
-## Union support and open decisions
+## Union support and agreed future contracts
 
 Normalization parity is established; selection equivalence depends on the
 consumer. Before changing union behavior, use the
@@ -149,14 +204,35 @@ assertion with a passing regression.
 
 ### G1 — Union selectors
 
+The [agreed mixed-selector design](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#agreed-mixed-bare-and-whole-type-selectors)
+uses ordered selection per known union member, with Is comparing the original
+whole subject. Earlier branches do not shrink that whole subject. Generic
+parameters retain their original arguments; captures bind matched types.
+Unresolved relationships can retain useful output bounds. The initial public
+surface retains bare compatibility matching and exact Is, removes Assignable,
+and defers compound predicates and binary comparisons. Scalar matching and
+public removal of Equal/Assignable/All/Any/Not are implemented. Union integration
+remains pending.
+
+The latest [bare-selector decision](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#revisited-assignable-example--bare-subclass-matching-requested)
+requires Animal to match a Dog subclass. This revises the earlier exact-only
+default; Is retains exact whole-type comparison. After checker verification, the
+user chose to follow checker compatibility for bool/int: bool matches bare int,
+and the proposed primitive exception is withdrawn. All three installed checkers
+also accept a custom int subclass. Any and generic compatibility rules are agreed;
+generic interface capture and default lowering still need derisking.
+
 Shared evaluation distributes bare selectors over known subject members; unary
-predicates compare the whole subject. Bare union selectors are exact union types
+predicates compare the whole subject. Bare union selectors use compatibility
 in static Schema evaluation, leaf alternatives for Input, and subtype-matched
-overload parameters for callables. Cross-consumer meaning remains unsettled.
+overload parameters for callables. Cross-consumer implementation parity with the
+agreed contracts still needs derisking.
 
 ### G2 — Union equality
 
 Resolved compiler equality depends on member order, unlike runtime equality.
+The [agreed correction](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#d2--union-equality)
+uses set equivalence; implementation is pending.
 Reconcile comparison with runtime and unresolved provenance while preserving
 emitted order independently. U08/U30 are the witnesses.
 
@@ -164,24 +240,67 @@ emitted order independently. U08/U30 are the witnesses.
 
 Compiler Schema expands ordinary union aliases; static runtime matching retains
 alias identity. Input unwraps aliases; output validation delegates them to
-Pydantic. Transparent runtime selection needs identity, metadata, and cycle rules.
+Pydantic. The [agreed correction](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#d3--union-aliases)
+makes ordinary aliases transparent for selection; implementation is pending.
+Transparent runtime selection needs identity, metadata, and cycle rules.
 U16/U18/U29 remain divergent.
 
 ### G4 — Any unions
 
 Runtime semantic union construction absorbs Any; the compiler retains other
 member paths. U24/U25 show why permissive schemas do not prove selection parity.
+The [agreed rules](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#d4--any-unions)
+preserve explicit members such as Any-or-str for later comparison. Bare selectors
+now follow checker compatibility for Any: Any matches int and int matches Any.
+This supersedes earlier exact-only default matching; Is retains exact comparison.
+Scalar compatibility and public removal are implemented. Explicit union
+preservation remains pending. The public removal was approved in the
+[second decision batch](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#second-decision-batch--agreed).
 Portable selection involving Any-containing unions is not guaranteed.
 
 ### G5 — Field distribution
 
 Compiler record discovery stores field annotations as opaque NamedType values.
 The nested Value Map witness emits float for an int-or-str field, while Pydantic
-distributes to bytes-or-float. Field discovery and downstream matching need a
-separate change.
+distributes to bytes-or-float. The
+[agreed correction](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#d5--union-valued-fields)
+requires bytes-or-float in both consumers, preserving ordinary memberwise Map
+selection inside fields. Field discovery and downstream matching still need
+implementation changes.
 
 ### G6 — Unsupported structures
 
 Record-union operands and unions of structural capture patterns remain rejected.
-Their support needs a separate design. Ordinary classes and parameterized dicts
-remain outside the supported record families.
+The [agreed record-union design](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#agreed-record-union-support)
+transforms each TypedDict alternative independently and preserves a union of
+complete output shapes, including field correlations. The
+[agreed capture-pattern design](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#agreed-unambiguous-capture-pattern-union)
+supports alternative patterns such as list[Value]-or-set[Value] when captures are
+unambiguous. The
+[agreed overlapping-capture rule](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#agreed-conflicting-captures-across-alternatives)
+evaluates each successful alternative with its own bindings and unions complete
+outputs, preserving correlations. A matched alternative whose output requires an
+unbound capture is an error. Initially, report it when evaluation needs that
+binding, without a mandatory separate definition-time analysis pass. Implementation and
+derisking remain pending for both forms of union support.
+Ordinary classes and parameterized dicts remain outside the supported record families.
+
+The [preferred future field syntax](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#preferred-field-authoring--record-comprehensions)
+uses Record/Fields comprehensions inside a type_function, with a locally bound
+field exposing its name and type. Initial syntax and semantics are agreed;
+implementation awaits derisking and planning. A
+[bounded POC](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/record-comprehension-poc.md) demonstrates compiler adapter
+lowering, reusable runtime construction, record-union correlation, and ordinary
+checker output. Production template bindings, current-field references, union
+integration, and preservation rules need implementation. The approved cutover
+removes MapFields and ambient Key/Value authoring without compatibility shims or
+migration guides; the library is unreleased. The second decision batch specifies
+Field construction and initial TypedDict output while requiring room for future
+generated Protocols through explicit record-family adapters. Current authoring
+APIs have not changed.
+
+The [agreed no-match rule](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#agreed-partial-static-no-match-failure)
+fails a Map when a known subject member has no matching branch. Ordinary Never
+union semantics remain those of Python. This decision supersedes earlier
+Never-only outcomes for known unmatched inputs; compiler/runtime integration and
+callable input-contract projection remain pending.

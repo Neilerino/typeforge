@@ -8,7 +8,7 @@ from pydantic import (
     TypeAdapter,
     ValidationError,
 )
-from typeforge import Map, Value
+from typeforge import Is, Map, Value
 from typeforge._markers import Case, Default
 from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic import Schema
@@ -63,7 +63,7 @@ def test_alias_any_fallback_is_distinct_from_any_in_a_known_structure() -> None:
 
 
 def test_generic_alias_fields_rebuild_and_keep_specializations_independent() -> None:
-    type Selected[T] = Map[T, int:str, bytes:int]
+    type Selected[T] = Map[T, Is[int] : str, Is[bytes] : int]
 
     class Payload[T](BaseModel):
         value: Schema[Selected[T]]
@@ -188,7 +188,7 @@ def test_alias_failures_do_not_leak_bindings_between_builds() -> None:
 
 
 def test_nested_capture_no_match_preserves_generic_origin_only_when_needed() -> None:
-    type Selected[T] = Map[list[T], list[Value] : Map[Value, int:str]]
+    type Selected[T] = Map[list[T], list[Value] : Map[Value, Is[int] : str]]
 
     class Payload[T](BaseModel):
         value: Schema[Selected[T]]

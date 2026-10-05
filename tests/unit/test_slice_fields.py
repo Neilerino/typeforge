@@ -26,7 +26,7 @@ from typeforge.pydantic import Schema
 RECORDS = (
     "from typing import Literal, NotRequired, ReadOnly, "
     "TypedDict\n"
-    "from typeforge import Drop, Equal, Field, Key, Map, "
+    "from typeforge._markers import Equal\nfrom typeforge import Drop, Field, Key, Map,"
     "MapFields, OptionalField, ReadonlyField, Value\n"
     "from typeforge._markers import Case, Default, Map as "
     "CanonicalMap\n"
@@ -283,7 +283,7 @@ def test_indeterminate_field_layouts_are_not_treated_as_definite_records(
     source = (
         "from typing import TypedDict\n"
         "from typeforge._markers import Case, Default, Map as CanonicalMap\n"
-        "from typeforge import Drop, Equal, Field, Key, "
+        "from typeforge._markers import Equal\nfrom typeforge import Drop, Field, Key,"
         "Map, MapFields, Value\n"
         "class Row(TypedDict):\n    value: int\n"
         f"type Public[U] = MapFields[Row, {transform}]\n"

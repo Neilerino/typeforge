@@ -683,7 +683,8 @@ def test_structural_capture_returns_degrade_without_losing_the_overlay() -> None
 
 def test_conditional_aliases_are_verified_inside_implementations() -> None:
     body = """
-    from typeforge import Equal, Map
+    from typeforge._markers import Equal
+    from typeforge import Map
 
     type Conditional[T] = Map[
         T, Equal[T, int] : str, ... : bytes
@@ -704,7 +705,8 @@ def test_conditional_aliases_are_verified_inside_implementations() -> None:
 
 def test_direct_conditional_annotations_are_verified() -> None:
     body = """
-    from typeforge import Equal, Map
+    from typeforge._markers import Equal
+    from typeforge import Map
 
     def convert[T](value: T) -> Map[
         T, Equal[T, int] : str, ... : bytes

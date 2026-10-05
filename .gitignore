@@ -12,3 +12,13 @@ wheels/
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
+
+# Local planning and generated review artifacts
+/.scratch/
+/docs/reviews/
+
+# API workshop notes; maintained separately from implementation PRs
+/docs/ideas/map-selection-decisions.md
+/docs/ideas/record-comprehension-poc.md
+/docs/ideas/type-function-derisking.md
+/docs/ideas/type-selector-precedents.md
