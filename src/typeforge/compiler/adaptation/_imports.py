@@ -4,6 +4,7 @@ from typing import assert_never
 
 from typeforge.compiler.source import (
     AppliedTypeExpression,
+    CaptureTypeExpression,
     DefaultMarker,
     MapMarker,
     MarkerNormalizationError,
@@ -79,7 +80,12 @@ def annotation_contains_default_never(
             return any(annotation_contains_default_never(member) for member in members)
         case StarredTypeExpression(item=item):
             return annotation_contains_default_never(item)
-        case NameTypeExpression() | RawTypeExpression() | RuntimeInputTypeExpression():
+        case (
+            NameTypeExpression()
+            | CaptureTypeExpression()
+            | RawTypeExpression()
+            | RuntimeInputTypeExpression()
+        ):
             return False
         case _ as unreachable:
             assert_never(unreachable)

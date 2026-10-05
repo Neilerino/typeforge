@@ -3,6 +3,8 @@
 from dataclasses import replace
 from functools import singledispatch
 
+from returns.result import Failure
+
 from typeforge.compiler.adaptation._context import (
     SourceTypeContext,
     class_type_environment,
@@ -148,7 +150,12 @@ def adapt_source_module(
         parameters = tuple(parameter.name for parameter in alias.type_parameters)
         if alias.is_type_function:
             value = _resolve_type_function_application(
-                alias.value, alias.name, parameters, type_context, origins
+                alias.value,
+                alias.name,
+                parameters,
+                type_context,
+                origins,
+                unresolved_capture_bound=bool(parameters),
             )
         else:
             value = _adapt_alias_fallback(
@@ -351,6 +358,8 @@ def _resolve_type_function_application(
     type_parameters: tuple[str, ...],
     type_context: SourceTypeContext,
     origins: list[GeneratedElementOrigin[SourceSpan]] | None,
+    *,
+    unresolved_capture_bound: bool = False,
 ) -> StubTypeExpression:
     boundary = SchemaTypeExpression(expression.source, expression.span, (expression,))
     parameter_names = {(name,) for name in type_parameters}
@@ -359,7 +368,7 @@ def _resolve_type_function_application(
         for alias in type_context.aliases
         if alias.qualified_name not in parameter_names
     )
-    return adapt_schema_expression(
+    result = adapt_schema_expression(
         boundary,
         aliases,
         declaration=declaration,
@@ -367,7 +376,17 @@ def _resolve_type_function_application(
         type_parameters=type_parameters,
         preserve_type_variables=True,
         origins=origins,
-    ).unwrap()
+    )
+    if (
+        unresolved_capture_bound
+        and isinstance(result, Failure)
+        and result.failure().unresolved_capture is not None
+    ):
+        # A declaration may expose a bound without inspecting unknown arguments.
+        # Concrete applications still evaluate the retained source template.
+        return TypeName("object")
+
+    return result.unwrap()
 
 
 def _collect_semantic_relationship_aliases(

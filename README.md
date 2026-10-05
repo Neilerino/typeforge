@@ -338,13 +338,45 @@ The basic compiler scope supports a module-level synchronous function with no
 value parameters or other decorators, unconstrained ordinary type parameters
 without defaults, an optional docstring, and one final return of a type expression.
 Map, Is, unions, ordinary generic types, and subscription of other type functions
-work. Named captures, local aliases, and Record/Fields arrive in later slices.
+work. Capture declarations may precede the return. Local aliases and Record/Fields
+arrive in later slices.
 
 Runtime construction can use additional Python statements when they produce a
 valid template. It rejects invalid returned structures and foreign unbound
 parameters; symbolic parameter and Map truthiness is invalid. Use Map for
 selection that depends on unresolved types. Runtime acceptance of additional
 construction code does not establish compiler support.
+
+### Named captures
+
+Capture tokens give discovered types explicit names. Their labels help diagnostics;
+two declarations with the same label still identify different tokens.
+
+```python
+from typeforge import Capture, Map, type_function
+
+@type_function
+def SamePair[T]():
+    Item = Capture("Item")
+    return Map[T, tuple[Item, Item]: Item, ...: bytes]
+
+type Same = SamePair[tuple[int, int]]  # compiler output: int
+type Mixed = SamePair[tuple[int, str]]  # compiler output: bytes
+```
+
+Repeated positions require exact type agreement, including union set equivalence.
+Failed branches discard tentative bindings. A nested Map reuses an already bound
+token; declaring another token creates an independent binding. Enclosing generic
+parameters retain their original supplied arguments. Reading an unbound capture
+reports an error rather than selecting a fallback.
+
+The compiler supports literal Capture declarations at module scope and in type
+functions. Declaration variables must be unique within each scope. Capture tokens
+are immutable and do not become caller-supplied type parameters. An unconstrained
+generic subject reveals no container arguments, so its unspecialized type-function
+declaration currently projects the safe `object` bound. Concrete applications and
+already known generic shapes remain precise. Interface and alternative capture
+patterns arrive in subsequent slices.
 
 ## Pydantic integration
 
@@ -422,8 +454,9 @@ a bound, then `typing.Any`. Typeforge applies transformations to that fallback
 while preserving Pydantic's validation and serialization behavior for TypeVars.
 It never infers an omitted model type argument from submitted values.
 
-For a static Map, `Any` matches an exact `Any` case but does not match `int` or
-invent structure for `list[Value]`. A known `list[Any]` can capture `Any`.
+For a static Map, `Any` uses gradual compatibility for fixed selectors, including
+`int`, but reveals no arguments for `list[Item]`. A known `list[Any]` can bind
+an Item capture to `Any`.
 Unmatched cases proceed to the authored default. With no default, direct concrete
 schema construction raises `PydanticSchemaGenerationError` with `[map_no_match]`.
 A generic model can still be defined and specialized: validating an unmatched

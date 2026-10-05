@@ -1,5 +1,5 @@
 import ast
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from returns.result import Failure, Result, Success
@@ -10,6 +10,7 @@ from typeforge.compiler.source._markers import (
 )
 from typeforge.compiler.source._model import (
     AppliedTypeExpression,
+    CaptureTypeExpression,
     ClassDeclaration,
     ClassField,
     FunctionDeclaration,
@@ -64,6 +65,7 @@ type FrontendError = SourceReadError | SourceSyntaxError
 @dataclass(frozen=True, slots=True)
 class _ImportBindings:
     names: tuple[tuple[str, tuple[str, ...]], ...]
+    captures: tuple[tuple[str, CaptureTypeExpression], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,7 +95,9 @@ def parse_source(
 
 def _parse_source(source: str, path: Path) -> ParsedSource:
     tree = ast.parse(source, filename=str(path), type_comments=True)
-    bindings = _collect_import_bindings(tree)
+    bindings = _capture_bindings(
+        path, tree.body, _collect_import_bindings(tree), strict=False
+    )
     scoped_statements = _scoped_statements(tree)
     functions = tuple(
         _parse_function(path, source, node, scope, bindings)
@@ -367,9 +371,9 @@ def _validate_type_function_signature(
         )
 
 
-def _type_function_return(
-    path: Path, node: ast.FunctionDef | ast.AsyncFunctionDef
-) -> ast.expr:
+def _type_function_body(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> list[ast.stmt]:
     body = node.body
     if (
         isinstance(body[0], ast.Expr)
@@ -378,13 +382,20 @@ def _type_function_return(
     ):
         body = body[1:]
 
-    if len(body) != 1 or not isinstance(body[0], ast.Return) or body[0].value is None:
+    return body
+
+
+def _type_function_return(
+    path: Path, node: ast.FunctionDef | ast.AsyncFunctionDef
+) -> ast.expr:
+    body = _type_function_body(node)
+    if not body or not isinstance(body[-1], ast.Return) or body[-1].value is None:
         raise _AnnotationSyntaxError(
             "type_function currently requires one final return of a type expression",
             _span(path, body[0] if body else node),
         )
 
-    returned = body[0].value
+    returned = body[-1].value
     for item in ast.walk(returned):
         if isinstance(
             item,
@@ -406,6 +417,81 @@ def _type_function_return(
     return returned
 
 
+def _capture_bindings(
+    path: Path,
+    statements: list[ast.stmt],
+    bindings: _ImportBindings,
+    *,
+    strict: bool,
+) -> _ImportBindings:
+    captures = dict(bindings.captures)
+    declared: set[str] = set()
+    for statement in statements:
+        declaration = _capture_declaration(path, statement, bindings)
+        if declaration is None:
+            if strict:
+                raise _AnnotationSyntaxError(
+                    "type_function supports capture declarations "
+                    "before its final return",
+                    _span(path, statement),
+                )
+
+            continue
+
+        variable, expression = declaration
+        if variable in declared:
+            raise _AnnotationSyntaxError(
+                f"capture {variable!r} is declared more than once",
+                _span(path, statement),
+            )
+
+        declared.add(variable)
+        captures[variable] = expression
+
+    return _ImportBindings(
+        names=tuple(item for item in bindings.names if item[0] not in declared),
+        captures=tuple(captures.items()),
+    )
+
+
+def _capture_declaration(
+    path: Path,
+    statement: ast.stmt,
+    bindings: _ImportBindings,
+) -> tuple[str, CaptureTypeExpression] | None:
+    if not (
+        isinstance(statement, ast.Assign)
+        and len(statement.targets) == 1
+        and isinstance(statement.targets[0], ast.Name)
+        and isinstance(statement.value, ast.Call)
+        and isinstance(statement.value.func, ast.Name | ast.Attribute)
+        and _resolve_ast_name(statement.value.func, bindings)
+        == ("typeforge", "Capture")
+    ):
+        return None
+
+    call = statement.value
+    if (
+        call.keywords
+        or len(call.args) != 1
+        or not isinstance(call.args[0], ast.Constant)
+        or not isinstance(call.args[0].value, str)
+        or not call.args[0].value
+    ):
+        raise _AnnotationSyntaxError(
+            "Capture requires one nonempty literal string name", _span(path, call)
+        )
+
+    variable = statement.targets[0].id
+    span = _span(path, statement)
+    return variable, CaptureTypeExpression(
+        source=variable,
+        span=span,
+        name=call.args[0].value,
+        declaration=span,
+    )
+
+
 def _parse_type_function(
     path: Path,
     source: str,
@@ -422,7 +508,13 @@ def _parse_type_function(
     )
     parameter_names = {parameter.name for parameter in parameters}
     local_bindings = _ImportBindings(
-        names=tuple(item for item in bindings.names if item[0] not in parameter_names)
+        names=tuple(item for item in bindings.names if item[0] not in parameter_names),
+        captures=tuple(
+            item for item in bindings.captures if item[0] not in parameter_names
+        ),
+    )
+    local_bindings = _capture_bindings(
+        path, _type_function_body(node)[:-1], local_bindings, strict=True
     )
     value = _parse_annotation(path, source, returned, local_bindings)
     assert value is not None
@@ -866,6 +958,12 @@ def _parse_annotation(
         return StarredTypeExpression(rendered, span, item)
 
     if isinstance(node, ast.Name | ast.Attribute):
+        if (
+            isinstance(node, ast.Name)
+            and (capture := dict(bindings.captures).get(node.id)) is not None
+        ):
+            return replace(capture, source=rendered, span=span)
+
         name = _expression_name(node)
         name_expression = NameTypeExpression(
             source=rendered,

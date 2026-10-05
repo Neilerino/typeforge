@@ -18,6 +18,7 @@ from typeforge.compiler.source import (
     AnyMarker,
     AppliedTypeExpression,
     AssignableMarker,
+    CaptureTypeExpression,
     CaseMarker,
     DefaultMarker,
     DropMarker,
@@ -46,6 +47,7 @@ from typeforge.semantics import (
     AllExpression,
     AnyExpression,
     AssignableExpression,
+    CaptureReference,
     CaptureValuePattern,
     CaseExpression,
     DropExpression,
@@ -65,6 +67,7 @@ from typeforge.semantics import (
     ReadonlyFieldExpression,
     TypePattern,
     TypeReference,
+    TypeSymbol,
     TypeValue,
     TypeValueReference,
     UnionExpression,
@@ -108,6 +111,31 @@ def _(
         return TypeValueReference(bound)
 
     return TypeReference(_lower_concrete_type(expression, environment))
+
+
+@lower_semantic_expression.register
+def _(
+    expression: CaptureTypeExpression,
+    environment: SemanticEnvironment,
+    output_name: str | None = None,
+    *,
+    role: SemanticRole = "type",
+) -> CaptureReference:
+    return _capture_reference(expression)
+
+
+def _capture_reference(expression: CaptureTypeExpression) -> CaptureReference:
+    declaration = expression.declaration
+    return CaptureReference(
+        TypeSymbol(
+            (
+                str(declaration.path),
+                str(declaration.start.line),
+                str(declaration.start.column),
+            ),
+            expression.name,
+        )
+    )
 
 
 @lower_semantic_expression.register
@@ -356,6 +384,8 @@ def _lower_type_pattern(
     environment: SemanticEnvironment,
 ) -> TypePattern[StaticType]:
     match expression:
+        case CaptureTypeExpression():
+            return _capture_reference(expression)
         case NameTypeExpression(source=source) if (
             bound := dict(environment).get(source)
         ) is not None and not is_static(bound):

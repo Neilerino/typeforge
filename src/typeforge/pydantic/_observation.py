@@ -36,6 +36,15 @@ class RawInput:
                     "Value requires a field or capture binding"
                 )
 
+            case s.CaptureReference(symbol=symbol):
+                bound = dict(context.captures).get(symbol)
+                if isinstance(bound, s.ResolvedType):
+                    return matches_type(bound.value.value, self.value)
+
+                raise s.UnboundCaptureSemanticError(
+                    f"capture {symbol.name!r} requires a resolved binding"
+                )
+
             case _:
                 raise s.UnsupportedExpressionSemanticError(
                     "unsupported Input case test"
@@ -69,6 +78,13 @@ def input_test_kinds(
 
         case s.InputReference():
             yield InputTestKind.INPUT
+
+        case s.CaptureReference(symbol=symbol):
+            bound = dict(context.captures).get(symbol)
+            if isinstance(bound, s.ResolvedType):
+                yield from _type_kinds(bound.value.value)
+            else:
+                yield InputTestKind.UNBOUND_CAPTURE
 
         case (
             s.EqualExpression()
