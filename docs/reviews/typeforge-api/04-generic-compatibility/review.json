@@ -1,0 +1,17 @@
+{
+  "diagram_type": "architecture",
+  "output": "architecture.html",
+  "specification_sha256": "979c5beb57fb0cdb5cf288d9fde17fe5e652b0ca72b842e571683356f3e5aff3",
+  "artifact_sha256": "20cf4cefc9cce5f13e53f7088e0982b0339ffe5a0a9c5cb14920a639abe98146",
+  "validation": "9/9 showcase, 0 errors, 0 warnings",
+  "browser_evidence": "passed",
+  "visual_review": "passed",
+  "correction_rounds": 0,
+  "reviewed_captures": [
+    "architecture.visual-check.1440x900.light.png",
+    "architecture.visual-check.1440x900.dark.png",
+    "architecture.visual-check.2048x1320.light.png",
+    "architecture.visual-check.2048x1320.dark.png"
+  ],
+  "observations": "All four endpoint captures were inspected. The main selection path, shared variance rule, retained structural branch, source badges, failure branch, and review cards are legible in both themes. No clipping or obscured relationships; the diagram and cards fit the first desktop screen."
+}

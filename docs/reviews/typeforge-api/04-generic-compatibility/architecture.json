@@ -1,0 +1,371 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "04 \u00b7 Generic selectors follow Python compatibility",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1344,
+      570
+    ],
+    "repository": {
+      "url": "https://github.com/Neilerino/typeforge",
+      "revision": "4fee895381e376fbce6f3d9e25e7e7cae2c29eb0"
+    }
+  },
+  "components": [
+    {
+      "id": "generic-story",
+      "type": "external",
+      "label": "Map[Sequence[bool], \u2026]",
+      "sublabel": "Sequence[int]: str \u2192 str",
+      "tag": "USER OUTCOME",
+      "pos": [
+        34,
+        40
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_generic_selection_contract.py",
+          "line": 38,
+          "label": "Parity contracts"
+        }
+      ]
+    },
+    {
+      "id": "generic-evaluator",
+      "type": "backend",
+      "label": "Evaluator._select_map_member",
+      "sublabel": "First matching rule selects output",
+      "tag": "EXISTING OWNER",
+      "pos": [
+        34,
+        210
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 512,
+          "label": "Map evaluation"
+        }
+      ]
+    },
+    {
+      "id": "fixed-selector",
+      "type": "backend",
+      "label": "match_map_pattern",
+      "sublabel": "Build a resolved fixed selector",
+      "tag": "CHANGED",
+      "pos": [
+        342,
+        210
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/map_matching.py",
+          "line": 51,
+          "label": "Selector dispatch"
+        }
+      ]
+    },
+    {
+      "id": "generic-adapters",
+      "type": "backend",
+      "label": "TypeSystem.assignable",
+      "sublabel": "Compiler and runtime implementations",
+      "tag": "CHANGED SEAM",
+      "pos": [
+        678,
+        210
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_type_system.py",
+          "line": 31,
+          "label": "Compiler adapter"
+        },
+        {
+          "path": "src/typeforge/pydantic/_type_system.py",
+          "line": 189,
+          "label": "Runtime adapter"
+        }
+      ]
+    },
+    {
+      "id": "variance-policy",
+      "type": "backend",
+      "label": "compatible_generics",
+      "sublabel": "Shared variance and projections",
+      "tag": "NEW POLICY",
+      "pos": [
+        1014,
+        210
+      ],
+      "size": [
+        296,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/generic_compatibility.py",
+          "line": 30,
+          "label": "Compatibility rules"
+        }
+      ]
+    },
+    {
+      "id": "import-identity",
+      "type": "frontend",
+      "label": "Source name \u2192 NamedType",
+      "sublabel": "Import identity preserves alias spelling",
+      "tag": "CHANGED",
+      "pos": [
+        678,
+        40
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_lowering.py",
+          "line": 278,
+          "label": "Source lowering"
+        }
+      ]
+    },
+    {
+      "id": "generic-facts",
+      "type": "database",
+      "label": "GenericType / GenericFamily",
+      "sublabel": "Origin family, arguments, tuple shape",
+      "tag": "NEW DOMAIN DATA",
+      "pos": [
+        1014,
+        40
+      ],
+      "size": [
+        296,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/domain/generics.py",
+          "line": 18,
+          "label": "Backend neutral facts"
+        }
+      ]
+    },
+    {
+      "id": "generic-frontier",
+      "type": "external",
+      "label": "Interface capture \u00b7 ticket 07",
+      "sublabel": "Callable variance remains ticket 15",
+      "tag": "FUTURE",
+      "pos": [
+        34,
+        400
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": ".scratch/typeforge-api/issues/07-interface-captures.md",
+          "label": "Future capture slice"
+        }
+      ]
+    },
+    {
+      "id": "structural-proofs",
+      "type": "backend",
+      "label": "match_type_pattern",
+      "sublabel": "Keep capture and partial shape proofs",
+      "tag": "EXISTING OWNER",
+      "pos": [
+        342,
+        400
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/map_matching.py",
+          "line": 94,
+          "label": "Structural matching"
+        }
+      ]
+    },
+    {
+      "id": "native-classifiers",
+      "type": "backend",
+      "label": "Adapter._generic_type",
+      "sublabel": "Normalize native origin and tuple arity",
+      "tag": "NEW ADAPTER FACTS",
+      "pos": [
+        678,
+        400
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_type_system.py",
+          "line": 225,
+          "label": "Compiler classifier"
+        },
+        {
+          "path": "src/typeforge/pydantic/_type_system.py",
+          "line": 292,
+          "label": "Runtime classifier"
+        }
+      ]
+    },
+    {
+      "id": "variance-error",
+      "type": "security",
+      "label": "UnsupportedExpressionSemanticError",
+      "sublabel": "Unknown variance cannot pick fallback",
+      "tag": "TYPED FAILURE",
+      "pos": [
+        1014,
+        400
+      ],
+      "size": [
+        296,
+        90
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_generic_selection_contract.py",
+          "line": 68,
+          "label": "Failure parity"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "story-to-evaluation",
+      "from": "generic-story",
+      "to": "generic-evaluator",
+      "label": "select",
+      "variant": "emphasis",
+      "labelDy": 24
+    },
+    {
+      "id": "evaluation-to-fixed",
+      "from": "generic-evaluator",
+      "to": "fixed-selector",
+      "variant": "emphasis"
+    },
+    {
+      "id": "fixed-to-assignability",
+      "from": "fixed-selector",
+      "to": "generic-adapters",
+      "label": "resolved",
+      "variant": "emphasis"
+    },
+    {
+      "id": "adapters-to-variance",
+      "from": "generic-adapters",
+      "to": "variance-policy",
+      "label": "compare",
+      "variant": "emphasis"
+    },
+    {
+      "id": "lowered-identity",
+      "from": "import-identity",
+      "to": "generic-adapters",
+      "label": "identity",
+      "labelDy": 24
+    },
+    {
+      "id": "policy-facts",
+      "from": "variance-policy",
+      "to": "generic-facts",
+      "label": "consumes"
+    },
+    {
+      "id": "retained-proofs",
+      "from": "fixed-selector",
+      "to": "structural-proofs",
+      "label": "partial / capture",
+      "labelDy": 24
+    },
+    {
+      "id": "capture-extension",
+      "from": "structural-proofs",
+      "to": "generic-frontier",
+      "label": "extend",
+      "variant": "dashed"
+    },
+    {
+      "id": "native-family",
+      "from": "generic-adapters",
+      "to": "native-classifiers",
+      "label": "classify",
+      "labelDy": 24
+    },
+    {
+      "id": "unsupported-variance",
+      "from": "variance-policy",
+      "to": "variance-error",
+      "label": "reject",
+      "variant": "security",
+      "labelDy": 24
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "User contract",
+      "items": [
+        "Sequence[bool] matches Sequence[int].",
+        "list[bool] does not match list[int].",
+        "Is keeps exact whole type identity."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Review the shared rule",
+      "items": [
+        "Mutable containers are invariant; immutable interfaces use supported covariance.",
+        "list / tuple \u2192 Sequence; dict \u2192 Mapping.",
+        "Any remains gradually compatible in either direction."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Explicit frontier",
+      "items": [
+        "Seven generic families; unknown variance is a typed error.",
+        "Partial shapes keep existing structural proofs.",
+        "22 contracts include runtime, compiler, and three checker outcomes."
+      ]
+    }
+  ]
+}
