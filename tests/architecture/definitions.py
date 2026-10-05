@@ -21,6 +21,7 @@ SEMANTICS = ArchModule(
             files=[
                 ArchFile(name="assertions"),
                 ArchFile(name="exceptions"),
+                ArchFile(name="generics"),
                 ArchFile(name="models"),
             ],
         )
@@ -28,6 +29,7 @@ SEMANTICS = ArchModule(
     files=[
         ArchFile(name="protocols"),
         ArchFile(name="type_evaluation"),
+        ArchFile(name="generic_compatibility"),
         ArchFile(name="map_matching"),
         ArchFile(name="evaluation"),
     ],

@@ -16,6 +16,7 @@ from typeforge.semantics.domain.exceptions import (
     UnboundValueSemanticError,
     UnsupportedExpressionSemanticError,
 )
+from typeforge.semantics.domain.generics import GenericFamily, GenericType
 from typeforge.semantics.domain.models import (
     AllExpression,
     AnnotatedExpression,
@@ -67,6 +68,10 @@ from typeforge.semantics.domain.models import (
     type_ref,
 )
 from typeforge.semantics.evaluation import Evaluator, evaluate
+from typeforge.semantics.generic_compatibility import (
+    compatible_generics,
+    generic_family,
+)
 from typeforge.semantics.protocols import (
     DeferredTypes,
     EvaluationPolicy,
@@ -102,6 +107,8 @@ __all__ = (
     "Expression",
     "FieldExpression",
     "FieldName",
+    "GenericFamily",
+    "GenericType",
     "IndeterminateCondition",
     "IndeterminateType",
     "InputObserver",
@@ -141,6 +148,8 @@ __all__ = (
     "UnresolvedType",
     "UnsupportedExpressionSemanticError",
     "ValueReference",
+    "compatible_generics",
     "evaluate",
+    "generic_family",
     "type_ref",
 )

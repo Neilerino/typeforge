@@ -289,7 +289,28 @@ def _lower_concrete_type(
             }:
                 return NEVER
 
-            return bound if bound is not None else NamedType(source)
+            if bound is not None:
+                return bound
+
+            qualified = expression.qualified_name
+            identity = (
+                ".".join(qualified)
+                if qualified is not None
+                and qualified[:-1] in {("typing",), ("collections", "abc")}
+                and qualified[-1]
+                in {
+                    "Sequence",
+                    "Mapping",
+                    "List",
+                    "Set",
+                    "Dict",
+                    "FrozenSet",
+                    "Tuple",
+                    "Any",
+                }
+                else None
+            )
+            return NamedType(source, identity=identity)
         case AppliedTypeExpression(constructor=constructor, arguments=arguments):
             return ParameterizedType(
                 origin=_lower_concrete_type(constructor, environment),
