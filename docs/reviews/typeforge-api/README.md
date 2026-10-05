@@ -23,7 +23,7 @@ and test files were unchanged when those artifacts were removed from PR diffs.
 | 08 | Alternative capture patterns | 02, 06 | [#8](https://github.com/Neilerino/typeforge/pull/8) |
 | 09 | Record and Fields goal API | 05 | [#9](https://github.com/Neilerino/typeforge/pull/9) |
 | 10 | Field construction and immutable edits | 09 | [#10](https://github.com/Neilerino/typeforge/pull/10) |
-| 11 | Local generic aliases and composition | 06, 09 | Pending |
+| 11 | Local generic aliases and composition | 06, 09 | [#11](https://github.com/Neilerino/typeforge/pull/11) |
 | 12 | Union-valued field transforms and Drop | 02, 10, 11 | Pending |
 | 13 | Correlated record unions | 02, 10 | Pending |
 | 14 | Callable input contracts without fallback | 02 | Pending |

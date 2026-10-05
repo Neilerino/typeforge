@@ -1,0 +1,300 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "PR 11 · Local aliases and composition · C4 code",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Neilerino/typeforge",
+      "revision": "e4ff9d411de94b25dd3d484a1f7870b0e6c5c9d5"
+    },
+    "viewBox": [
+      1390,
+      640
+    ]
+  },
+  "components": [
+    {
+      "id": "private-transform-example",
+      "type": "external",
+      "label": "WithoutIntegers[T]",
+      "sublabel": "Local DropCondition[A]; Visible = Public[T]",
+      "tag": "Author outcome",
+      "pos": [
+        35,
+        255
+      ],
+      "size": [
+        355,
+        130
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_local_alias_contract.py",
+          "label": "Runtime + compiler contracts"
+        }
+      ]
+    },
+    {
+      "id": "native-template-factory",
+      "type": "frontend",
+      "label": "type_function()",
+      "sublabel": "Construct once; Python owns lexical alias identity",
+      "tag": "Existing · runtime",
+      "pos": [
+        35,
+        30
+      ],
+      "size": [
+        355,
+        130
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/_type_function.py",
+          "line": 39,
+          "label": "Construction boundary"
+        }
+      ]
+    },
+    {
+      "id": "runtime-alias-adapter",
+      "type": "frontend",
+      "label": "_AnnotationAdapter",
+      "sublabel": "Bind native aliases; keep each parameter identity",
+      "tag": "Existing · runtime",
+      "pos": [
+        510,
+        30
+      ],
+      "size": [
+        355,
+        130
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_frontend.py",
+          "line": 716,
+          "label": "Native alias binding"
+        }
+      ]
+    },
+    {
+      "id": "local-declaration-parser",
+      "type": "backend",
+      "label": "_parse_type_function()",
+      "sublabel": "Parse local declarations; qualify parameter owners",
+      "tag": "Changed · compiler",
+      "pos": [
+        510,
+        255
+      ],
+      "size": [
+        355,
+        130
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/source/_parser.py",
+          "line": 577,
+          "label": "Restricted source construction"
+        }
+      ]
+    },
+    {
+      "id": "lexical-template-data",
+      "type": "backend",
+      "label": "TypeAliasDeclaration",
+      "sublabel": "local_aliases, qualified names, authored spans",
+      "tag": "Changed · source data",
+      "pos": [
+        35,
+        480
+      ],
+      "size": [
+        355,
+        130
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/source/_model.py",
+          "line": 221,
+          "label": "Lexical alias data"
+        }
+      ]
+    },
+    {
+      "id": "owned-alias-expansion",
+      "type": "backend",
+      "label": "_expand_type_function_templates()",
+      "sublabel": "Expand locals before outer binding and record classification",
+      "tag": "Changed · adaptation",
+      "pos": [
+        510,
+        480
+      ],
+      "size": [
+        355,
+        130
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/adaptation/_source_to_ir.py",
+          "line": 339,
+          "label": "Template ordering"
+        },
+        {
+          "path": "src/typeforge/compiler/adaptation/_schema_aliases.py",
+          "line": 34,
+          "label": "Substitution, arity, cycles"
+        }
+      ]
+    },
+    {
+      "id": "shared-field-evaluation",
+      "type": "backend",
+      "label": "Evaluator",
+      "sublabel": "Evaluate Map and Record with scoped field/capture bindings",
+      "tag": "Existing · shared semantics",
+      "pos": [
+        985,
+        255
+      ],
+      "size": [
+        370,
+        130
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "label": "Shared semantic evaluation"
+        }
+      ]
+    },
+    {
+      "id": "existing-family-output",
+      "type": "backend",
+      "label": "Record output adapters",
+      "sublabel": "Standard TypedDict stubs; native Pydantic validation",
+      "tag": "Existing · consumer boundaries",
+      "pos": [
+        985,
+        480
+      ],
+      "size": [
+        370,
+        130
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/record_materialization/_materialization.py",
+          "line": 215,
+          "label": "Finite TypedDict materialization"
+        },
+        {
+          "path": "src/typeforge/pydantic/_emission.py",
+          "line": 53,
+          "label": "Runtime record schema"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "construct-native-template",
+      "from": "private-transform-example",
+      "to": "native-template-factory",
+      "label": "import once",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "bind-native-template",
+      "from": "native-template-factory",
+      "to": "runtime-alias-adapter",
+      "label": "bind",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "parse-authored-template",
+      "from": "private-transform-example",
+      "to": "local-declaration-parser",
+      "label": "parse",
+      "fromSide": "right",
+      "toSide": "left",
+      "variant": "emphasis"
+    },
+    {
+      "id": "retain-lexical-data",
+      "from": "local-declaration-parser",
+      "to": "lexical-template-data",
+      "label": "lexical data",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "variant": "emphasis"
+    },
+    {
+      "id": "expand-scoped-data",
+      "from": "lexical-template-data",
+      "to": "owned-alias-expansion",
+      "label": "expand",
+      "fromSide": "right",
+      "toSide": "left",
+      "variant": "emphasis"
+    },
+    {
+      "id": "lower-expanded-template",
+      "from": "owned-alias-expansion",
+      "to": "shared-field-evaluation",
+      "label": "lower",
+      "fromSide": "right",
+      "toSide": "left",
+      "variant": "emphasis"
+    },
+    {
+      "id": "adapt-native-template",
+      "from": "runtime-alias-adapter",
+      "to": "shared-field-evaluation",
+      "label": "adapt",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "emit-field-result",
+      "from": "shared-field-evaluation",
+      "to": "existing-family-output",
+      "label": "emit",
+      "labelDy": 24,
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "User outcome",
+      "items": [
+        "count:int drops; label:str keeps its name and flags.",
+        "Local helpers emit no public stub names."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Review focus",
+      "items": [
+        "Qualified parameters preserve callee globals.",
+        "Existing expansion owns arity and cycle failures."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Future slices",
+      "items": [
+        "PR 12 derisks union-valued field replacement.",
+        "PR 18 covers cross-module composition."
+      ]
+    }
+  ]
+}
