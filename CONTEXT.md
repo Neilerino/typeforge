@@ -17,7 +17,8 @@ projections and supported generated obligations. Document bound-only checking;
 full Scala-style dependent verification is not promised.
 
 The [initial API decisions](docs/ideas/map-selection-decisions.md) are complete
-as of 2026-09-30; scalar matching and the selector cutover are implemented; later slices remain
+as of 2026-09-30. Scalar and union matching, selection aliases, resolved generic
+compatibility, and basic type functions are implemented; later slices remain
 pending. Read the agreed
 batches before changing selector APIs, field construction, type-function scope,
 or callable input contracts. The support descriptions below describe current
@@ -30,6 +31,14 @@ keeps compilation optional and distinguishes runtime template construction from
 the compiler's supported source forms. Compatibility frontiers and full
 compiler/proxy integration remain implementation gates; the prototype is not
 production support.
+
+Basic type_function construction executes once during import and retains original
+parameter identity in an immutable TypeAliasType. Specialization and Pydantic
+rebuilds use the template; Schema remains the runtime evaluation boundary.
+When changing construction, compiler body forms, or specialization, read
+[Reusable type functions](DESIGN.md#reusable-type-functions) and
+[the production contracts](tests/unit/test_type_function_contract.py). Capture
+declarations, local aliases, and Record/Fields remain their respective later slices.
 
 ## Language
 
@@ -307,7 +316,7 @@ Ordinary classes and parameterized dicts remain outside the supported record fam
 The [preferred future field syntax](docs/ideas/map-selection-decisions.md#preferred-field-authoring--record-comprehensions)
 uses Record/Fields comprehensions inside a type_function, with a locally bound
 field exposing its name and type. Initial syntax and semantics are agreed;
-implementation awaits derisking and planning. A
+Record/Fields implementation is scheduled after basic type functions. A
 [bounded POC](docs/ideas/record-comprehension-poc.md) demonstrates compiler adapter
 lowering, reusable runtime construction, record-union correlation, and ordinary
 checker output. Production template bindings, current-field references, union
