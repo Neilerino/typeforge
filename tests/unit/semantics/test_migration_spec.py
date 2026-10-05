@@ -40,11 +40,9 @@ from typeforge.semantics import (
     MapExpression,
     MapNoMatch,
     NotExpression,
-    OptionalFieldExpression,
     ParameterizedTypePattern,
     ParameterizedTypeShape,
     ParameterizedTypeTemplate,
-    ReadonlyFieldExpression,
     RecordExpression,
     RecordFamily,
     RecordField,
@@ -1149,12 +1147,14 @@ def test_map_fields_preserves_family_and_field_modifiers() -> None:
             ),
             CaseExpression(
                 EqualExpression(FieldNameReference(FIELD), FieldName("token")),
-                ReadonlyFieldExpression(
-                    FieldNameReference(FIELD), FieldTypeReference(FIELD)
+                FieldExpression(
+                    FieldNameReference(FIELD), FieldTypeReference(FIELD), readonly=True
                 ),
             ),
         ),
-        OptionalFieldExpression(FieldNameReference(FIELD), FieldTypeReference(FIELD)),
+        FieldExpression(
+            FieldNameReference(FIELD), FieldTypeReference(FIELD), required=False
+        ),
     )
 
     result = evaluate(
@@ -1230,7 +1230,7 @@ def test_compiler_and_runtime_reject_duplicate_record_outputs(
         right: int
 
     type Duplicate[T] = Record(
-        MarkerField[Literal["same"], field.type] for field in Fields[T]
+        MarkerField(name="same", type=field.type) for field in Fields[T]
     )
 
     with pytest.raises(Exception, match=r"duplicate_field.*'same'"):
@@ -1238,8 +1238,7 @@ def test_compiler_and_runtime_reject_duplicate_record_outputs(
 
     source = tmp_path / "duplicate_record.py"
     source.write_text(
-        """\
-
+        """
 from typing import Literal, TypedDict
 from typeforge import Field, Fields, Record
 
@@ -1247,7 +1246,7 @@ class Pair(TypedDict):
     left: int
     right: int
 
-type Duplicate[T] = Record((Field[Literal['same'], field.type] for field in Fields[T]))
+type Duplicate[T] = Record(Field(name='same', type=field.type) for field in Fields[T])
 
 def duplicate(value: Pair) -> Duplicate[Pair]: ...
 """.lstrip(),

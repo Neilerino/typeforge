@@ -12,7 +12,7 @@ from pydantic import (
     ValidationError,
 )
 from pydantic import Field as PydanticField
-from typeforge import Capture, Drop, Field, Fields, Map, OptionalField, Record
+from typeforge import Capture, Drop, Field, Fields, Map, Record
 from typeforge._markers import All, Assignable, Case, Default, Equal, Not
 from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic import Input, Schema
@@ -199,8 +199,10 @@ def test_record_fields_and_nested_outputs_use_unchanged_runtime_frontend() -> No
         Map[
             field.name,
             Literal["password"] : Drop,
-            Literal["name"] : OptionalField[Literal["display_name"], field.type],
-            ... : Field[field.name, field.type],
+            Literal["name"] : Field(
+                name="display_name", type=field.type, required=False
+            ),
+            ... : Field(name=field.name, type=field.type),
         ]
         for field in Fields[T]
     )

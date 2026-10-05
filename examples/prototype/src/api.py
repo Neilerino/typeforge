@@ -39,7 +39,7 @@ class Post(TypedDict):
 
 
 type JsonSafe[T] = Record(
-    Field[field.name, Map[field.type, datetime:str, ... : field.type]]
+    Field(name=field.name, type=Map[field.type, datetime:str, ... : field.type])
     for field in Fields[T]
 )
 

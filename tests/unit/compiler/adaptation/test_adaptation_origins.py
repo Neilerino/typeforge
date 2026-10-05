@@ -153,12 +153,11 @@ def test_adapt_source_module_materializes_record_with_origin() -> None:
 def test_record_replacements_retain_current_authored_origins() -> None:
     source = (
         parse_source(
-            """\
-from typing import TypedDict
+            """from typing import TypedDict
 from typeforge import Collect, Each, Field, Map, Fields, Record
 class Payload(TypedDict):
     value: int
-type Copy[T] = Record((Field[field.name, field.type] for field in Fields[T]))
+type Copy[T] = Record(Field(name=field.name, type=field.type) for field in Fields[T])
 type Encoded[T] = Map[T, int : Copy[Payload]]
 def copy[T](value: T) -> Copy[T]: ...
 def collect[*Ts](*values: Each[Ts]) -> Collect[Copy[Payload]]: ...

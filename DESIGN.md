@@ -348,7 +348,17 @@ parses the same supported comprehension without executing authored code.
 Both frontends lower to RecordExpression with a scoped field symbol. Evaluation
 uses each original RecordField in an immutable child context. Whole-field
 passthrough preserves requiredness, readonly state, and backend-owned metadata;
-Drop removes the entry. Existing field constructors explicitly set flags.
+Drop removes the entry. Keyword Field construction requires name and type and
+defaults to required, writable output. FieldReplacementExpression changes only
+supplied values using the original immutable RecordField. An omitted override is
+distinct from an explicit None type or false flag. Replacing the type replaces its
+complete Annotated value; wrapping field.type keeps its metadata at the nested
+position. Replacement type Drop removes the entry; other field positions require
+a valid name, type, or boolean. Output names must be Python identifiers.
+Runtime templates transport string names as Literals so typing reconstruction
+preserves names rather than resolving them as forward references.
+Record construction clears its operand's whole-record metadata; explicit outer
+Annotated supplies metadata for the new result.
 Duplicate names and outputs other than a field or Drop are typed failures.
 Ambient Key/Value and MapFields authoring are removed.
 
@@ -363,8 +373,7 @@ Shared `AnnotatedExpression` carries backend-owned metadata around a type or a
 synthesized record. Evaluation preserves record metadata in order without
 interpreting it; type annotations use the backend's ordinary type construction.
 This lets a Map select an annotated record while keeping annotation execution and
-schema construction in the consumer. Field operators continue to define output
-requiredness and readonly flags explicitly.
+schema construction in the consumer.
 
 ## Pydantic runtime integration
 

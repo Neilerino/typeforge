@@ -43,6 +43,7 @@ from typeforge.semantics.domain.models import (
     FieldName,
     FieldNameReference,
     FieldReference,
+    FieldReplacementExpression,
     FieldTypeReference,
     IndeterminateCondition,
     IndeterminateType,
@@ -52,10 +53,8 @@ from typeforge.semantics.domain.models import (
     MapSelection,
     NoMatchDecision,
     NotExpression,
-    OptionalFieldExpression,
     ParameterizedTypeShape,
     ParameterizedTypeTemplate,
-    ReadonlyFieldExpression,
     RecordExpression,
     RecordField,
     RecordShape,
@@ -296,6 +295,7 @@ class Evaluator[T]:
             if expression.output_name is None
             else expression.output_name,
             fields=tuple(fields),
+            metadata=(),
         )
 
     @_dispatch.register(ParameterizedTypeTemplate)
@@ -339,14 +339,10 @@ class Evaluator[T]:
             self.type_system,
         )
 
-    @_dispatch.register(
-        FieldExpression | OptionalFieldExpression | ReadonlyFieldExpression
-    )
+    @_dispatch.register(FieldExpression)
     def _field(
         self,
-        expression: FieldExpression[T]
-        | OptionalFieldExpression[T]
-        | ReadonlyFieldExpression[T],
+        expression: FieldExpression[T],
     ) -> EvaluationValue[T]:
         name = expect_field_name(self._evaluate(expression.name))
         value = expect_type(
@@ -357,8 +353,38 @@ class Evaluator[T]:
         return RecordField(
             name.value,
             value.value,
-            required=not isinstance(expression, OptionalFieldExpression),
-            readonly=isinstance(expression, ReadonlyFieldExpression),
+            required=expression.required,
+            readonly=expression.readonly,
+        )
+
+    @_dispatch.register(FieldReplacementExpression)
+    def _replace_field(
+        self, expression: FieldReplacementExpression[T]
+    ) -> EvaluationValue[T]:
+        field = expect_field(self._evaluate(expression.field))
+        name = (
+            field.name
+            if expression.name is None
+            else expect_field_name(self._evaluate(expression.name)).value
+        )
+        value = (
+            ResolvedType(field.value)
+            if expression.value is None
+            else self._evaluate(expression.value)
+        )
+        if isinstance(value, DroppedField):
+            return value
+
+        return replace(
+            field,
+            name=name,
+            value=expect_type(value, "replacement field type must be a type").value,
+            required=field.required
+            if expression.required is None
+            else expression.required,
+            readonly=field.readonly
+            if expression.readonly is None
+            else expression.readonly,
         )
 
     @_dispatch.register(UnionExpression)

@@ -149,48 +149,6 @@ type Map[Subject, *Cases] = Annotated[
     ),
 ]
 
-type Field[Name, Type] = Annotated[
-    Type,
-    Doc(
-        "Emits a required, writable field into a `Record`. `Name` determines "
-        "the output key, using a scoped field.name or a string Literal when "
-        "renaming, and `Type` determines the value type. Whole-field passthrough "
-        "preserves the source flags instead.\n"
-        "\n"
-        "```python\n"
-        "type JsonSafe[T] = Record(\n"
-        "    Field[field.name, Map[field.type, bytes: str, ...: field.type]]\n"
-        "    for field in Fields[T]\n"
-        ")\n"
-        "```"
-    ),
-]
-type OptionalField[Name, Type] = Annotated[
-    Type,
-    Doc(
-        "Emits a non-required, writable field into a `Record`. It "
-        "uses the same output name and type arguments as `Field`, but the "
-        "generated `TypedDict` key is wrapped in `NotRequired`.\n\n"
-        "```python\n"
-        "type Partial[T] = Record(\n"
-        "    OptionalField[field.name, field.type] for field in Fields[T]\n"
-        ")\n"
-        "```"
-    ),
-]
-type ReadonlyField[Name, Type] = Annotated[
-    Type,
-    Doc(
-        "Emits a required, read-only field into a `Record`. It uses "
-        "the same output name and type arguments as `Field`, but the generated "
-        "`TypedDict` value is wrapped in `ReadOnly`.\n\n"
-        "```python\n"
-        "type Frozen[T] = Record(\n"
-        "    ReadonlyField[field.name, field.type] for field in Fields[T]\n"
-        ")\n"
-        "```"
-    ),
-]
 type Drop = Annotated[
     Never,
     Doc(

@@ -17,13 +17,11 @@ from typeforge import (
     Collect,
     Drop,
     Each,
-    Field,
     Is,
-    OptionalField,
-    ReadonlyField,
 )
 from typeforge import semantics as s
 from typeforge._capture import Capture, CaptureSymbol
+from typeforge._field import UNCHANGED, FieldReplacementTemplate, FieldTemplate
 from typeforge._map import normalize_selector_literal
 from typeforge._markers import All, Assignable, Case, Default, Equal, Map, Not
 from typeforge._markers import Any as AnyCondition
@@ -70,9 +68,8 @@ _MARKERS = (
     AnyCondition,
     Not,
     Input,
-    Field,
-    OptionalField,
-    ReadonlyField,
+    FieldTemplate,
+    FieldReplacementTemplate,
     Drop,
     Each,
     Collect,
@@ -267,8 +264,25 @@ class _AnnotationAdapter:
         if origin is Map:
             return self._map(value, arguments)
 
-        if origin in (Field, OptionalField, ReadonlyField):
-            return self._field(value, origin, arguments)
+        if origin is FieldReplacementTemplate:
+            if len(arguments) != 5 or not all(
+                argument is UNCHANGED or isinstance(argument, bool)
+                for argument in arguments[3:]
+            ):
+                raise invalid(value, "invalid field replacement template")
+
+            return s.FieldReplacementExpression(
+                self.adapt(arguments[0]),
+                name=None
+                if arguments[1] is UNCHANGED
+                else self._name_expression(self.adapt(arguments[1])),
+                value=None if arguments[2] is UNCHANGED else self.adapt(arguments[2]),
+                required=None if arguments[3] is UNCHANGED else arguments[3] is True,
+                readonly=None if arguments[4] is UNCHANGED else arguments[4] is True,
+            )
+
+        if origin is FieldTemplate:
+            return self._field(value, arguments)
 
         if origin is Drop:
             return s.DropExpression()
@@ -442,24 +456,19 @@ class _AnnotationAdapter:
         return child._selection_type(child.adapt(_alias_value(alias)))
 
     def _field(
-        self, value: object, origin: object, arguments: tuple[object, ...]
-    ) -> (
-        s.FieldExpression[RuntimeType]
-        | s.OptionalFieldExpression[RuntimeType]
-        | s.ReadonlyFieldExpression[RuntimeType]
-    ):
-        if len(arguments) != 2:
-            raise invalid(value, "Field requires a name and a type")
+        self, value: object, arguments: tuple[object, ...]
+    ) -> s.FieldExpression[RuntimeType]:
+        if len(arguments) != 4 or not all(
+            isinstance(argument, bool) for argument in arguments[2:]
+        ):
+            raise invalid(value, "invalid Field template")
 
-        name = self._name_expression(self.adapt(arguments[0]))
-        output = self.adapt(arguments[1])
-        if origin is OptionalField:
-            return s.OptionalFieldExpression(name, output)
-
-        if origin is ReadonlyField:
-            return s.ReadonlyFieldExpression(name, output)
-
-        return s.FieldExpression(name, output)
+        return s.FieldExpression(
+            self._name_expression(self.adapt(arguments[0])),
+            self.adapt(arguments[1]),
+            required=arguments[2] is True,
+            readonly=arguments[3] is True,
+        )
 
     def _name_expression(
         self, expression: s.Expression[RuntimeType] | s.TypePattern[RuntimeType]

@@ -134,7 +134,8 @@ def test_known_uncovered_subject_fails_entire_expression(
 def test_uncovered_field_transform_preserves_authored_failure(tmp_path: Path) -> None:
     source = tmp_path / "record.py"
     transform = (
-        "Record((Field[field.name, Map[field.type, int:bytes]] for field in Fields[T]))"
+        "Record(Field(name=field.name, type=Map[field."
+        "type, int:bytes]) for field in Fields[T])"
     )
     source.write_text(
         f"""\

@@ -1,19 +1,11 @@
 import ast
 from dataclasses import FrozenInstanceError
-from typing import Annotated, get_args, get_origin
+from textwrap import dedent
+from typing import Annotated, Literal, get_args, get_origin
 
 import pytest
 
-from typeforge import (
-    Collect,
-    Doc,
-    Drop,
-    Each,
-    Field,
-    Map,
-    OptionalField,
-    ReadonlyField,
-)
+from typeforge import Collect, Doc, Drop, Each, Field, Map
 from typeforge._markers import All, Any, Assignable, Case, Default, Equal, Not
 
 
@@ -50,10 +42,20 @@ def test_map_markers_preserve_arguments() -> None:
     )
 
 
-def test_field_markers_preserve_arguments() -> None:
-    assert get_args(Field[str, int]) == (str, int)
-    assert get_args(OptionalField[str, int]) == (str, int)
-    assert get_args(ReadonlyField[str, int]) == (str, int)
+def test_field_constructor_preserves_explicit_data() -> None:
+    assert get_args(Field(name="name", type=int)) == (Literal["name"], int, True, False)
+    assert get_args(Field(name="name", type=int, required=False)) == (
+        Literal["name"],
+        int,
+        False,
+        False,
+    )
+    assert get_args(Field(name="name", type=int, readonly=True)) == (
+        Literal["name"],
+        int,
+        True,
+        True,
+    )
     assert repr(Drop) == "Drop"
 
 
@@ -67,9 +69,6 @@ def test_every_marker_carries_markdown_documentation() -> None:
         Any,
         Not,
         Map,
-        Field,
-        OptionalField,
-        ReadonlyField,
         Drop,
     )
 
@@ -84,6 +83,14 @@ def test_every_marker_carries_markdown_documentation() -> None:
         )
         example_end = documentation.documentation.index("\n```", example_start)
         ast.parse(documentation.documentation[example_start:example_end])
+
+
+def test_field_constructor_has_documented_keyword_authoring() -> None:
+    documentation = Field.__doc__
+    assert documentation is not None
+    assert len(documentation) >= 180
+    example = documentation.split("```python\n", 1)[1].split("```", 1)[0]
+    ast.parse(dedent(example))
 
 
 def test_doc_is_public_inert_metadata() -> None:

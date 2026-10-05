@@ -28,8 +28,7 @@ CHECKERS = (
 
 
 LIBRARY_SOURCE = (
-    """\
-
+    """
 from external import Parser
 from typing import Literal, TypedDict
 
@@ -84,7 +83,7 @@ class User(TypedDict):
     age: int
 
 
-type Public[T] = Record((Field[field.name, field.type] for field in Fields[T]))
+type Public[T] = Record(Field(name=field.name, type=field.type) for field in Fields[T])
 
 
 def publicize[T](value: T) -> Public[T]:

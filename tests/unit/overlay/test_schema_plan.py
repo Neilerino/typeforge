@@ -20,13 +20,12 @@ from typeforge.overlay import (
 
 
 def test_schema_roots_cover_records_and_scoped_methods() -> None:
-    source = dedent("""\
-from typing import TypedDict
+    source = dedent("""from typing import TypedDict
 from typeforge import Field, Fields, Record
 from typeforge.pydantic import Schema
 class Payload(TypedDict):
     value: Schema[int]
-type Copy[T] = Record((Field[field.name, field.type] for field in Fields[T]))
+type Copy[T] = Record(Field(name=field.name, type=field.type) for field in Fields[T])
 class Outer:
     class Inner:
         def parse(self, value: Schema[Copy[Payload]]) -> Schema[bytes]: ...
