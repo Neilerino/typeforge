@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** implemented; draft PR pending
+**Status:** implemented — draft PR [#1](https://github.com/Neilerino/typeforge/pull/1)
 
 - [x] Compiler Schema and runtime Schema agree on bool/int, declared inheritance, numeric widening, Any, and exact Is selection.
 - [x] Is takes one argument; malformed and removed public selectors receive authored diagnostics.
