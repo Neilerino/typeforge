@@ -6,11 +6,13 @@ from typeforge.compiler.source import (
     AppliedTypeExpression,
     CaptureTypeExpression,
     DefaultMarker,
+    FieldReferenceTypeExpression,
     MapMarker,
     MarkerNormalizationError,
     MarkerTypeExpression,
     NameTypeExpression,
     RawTypeExpression,
+    RecordTypeExpression,
     RuntimeInputTypeExpression,
     SchemaTypeExpression,
     SourceModule,
@@ -80,9 +82,14 @@ def annotation_contains_default_never(
             return any(annotation_contains_default_never(member) for member in members)
         case StarredTypeExpression(item=item):
             return annotation_contains_default_never(item)
+        case RecordTypeExpression(record=record, transform=transform):
+            return annotation_contains_default_never(
+                record
+            ) or annotation_contains_default_never(transform)
         case (
             NameTypeExpression()
             | CaptureTypeExpression()
+            | FieldReferenceTypeExpression()
             | RawTypeExpression()
             | RuntimeInputTypeExpression()
         ):

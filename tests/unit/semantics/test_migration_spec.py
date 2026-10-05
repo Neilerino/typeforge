@@ -9,8 +9,7 @@ from returns.result import Failure, Result, Success
 
 from pydantic import TypeAdapter
 from typeforge import Field as MarkerField
-from typeforge import MapFields as MarkerMapFields
-from typeforge import Value as MarkerValue
+from typeforge import Fields, Record
 from typeforge.compiler.pipeline import generate_module
 from typeforge.pydantic import Schema
 from typeforge.semantics import (
@@ -34,11 +33,11 @@ from typeforge.semantics import (
     Expression,
     FieldExpression,
     FieldName,
+    FieldNameReference,
+    FieldTypeReference,
     GenericType,
     InputReference,
-    KeyReference,
     MapExpression,
-    MapFieldsExpression,
     MapNoMatch,
     NotExpression,
     OptionalFieldExpression,
@@ -46,6 +45,7 @@ from typeforge.semantics import (
     ParameterizedTypeShape,
     ParameterizedTypeTemplate,
     ReadonlyFieldExpression,
+    RecordExpression,
     RecordFamily,
     RecordField,
     RecordShape,
@@ -56,14 +56,14 @@ from typeforge.semantics import (
     TypeReference,
     TypeSymbol,
     TypeSystem,
+    UnboundFieldSemanticError,
     UnboundInputSemanticError,
-    UnboundKeySemanticError,
-    UnboundValueSemanticError,
     UnionExpression,
-    ValueReference,
     evaluate,
     type_ref,
 )
+
+FIELD = TypeSymbol(("test-field",), "field")
 
 ITEM = CaptureReference(TypeSymbol((__name__,), "Item"))
 
@@ -301,9 +301,10 @@ class FailureInjectionTypeSystemProxy[T]:
         ),
         (
             "record",
-            MapFieldsExpression(
+            RecordExpression(
                 TypeReference("Payload"),
-                FieldExpression(KeyReference(), ValueReference()),
+                FIELD,
+                FieldExpression(FieldNameReference(FIELD), FieldTypeReference(FIELD)),
             ),
         ),
     ),
@@ -402,12 +403,12 @@ def test_alternative_does_not_hide_unexpected_adapter_exceptions() -> None:
     ("expression", "issue"),
     (
         (
-            KeyReference(),
-            UnboundKeySemanticError("Key requires MapFields"),
+            FieldNameReference(FIELD),
+            UnboundFieldSemanticError("field 'field' is unbound"),
         ),
         (
-            ValueReference(),
-            UnboundValueSemanticError("Value requires MapFields"),
+            FieldTypeReference(FIELD),
+            UnboundFieldSemanticError("field 'field' is unbound"),
         ),
         (
             InputReference(),
@@ -430,9 +431,9 @@ def test_leaf_and_bound_context_expressions_produce_evaluation_values() -> None:
     assert evaluate(FieldName("name"), type_system) == Success(FieldName("name"))
     assert evaluate(DropExpression(), type_system) == Success(DroppedField())
     assert evaluate(
-        KeyReference(),
+        FieldNameReference(FIELD),
         type_system,
-        EvaluationContext(key="name"),
+        EvaluationContext(fields=((FIELD, RecordField("name", "")),)),
     ) == Success(FieldName("name"))
 
 
@@ -484,17 +485,12 @@ def test_map_fields_rejects_a_non_field_transform_result() -> None:
     )
 
     result = evaluate(
-        MapFieldsExpression(
-            TypeReference("Payload"),
-            ValueReference(),
-        ),
+        RecordExpression(TypeReference("Payload"), FIELD, FieldTypeReference(FIELD)),
         NameTypeSystem((("Payload", payload),)),
     )
 
     assert result == Failure(
-        ExpectedFieldSemanticError(
-            "MapFields transform must evaluate to a field or Drop"
-        )
+        ExpectedFieldSemanticError("Record items must evaluate to a field or Drop")
     )
 
 
@@ -502,8 +498,8 @@ def test_map_fields_rejects_a_non_field_transform_result() -> None:
     ("expression", "context"),
     (
         (
-            ValueReference(),
-            EvaluationContext[object](value=ResolvedType(None)),
+            FieldTypeReference(FIELD),
+            EvaluationContext[object](fields=((FIELD, RecordField("field", None)),)),
         ),
         (
             InputReference(),
@@ -819,7 +815,7 @@ def test_deferred_map_composes_a_nested_deferred_case_output() -> None:
     )
     cases = (CaseExpression(TypeReference("int"), nested),)
     default = TypeReference("bytes")
-    context = EvaluationContext(value=ResolvedType("UUID"))
+    context = EvaluationContext(fields=((FIELD, RecordField("field", "UUID")),))
 
     result = evaluate(
         MapExpression(InputReference(), cases, default), NameTypeSystem(), context
@@ -907,8 +903,8 @@ def test_union_expression_composes_deferred_and_resolved_outputs() -> None:
 
 def test_deferred_map_preserves_and_uses_its_evaluation_context() -> None:
     """A deferred output can use a `MapFields` value binding available now."""
-    context = EvaluationContext(value=ResolvedType("int"))
-    cases = (CaseExpression(TypeReference("str"), ValueReference()),)
+    context = EvaluationContext(fields=((FIELD, RecordField("field", "int")),))
+    cases = (CaseExpression(TypeReference("str"), FieldTypeReference(FIELD)),)
     expression = MapExpression(InputReference(), cases)
 
     result = evaluate(expression, NameTypeSystem(), context)
@@ -1011,7 +1007,7 @@ def test_nested_deferred_adapter_failure_short_circuits_later_outputs() -> None:
     expression = MapExpression(
         InputReference(),
         (CaseExpression(TypeReference("int"), nested),),
-        KeyReference(),
+        FieldNameReference(FIELD),
     )
 
     result = evaluate(
@@ -1031,7 +1027,7 @@ def test_nested_deferred_non_type_failure_short_circuits_later_outputs() -> None
     expression = MapExpression(
         InputReference(),
         (CaseExpression(TypeReference("int"), nested),),
-        KeyReference(),
+        FieldNameReference(FIELD),
     )
 
     assert evaluate(expression, NameTypeSystem()) == Failure(
@@ -1053,7 +1049,7 @@ def test_nested_deferred_unexpected_adapter_failure_propagates() -> None:
     expression = MapExpression(
         InputReference(),
         (CaseExpression(TypeReference("int"), nested),),
-        KeyReference(),
+        FieldNameReference(FIELD),
     )
 
     with pytest.raises(RuntimeError) as caught:
@@ -1108,13 +1104,13 @@ def test_conditions_short_circuit_nested_failures() -> None:
     all_expression = AllExpression(
         (
             EqualExpression(TypeReference("int"), TypeReference("str")),
-            KeyReference(),
+            FieldNameReference(FIELD),
         )
     )
     any_expression = AnyExpression(
         (
             EqualExpression(TypeReference("int"), TypeReference("int")),
-            KeyReference(),
+            FieldNameReference(FIELD),
         )
     )
 
@@ -1145,25 +1141,25 @@ def test_map_fields_preserves_family_and_field_modifiers() -> None:
         ),
     )
     transform = MapExpression[str](
-        KeyReference(),
+        FieldNameReference(FIELD),
         (
             CaseExpression(
-                EqualExpression(KeyReference(), FieldName("password")),
+                EqualExpression(FieldNameReference(FIELD), FieldName("password")),
                 DropExpression(),
             ),
             CaseExpression(
-                EqualExpression(KeyReference(), FieldName("token")),
-                ReadonlyFieldExpression(KeyReference(), ValueReference()),
+                EqualExpression(FieldNameReference(FIELD), FieldName("token")),
+                ReadonlyFieldExpression(
+                    FieldNameReference(FIELD), FieldTypeReference(FIELD)
+                ),
             ),
         ),
-        OptionalFieldExpression(KeyReference(), ValueReference()),
+        OptionalFieldExpression(FieldNameReference(FIELD), FieldTypeReference(FIELD)),
     )
 
     result = evaluate(
-        MapFieldsExpression(
-            TypeReference("Credentials"),
-            transform,
-            "PublicCredentials",
+        RecordExpression(
+            TypeReference("Credentials"), FIELD, transform, "PublicCredentials"
         ),
         NameTypeSystem((("Credentials", credentials),)),
     )
@@ -1192,9 +1188,10 @@ def test_map_fields_rejects_duplicate_output_names() -> None:
     )
 
     result = evaluate(
-        MapFieldsExpression(
+        RecordExpression(
             TypeReference("Pair"),
-            FieldExpression(FieldName("same"), ValueReference()),
+            FIELD,
+            FieldExpression(FieldName("same"), FieldTypeReference(FIELD)),
         ),
         NameTypeSystem((("Pair", pair),)),
     )
@@ -1232,25 +1229,25 @@ def test_compiler_and_runtime_reject_duplicate_record_outputs(
         left: int
         right: int
 
-    type Duplicate[T] = MarkerMapFields[
-        T,
-        MarkerField[Literal["same"], MarkerValue],
-    ]
+    type Duplicate[T] = Record(
+        MarkerField[Literal["same"], field.type] for field in Fields[T]
+    )
 
     with pytest.raises(Exception, match=r"duplicate_field.*'same'"):
         TypeAdapter(Schema[Duplicate[Pair]])
 
     source = tmp_path / "duplicate_record.py"
     source.write_text(
-        """
+        """\
+
 from typing import Literal, TypedDict
-from typeforge import Field, MapFields, Value
+from typeforge import Field, Fields, Record
 
 class Pair(TypedDict):
     left: int
     right: int
 
-type Duplicate[T] = MapFields[T, Field[Literal["same"], Value]]
+type Duplicate[T] = Record((Field[Literal['same'], field.type] for field in Fields[T]))
 
 def duplicate(value: Pair) -> Duplicate[Pair]: ...
 """.lstrip(),

@@ -21,16 +21,16 @@ from typeforge.overlay import (
 
 def test_schema_roots_cover_records_and_scoped_methods() -> None:
     source = dedent("""\
-        from typing import TypedDict
-        from typeforge import Field, Key, MapFields, Value
-        from typeforge.pydantic import Schema
-        class Payload(TypedDict):
-            value: Schema[int]
-        type Copy[T] = MapFields[T, Field[Key, Value]]
-        class Outer:
-            class Inner:
-                def parse(self, value: Schema[Copy[Payload]]) -> Schema[bytes]: ...
-        """)
+from typing import TypedDict
+from typeforge import Field, Fields, Record
+from typeforge.pydantic import Schema
+class Payload(TypedDict):
+    value: Schema[int]
+type Copy[T] = Record((Field[field.name, field.type] for field in Fields[T]))
+class Outer:
+    class Inner:
+        def parse(self, value: Schema[Copy[Payload]]) -> Schema[bytes]: ...
+""")
     path = Path("schemas.py")
 
     plan = compile_source(source, path, maximum_arity=1).unwrap()

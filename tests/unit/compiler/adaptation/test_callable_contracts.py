@@ -31,10 +31,12 @@ def test_callable_contract_preserves_relationship_before_record_rewriting(
         parse_source(
             dedent(f"""\
             from typing import TypedDict
-            from typeforge import Field, Key, Map, MapFields, Value
+            from typeforge import Field, Map, Fields, Record
             class Payload(TypedDict):
                 value: int
-            type Copy[T] = MapFields[T, Field[Key, Value]]
+            type Copy[T] = Record(
+                Field[field.name, field.type] for field in Fields[T]
+            )
             type Encoded[T] = Map[T, int : Copy[Payload]]
             def encode[T](value: T) -> {return_annotation}: ...
             def identity[T](value: T) -> T: ...

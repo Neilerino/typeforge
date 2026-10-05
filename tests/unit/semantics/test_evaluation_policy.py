@@ -4,6 +4,8 @@ from returns.result import Failure, Success
 from tests.unit.semantics.test_migration_spec import NameTypeSystem
 from typeforge import semantics as s
 
+FIELD = s.TypeSymbol(("test-field",), "field")
+
 
 class RecordingPolicy:
     def __init__(self, *, reject: bool = False) -> None:
@@ -17,7 +19,7 @@ class RecordingPolicy:
 
 def test_policy_rejection_is_a_typed_failure_and_stops_later_evaluation() -> None:
     unmatched = s.MapExpression(s.TypeReference("int"), ())
-    expression = s.UnionExpression((unmatched, s.KeyReference()))
+    expression = s.UnionExpression((unmatched, s.FieldNameReference(FIELD)))
     policy = RecordingPolicy(reject=True)
 
     result = s.Evaluator(NameTypeSystem(), policy=policy).evaluate(expression)
@@ -61,12 +63,12 @@ def test_explicit_never_outputs_do_not_invoke_no_match_policy(
 
 
 def test_nested_no_match_preserves_authored_expression_and_bindings() -> None:
-    inner = s.MapExpression(s.ValueReference(), ())
+    inner = s.MapExpression(s.FieldTypeReference(FIELD), ())
     outer = s.MapExpression(
         s.TypeReference("int"),
         (s.CaseExpression(s.ExactTypePattern("int"), inner),),
     )
-    context = s.EvaluationContext(value=s.ResolvedType("bytes"))
+    context = s.EvaluationContext(fields=((FIELD, s.RecordField("field", "bytes")),))
     policy = RecordingPolicy(reject=True)
 
     result = s.Evaluator(NameTypeSystem(), policy=policy, context=context).evaluate(
@@ -158,49 +160,65 @@ def test_conditions_after_an_indeterminate_operand_are_speculative(
 
 def test_child_evaluator_does_not_change_parent_bindings() -> None:
     evaluator = s.Evaluator(NameTypeSystem())
-    expression = s.ValueReference()
-    child = evaluator.with_context(s.EvaluationContext(value=s.ResolvedType("int")))
+    expression = s.FieldTypeReference(FIELD)
+    child = evaluator.with_context(
+        s.EvaluationContext(fields=((FIELD, s.RecordField("field", "int")),))
+    )
     assert child.evaluate(expression) == Success(s.ResolvedType("int"))
     result = evaluator.evaluate(expression)
     assert isinstance(result, Failure)
-    assert isinstance(result.failure(), s.UnboundValueSemanticError)
+    assert isinstance(result.failure(), s.UnboundFieldSemanticError)
 
 
 def test_children_share_dependencies_and_keep_sibling_contexts_after_failure() -> None:
     policy = RecordingPolicy(reject=True)
     type_system = NameTypeSystem()
-    parent_context = s.EvaluationContext(value=s.ResolvedType("int"))
+    parent_context = s.EvaluationContext(
+        fields=((FIELD, s.RecordField("field", "int")),)
+    )
     parent = s.Evaluator(type_system, policy=policy, context=parent_context)
-    child_context = s.EvaluationContext(value=s.ResolvedType("bytes"))
+    child_context = s.EvaluationContext(
+        fields=((FIELD, s.RecordField("field", "bytes")),)
+    )
     child = parent.with_context(child_context)
-    sibling = parent.with_context(s.EvaluationContext(value=s.ResolvedType("str")))
+    sibling = parent.with_context(
+        s.EvaluationContext(fields=((FIELD, s.RecordField("field", "str")),))
+    )
 
     assert child is not parent
     assert child.type_system is type_system
-    unmatched = s.MapExpression(s.ValueReference(), ())
+    unmatched = s.MapExpression(s.FieldTypeReference(FIELD), ())
     assert child.evaluate(unmatched) == Failure(
         s.MapNoMatch(unmatched, s.ResolvedType("bytes"), child_context)
     )
     assert policy.outcomes[0].context is child_context
     assert parent.context is parent_context
-    assert parent.evaluate(s.ValueReference()) == Success(s.ResolvedType("int"))
-    assert sibling.evaluate(s.ValueReference()) == Success(s.ResolvedType("str"))
-    assert child.evaluate(s.ValueReference()) == Success(s.ResolvedType("bytes"))
+    assert parent.evaluate(s.FieldTypeReference(FIELD)) == Success(
+        s.ResolvedType("int")
+    )
+    assert sibling.evaluate(s.FieldTypeReference(FIELD)) == Success(
+        s.ResolvedType("str")
+    )
+    assert child.evaluate(s.FieldTypeReference(FIELD)) == Success(
+        s.ResolvedType("bytes")
+    )
 
 
 def test_evaluator_context_cannot_be_rebound() -> None:
     evaluator = s.Evaluator(NameTypeSystem())
     with pytest.raises(AttributeError):
-        evaluator.context = s.EvaluationContext(value=s.ResolvedType("int"))
+        evaluator.context = s.EvaluationContext(
+            fields=((FIELD, s.RecordField("field", "int")),)
+        )
 
 
 def test_reentrant_child_evaluation_preserves_active_parent_context() -> None:
     class ReentrantPolicy:
         def no_match(self, outcome: s.MapNoMatch[str]) -> s.NoMatchDecision:
             child = evaluator.with_context(
-                s.EvaluationContext(value=s.ResolvedType("bytes"))
+                s.EvaluationContext(fields=((FIELD, s.RecordField("field", "bytes")),))
             )
-            assert child.evaluate(s.ValueReference()) == Success(
+            assert child.evaluate(s.FieldTypeReference(FIELD)) == Success(
                 s.ResolvedType("bytes")
             )
             return s.NoMatchDecision.ACCEPT
@@ -208,10 +226,10 @@ def test_reentrant_child_evaluation_preserves_active_parent_context() -> None:
     evaluator = s.Evaluator(
         NameTypeSystem(),
         policy=ReentrantPolicy(),
-        context=s.EvaluationContext(value=s.ResolvedType("int")),
+        context=s.EvaluationContext(fields=((FIELD, s.RecordField("field", "int")),)),
     )
     expression = s.UnionExpression(
-        (s.MapExpression(s.TypeReference("str"), ()), s.ValueReference())
+        (s.MapExpression(s.TypeReference("str"), ()), s.FieldTypeReference(FIELD))
     )
 
     assert evaluator.evaluate(expression) == Success(s.ResolvedType("int"))

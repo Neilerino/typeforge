@@ -317,36 +317,37 @@ def test_schema_boundaries_resolve_in_model_fields_and_generated_stubs(
     source = tmp_path / "models.py"
     source.write_text(
         (
-            "from pydantic import BaseModel\n"
-            "from typing import TypedDict\n"
-            "from typeforge._markers import Equal\n"
-            "from typeforge import Field, Key, Map,"
-            "MapFields, Value, Capture\n"
-            "from typeforge.pydantic import Input, Schema\n"
-            'Item = Capture("Item")\n'
-            "\n"
-            "type Wire[T] = Map[T, bytes : str, ... : int]\n"
-            "\n"
-            "class User(TypedDict):\n"
-            "    name: str\n"
-            "\n"
-            "type Public[T] = MapFields[T, Field[Key, Value]]\n"
-            "\n"
-            "class Payload(BaseModel):\n"
-            "    wire: Schema[Wire[bytes]]\n"
-            "    direct: Schema[Map[int, Equal[int, int] : str, ..."
-            " : bytes]]\n"
-            "    runtime: Schema[Map[Input, int : int, str : "
-            "bytes]]\n"
-            "    runtime_if: Schema[Map[Input, Equal[Input, str] : "
-            "int, ... : float]]\n"
-            "    structural: Schema[Map[list[int], list[Item] : "
-            "Item, ... : bytes]]\n"
-            "    structural_output: Schema[Map[list[int], "
-            "list[Item] : set[Item], ... : bytes]]\n"
-            "    nested_capture: Schema[Map[list[int], list[Item] "
-            ": Map[Item, int : str, ... : bytes], ... : float]]\n"
-            "    public: Schema[Public[User]]\n"
+            """\
+from pydantic import BaseModel
+from typing import TypedDict
+from typeforge._markers import Equal
+from typeforge import Field, Map, Capture, Fields, Record
+from typeforge.pydantic import Input, Schema
+
+Item = Capture("Item")
+
+type Wire[T] = Map[T, bytes:str, ...:int]
+
+
+class User(TypedDict):
+    name: str
+
+
+type Public[T] = Record((Field[field.name, field.type] for field in Fields[T]))
+
+
+class Payload(BaseModel):
+    wire: Schema[Wire[bytes]]
+    direct: Schema[Map[int, Equal[int, int] : str, ...:bytes]]
+    runtime: Schema[Map[Input, int:int, str:bytes]]
+    runtime_if: Schema[Map[Input, Equal[Input, str] : int, ...:float]]
+    structural: Schema[Map[list[int], list[Item] : Item, ...:bytes]]
+    structural_output: Schema[Map[list[int], list[Item] : set[Item], ...:bytes]]
+    nested_capture: Schema[
+        Map[list[int], list[Item] : Map[Item, int:str, ...:bytes], ...:float]
+    ]
+    public: Schema[Public[User]]
+"""
         ),
         encoding="utf-8",
     )

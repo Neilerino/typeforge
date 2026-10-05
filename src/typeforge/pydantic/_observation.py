@@ -27,12 +27,12 @@ class RawInput:
             case s.TypeReference(value=target) | s.ExactTypePattern(value=target):
                 return matches_type(target.value, self.value)
 
-            case s.ValueReference():
-                bound = context.value
-                if isinstance(bound, s.ResolvedType):
-                    return matches_type(bound.value.value, self.value)
+            case s.FieldTypeReference(symbol=symbol):
+                field = dict(context.fields).get(symbol)
+                if field is not None:
+                    return matches_type(field.value.value, self.value)
 
-                raise s.UnboundValueSemanticError("Value requires a field binding")
+                raise s.UnboundFieldSemanticError("field requires a resolved binding")
 
             case s.CaptureReference(symbol=symbol):
                 bound = dict(context.captures).get(symbol)
@@ -70,12 +70,12 @@ def input_test_kinds(
             for member in members:
                 yield from input_test_kinds(member, context)
 
-        case s.ValueReference():
-            bound = context.value
-            if isinstance(bound, s.ResolvedType):
-                yield from _type_kinds(bound.value.value)
+        case s.FieldTypeReference(symbol=symbol):
+            field = dict(context.fields).get(symbol)
+            if field is not None:
+                yield from _type_kinds(field.value.value)
             else:
-                yield InputTestKind.UNBOUND_VALUE
+                yield InputTestKind.UNBOUND_FIELD
 
         case s.InputReference():
             yield InputTestKind.INPUT

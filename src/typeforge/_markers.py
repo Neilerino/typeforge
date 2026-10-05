@@ -149,112 +149,62 @@ type Map[Subject, *Cases] = Annotated[
     ),
 ]
 
-type MapFields[Record, Transform] = Annotated[
-    object,
-    Doc(
-        "Applies `Transform` independently to every field of `Record`. Within the"
-        " transform, `Key` is bound to the current field name and `Value` to its "
-        "type; the result must be `Field`, `OptionalField`, `ReadonlyField`, or "
-        "`Drop`. The current compiler specializes named `TypedDict` records that "
-        "are visible during generation.\n"
-        "\n"
-        "```python\n"
-        "type JsonSafe[T] = MapFields[\n"
-        "    T,\n"
-        "    Field[\n"
-        "        Key,\n"
-        "        Map[Value, datetime : str, ... : Value],\n"
-        "    ],\n"
-        "]\n"
-        "```"
-    ),
-]
 type Field[Name, Type] = Annotated[
     Type,
     Doc(
-        "Emits a required, writable field from a `MapFields` transform. `Name` "
-        "determines the output key—normally `Key`, or a string `Literal` when "
-        "renaming—and `Type` determines the output value type.\n"
+        "Emits a required, writable field into a `Record`. `Name` determines "
+        "the output key, using a scoped field.name or a string Literal when "
+        "renaming, and `Type` determines the value type. Whole-field passthrough "
+        "preserves the source flags instead.\n"
         "\n"
         "```python\n"
-        "type JsonSafe[T] = MapFields[\n"
-        "    T,\n"
-        "    Field[Key, Map[Value, bytes : str, ... : Value]],\n"
-        "]\n"
+        "type JsonSafe[T] = Record(\n"
+        "    Field[field.name, Map[field.type, bytes: str, ...: field.type]]\n"
+        "    for field in Fields[T]\n"
+        ")\n"
         "```"
     ),
 ]
 type OptionalField[Name, Type] = Annotated[
     Type,
     Doc(
-        "Emits a non-required, writable field from a `MapFields` transform. It "
+        "Emits a non-required, writable field into a `Record`. It "
         "uses the same output name and type arguments as `Field`, but the "
         "generated `TypedDict` key is wrapped in `NotRequired`.\n\n"
         "```python\n"
-        "type Partial[T] = MapFields[\n"
-        "    T,\n"
-        "    OptionalField[Key, Value],\n"
-        "]\n"
+        "type Partial[T] = Record(\n"
+        "    OptionalField[field.name, field.type] for field in Fields[T]\n"
+        ")\n"
         "```"
     ),
 ]
 type ReadonlyField[Name, Type] = Annotated[
     Type,
     Doc(
-        "Emits a required, read-only field from a `MapFields` transform. It uses "
+        "Emits a required, read-only field into a `Record`. It uses "
         "the same output name and type arguments as `Field`, but the generated "
         "`TypedDict` value is wrapped in `ReadOnly`.\n\n"
         "```python\n"
-        "type Frozen[T] = MapFields[\n"
-        "    T,\n"
-        "    ReadonlyField[Key, Value],\n"
-        "]\n"
+        "type Frozen[T] = Record(\n"
+        "    ReadonlyField[field.name, field.type] for field in Fields[T]\n"
+        ")\n"
         "```"
     ),
 ]
 type Drop = Annotated[
     Never,
     Doc(
-        "Removes the current field from a `MapFields` result. `Drop` is commonly "
+        "Removes the current field from a `Record` result. `Drop` is commonly "
         "returned conditionally from a predicate branch; using it as the entire "
         "transform drops every field.\n"
         "\n"
         "```python\n"
-        "type Public[T] = MapFields[\n"
-        "    T,\n"
-        "    Map[\n"
-        "        Key,\n"
-        '        Literal["password"] : Drop,\n'
-        "        ... : Field[Key, Value],\n"
-        "    ],\n"
-        "]\n"
-        "```"
-    ),
-]
-type Key = Annotated[
-    str,
-    Doc(
-        "References the current field name while evaluating a `MapFields` "
-        "transform. Use it as an output name, or compare it with a string "
-        "`Literal` to select, rename, or drop particular fields. `Key` is invalid"
-        " outside a field-map context.\n"
-        "\n"
-        "```python\n"
-        "type WithoutPassword[T] = MapFields[\n"
-        "    T,\n"
-        '    Map[Key, Literal["password"] : Drop, ... : Field[Key, Value]],\n'
-        "]\n"
-        "```"
-    ),
-]
-type Value = Annotated[
-    object,
-    Doc(
-        "References the current field type inside `MapFields`. Structural "
-        "patterns use explicitly declared Capture tokens.\n"
-        "\n"
-        "```python\n"
-        "type OptionalFields[T] = MapFields[T, OptionalField[Key, Value]]\n"
+        "@type_function\n"
+        "def Public[T]():\n"
+        "    return Record(\n"
+        '        Map[field.name, Literal["password"]: Drop, ...: field]\n'
+        "        for field in Fields[T]\n"
+        "    )\n"
         "```"
     ),
 ]

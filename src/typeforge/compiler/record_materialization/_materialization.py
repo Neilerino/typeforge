@@ -19,13 +19,10 @@ from typeforge.compiler.semantic_adapter import (
 )
 from typeforge.compiler.source import (
     AppliedTypeExpression,
-    MapFieldsMarker,
-    MarkerNormalizationError,
-    MarkerTypeExpression,
     NameTypeExpression,
+    RecordTypeExpression,
     SourceModule,
     SourceTypeExpression,
-    normalize_marker,
     schema_inner_expression,
 )
 from typeforge.compiler.source import (
@@ -48,8 +45,8 @@ from typeforge.compiler.stub_ir import (
     substitute_type,
 )
 from typeforge.semantics import (
-    MapFieldsExpression,
     MapNoMatch,
+    RecordExpression,
     RecordFamily,
     RecordField,
     RecordShape,
@@ -92,7 +89,7 @@ def materialize_record_transforms(
         if name not in stub_functions or source_function.returns is None:
             continue
 
-        alias_reference = map_fields_alias_reference(
+        alias_reference = record_alias_reference(
             source_function.returns, module.aliases
         )
         if alias_reference is None:
@@ -222,22 +219,14 @@ def _derive_record_shapes(
     derived: list[DerivedRecord] = []
     for alias in aliases:
         value = schema_inner_expression(alias.value)
-        if not isinstance(value, MarkerTypeExpression):
-            continue
-
-        try:
-            marker = normalize_marker(value)
-        except MarkerNormalizationError:
-            continue
-
-        if not isinstance(marker, MapFieldsMarker):
+        if not is_record_alias(alias):
             continue
 
         if len(alias.type_parameters) != 1:
             raise RecordMaterializationError(
                 alias.name,
                 alias.value.source,
-                "MapFields aliases require exactly one type parameter",
+                "record aliases require exactly one type parameter",
             )
 
         parameter = alias.type_parameters[0].name
@@ -252,11 +241,11 @@ def _derive_record_shapes(
                     alias.name, alias.value.source, error.message
                 ) from error
 
-            if not isinstance(semantic_expression, MapFieldsExpression):
+            if not isinstance(semantic_expression, RecordExpression):
                 raise RecordMaterializationError(
                     alias.name,
                     alias.value.source,
-                    "alias must evaluate to MapFields",
+                    "alias must evaluate to Record",
                 )
 
             evaluated_result = evaluate(semantic_expression, COMPILER_TYPE_SYSTEM)
@@ -281,7 +270,7 @@ def _derive_record_shapes(
                 raise RecordMaterializationError(
                     alias.name,
                     alias.value.source,
-                    "MapFields must evaluate to a record shape",
+                    "Record must evaluate to a record shape",
                 )
 
             derived.append(
@@ -295,7 +284,7 @@ def _derive_record_shapes(
     return tuple(derived)
 
 
-def map_fields_alias_reference(
+def record_alias_reference(
     expression: SourceTypeExpression,
     aliases: tuple[SourceTypeAlias, ...],
 ) -> tuple[str, str] | None:
@@ -313,23 +302,14 @@ def map_fields_alias_reference(
         return None
 
     alias_name = expression.constructor.source
-    if any(
-        alias.name == alias_name and is_map_fields_alias(alias) for alias in aliases
-    ):
+    if any(alias.name == alias_name and is_record_alias(alias) for alias in aliases):
         return alias_name, argument.source
 
     return None
 
 
-def is_map_fields_alias(alias: SourceTypeAlias) -> bool:
-    value = schema_inner_expression(alias.value)
-    if not isinstance(value, MarkerTypeExpression):
-        return False
-
-    try:
-        return isinstance(normalize_marker(value), MapFieldsMarker)
-    except MarkerNormalizationError:
-        return False
+def is_record_alias(alias: SourceTypeAlias) -> bool:
+    return isinstance(schema_inner_expression(alias.value), RecordTypeExpression)
 
 
 def specialize_record_function(

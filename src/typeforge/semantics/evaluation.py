@@ -19,9 +19,8 @@ from typeforge.semantics.domain.exceptions import (
     DuplicateFieldSemanticError,
     SemanticIssue,
     UnboundCaptureSemanticError,
+    UnboundFieldSemanticError,
     UnboundInputSemanticError,
-    UnboundKeySemanticError,
-    UnboundValueSemanticError,
     UnsupportedExpressionSemanticError,
 )
 from typeforge.semantics.domain.models import (
@@ -42,12 +41,13 @@ from typeforge.semantics.domain.models import (
     Expression,
     FieldExpression,
     FieldName,
+    FieldNameReference,
+    FieldReference,
+    FieldTypeReference,
     IndeterminateCondition,
     IndeterminateType,
     InputReference,
-    KeyReference,
     MapExpression,
-    MapFieldsExpression,
     MapNoMatch,
     MapSelection,
     NoMatchDecision,
@@ -56,6 +56,7 @@ from typeforge.semantics.domain.models import (
     ParameterizedTypeShape,
     ParameterizedTypeTemplate,
     ReadonlyFieldExpression,
+    RecordExpression,
     RecordField,
     RecordShape,
     ResolvedType,
@@ -65,7 +66,6 @@ from typeforge.semantics.domain.models import (
     TypeValueReference,
     UnionExpression,
     UnresolvedType,
-    ValueReference,
     is_bool_expr,
     is_pattern_expr,
 )
@@ -226,20 +226,6 @@ class Evaluator[T]:
 
         return self.context.input_type
 
-    @_dispatch.register(KeyReference)
-    def _key(self, expression: KeyReference) -> EvaluationValue[T]:
-        if self.context.key is None:
-            raise UnboundKeySemanticError("Key requires MapFields")
-
-        return FieldName(self.context.key)
-
-    @_dispatch.register(ValueReference)
-    def _value(self, expression: ValueReference) -> EvaluationValue[T]:
-        if self.context.value is not None:
-            return self.context.value
-
-        raise UnboundValueSemanticError("Value requires MapFields")
-
     @_dispatch.register(CaptureReference)
     def _capture(self, expression: CaptureReference) -> EvaluationValue[T]:
         bound = dict(self.context.captures).get(expression.symbol)
@@ -253,6 +239,64 @@ class Evaluator[T]:
     @_dispatch.register(DropExpression)
     def _drop(self, expression: DropExpression) -> EvaluationValue[T]:
         return DroppedField()
+
+    @_dispatch.register(FieldReference | FieldNameReference | FieldTypeReference)
+    def _field_reference(
+        self, expression: FieldReference | FieldNameReference | FieldTypeReference
+    ) -> EvaluationValue[T]:
+        field = dict(self.context.fields).get(expression.symbol)
+        if field is None:
+            raise UnboundFieldSemanticError(
+                f"field {expression.symbol.name!r} is unbound"
+            )
+
+        match expression:
+            case FieldNameReference():
+                return FieldName(field.name)
+            case FieldTypeReference():
+                return ResolvedType(field.value)
+            case FieldReference():
+                return field
+
+    @_dispatch.register(RecordExpression)
+    def _record(self, expression: RecordExpression[T]) -> EvaluationValue[T]:
+        operand = self._evaluate(expression.record)
+        record = (
+            operand
+            if isinstance(operand, RecordShape)
+            else self.type_system.record(expect_type(operand).value).unwrap()
+        )
+        fields: list[RecordField[T]] = []
+        field_names: set[str] = set()
+        for source_field in record.fields:
+            field_context = replace(
+                self.context,
+                fields=(*self.context.fields, (expression.binding, source_field)),
+            )
+            transformed = self.with_context(field_context)._evaluate(
+                expression.transform
+            )
+            if isinstance(transformed, DroppedField):
+                continue
+
+            field = expect_field(
+                transformed, "Record items must evaluate to a field or Drop"
+            )
+            if field.name in field_names:
+                raise DuplicateFieldSemanticError(
+                    f"multiple source fields produce {field.name!r}"
+                )
+
+            field_names.add(field.name)
+            fields.append(field)
+
+        return replace(
+            record,
+            name=record.name
+            if expression.output_name is None
+            else expression.output_name,
+            fields=tuple(fields),
+        )
 
     @_dispatch.register(ParameterizedTypeTemplate)
     def _template(self, expression: ParameterizedTypeTemplate[T]) -> EvaluationValue[T]:
@@ -315,49 +359,6 @@ class Evaluator[T]:
             value.value,
             required=not isinstance(expression, OptionalFieldExpression),
             readonly=isinstance(expression, ReadonlyFieldExpression),
-        )
-
-    @_dispatch.register(MapFieldsExpression)
-    def _map_fields(self, expression: MapFieldsExpression[T]) -> EvaluationValue[T]:
-        record_type = expect_type(
-            self._evaluate(expression.record),
-        )
-        record = self.type_system.record(record_type.value).unwrap()
-        fields: list[RecordField[T]] = []
-        field_names: set[str] = set()
-
-        for source_field in record.fields:
-            field_context = replace(
-                self.context,
-                key=source_field.name,
-                value=ResolvedType(source_field.value),
-            )
-            transformed = self.with_context(field_context)._evaluate(
-                expression.transform
-            )
-            if isinstance(transformed, DroppedField):
-                continue
-
-            field = expect_field(
-                transformed,
-                "MapFields transform must evaluate to a field or Drop",
-            )
-            if field.name in field_names:
-                raise DuplicateFieldSemanticError(
-                    f"multiple source fields produce {field.name!r}"
-                )
-
-            field_names.add(field.name)
-            fields.append(field)
-
-        return replace(
-            record,
-            name=(
-                record.name
-                if expression.output_name is None
-                else expression.output_name
-            ),
-            fields=tuple(fields),
         )
 
     @_dispatch.register(UnionExpression)

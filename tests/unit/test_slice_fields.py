@@ -23,48 +23,54 @@ from typeforge.compiler.semantic_adapter import (
 from typeforge.compiler.source import parse_source
 from typeforge.pydantic import Schema
 
-RECORDS = (
-    "from typing import Literal, NotRequired, ReadOnly, "
-    "TypedDict\n"
-    "from typeforge._markers import Equal\nfrom typeforge import Drop, Field, Key, Map,"
-    "MapFields, OptionalField, ReadonlyField, Value\n"
-    "from typeforge._markers import Case, Default, Map as "
-    "CanonicalMap\n"
-    "from typeforge.pydantic import Input\n"
-    "\n"
-    "class Base(TypedDict, total=False):\n"
-    "    note: ReadOnly[str]\n"
-    "\n"
-    "class Row(Base):\n"
-    "    name: str\n"
-    "    password: str\n"
-    "    count: int\n"
-    "    token: ReadOnly[NotRequired[bytes]]\n"
-    '    kind: Literal["a"] | Literal["b"]\n'
-    "\n"
-    'type IsName = Equal[Literal["name"]]\n'
-)
+RECORDS = """\
+from typing import Literal, NotRequired, ReadOnly, TypedDict
+from typeforge._markers import Equal
+from typeforge import Drop, Field, Map, OptionalField, ReadonlyField, Fields, Record
+from typeforge._markers import Case, Default, Map as CanonicalMap
+from typeforge.pydantic import Input
 
-SLICED = """Map[Key,
-    Literal["password"]: Drop,
-    IsName: OptionalField[Literal["display_name"], Value],
-    Literal["count"]: ReadonlyField[Key, Map[Value, int: str | None, ...: Value]],
-    ...: Field[Key, Value],
-]"""
+class Base(TypedDict, total=False):
+    note: ReadOnly[str]
 
-CANONICAL = """CanonicalMap[Key,
+class Row(Base):
+    name: str
+    password: str
+    count: int
+    token: ReadOnly[NotRequired[bytes]]
+    kind: Literal["a"] | Literal["b"]
+
+type IsName = Equal[Literal["name"]]
+"""
+
+SLICED = """\
+Map[
+    field.name,
+    Literal["password"] : Drop,
+    IsName : OptionalField[Literal["display_name"], field.type],
+    Literal["count"] : ReadonlyField[
+        field.name, Map[field.type, int : str | None, ... : field.type]
+    ],
+    ... : Field[field.name, field.type],
+]
+"""
+
+CANONICAL = """CanonicalMap[field.name,
     Case[Literal["password"], Drop],
-    Case[IsName, OptionalField[Literal["display_name"], Value]],
-    Case[Literal["count"], ReadonlyField[Key,
-        CanonicalMap[Value, Case[int, str | None], Default[Value]]]],
-    Default[Field[Key, Value]],
+    Case[IsName, OptionalField[Literal["display_name"], field.type]],
+    Case[Literal["count"], ReadonlyField[field.name,
+        CanonicalMap[field.type, Case[int, str | None], Default[field.type]]]],
+    Default[Field[field.name, field.type]],
 ]"""
 
 
 def _source(transform: str) -> str:
     return (
-        RECORDS + f"type Public[T] = MapFields[T, {transform}]\n"
-        "def publicize[T](value: T) -> Public[T]: ...\n"
+        RECORDS
+        + f"""\
+type Public[T] = Record(({transform} for field in Fields[T]))
+def publicize[T](value: T) -> Public[T]: ...
+"""
     )
 
 
@@ -133,13 +139,13 @@ def test_slice_fields_preserve_names_values_modifiers_and_union_outputs(
     ("transform", "runtime_code", "compiler_message"),
     [
         (
-            'Map[Key, ...: Field[Literal["same"], Value]]',
+            'Map[field.name, ...: Field[Literal["same"], field.type]]',
             "duplicate_field",
             "same",
         ),
-        ("Map[Key, ...: str]", "expected_field", "field or Drop"),
+        ("Map[field.name, ...: str]", "expected_field", "field or Drop"),
         (
-            "Map[Input, int: Field[Key, Value], ...: Drop]",
+            "Map[Input, int: Field[field.name, field.type], ...: Drop]",
             "expected_field",
             "deferred Map outputs must evaluate to types",
         ),
@@ -166,9 +172,16 @@ def test_invalid_slice_field_transforms_fail_at_both_boundaries(
 def test_slice_transforms_do_not_broaden_supported_record_families(
     tmp_path: Path, record: str
 ) -> None:
-    source = _source("Map[Key, ...: Field[Key, Value]]").replace(
-        "type Public[T] = MapFields[T,",
-        f"class Plain:\n    value: int\n\ntype Public[T] = MapFields[{record},",
+    source = (
+        _source("Map[field.name, ...: Field[field.name, field.type]]")
+        .replace(
+            "type Public[T] =",
+            "class Plain:\n    value: int\n\ntype Public[T] =",
+        )
+        .replace(
+            "Fields[T]",
+            f"Fields[{record}]",
+        )
     )
     path = tmp_path / "unsupported.py"
     path.write_text(source)
@@ -188,12 +201,18 @@ def test_slice_field_copy_preserves_each_consumers_metadata_policy(
     source = """\
 from typing import Annotated, TypedDict
 from pydantic import Field as PydanticField
-from typeforge import Field, Key, Map, MapFields, Value
+from typeforge import Field, Map, Fields, Record
+
 
 class Row(TypedDict):
     count: Annotated[int, PydanticField(gt=0)]
 
-type Public[T] = MapFields[T, Map[Key, ...: Field[Key, Value]]]
+
+type Public[T] = Record(
+    (Map[field.name, ... : Field[field.name, field.type]] for field in Fields[T])
+)
+
+
 def publicize[T](value: T) -> Public[T]: ...
 """
     path = tmp_path / "metadata.py"
@@ -206,8 +225,8 @@ def publicize[T](value: T) -> Public[T]: ...
             "from typeforge._markers import Default, Map as CanonicalMap\n"
             "from typeforge import Field,",
         ).replace(
-            "Map[Key, ...: Field[Key, Value]]",
-            "CanonicalMap[Key, Default[Field[Key, Value]]]",
+            "Map[field.name, ...: Field[field.name, field.type]]",
+            "CanonicalMap[field.name, Default[Field[field.name, field.type]]]",
         )
     )
     assert generate_module(path, maximum_arity=2).unwrap().content == published
@@ -276,18 +295,23 @@ def test_indeterminate_field_layouts_are_not_treated_as_definite_records(
     sliced: bool,
 ) -> None:
     transform = (
-        "Map[Key, Equal[U, int]: Field[Key, Value], ...: Drop]"
+        "Map[field.name, Equal[U, int]: Field[field.name, field.type], ...: Drop]"
         if sliced
-        else "CanonicalMap[Key, Case[Equal[U, int], Field[Key, Value]], Default[Drop]]"
+        else """\
+CanonicalMap[
+    field.name, Case[Equal[U, int], Field[field.name, field.type]], Default[Drop]
+]
+"""
     )
-    source = (
-        "from typing import TypedDict\n"
-        "from typeforge._markers import Case, Default, Map as CanonicalMap\n"
-        "from typeforge._markers import Equal\nfrom typeforge import Drop, Field, Key,"
-        "Map, MapFields, Value\n"
-        "class Row(TypedDict):\n    value: int\n"
-        f"type Public[U] = MapFields[Row, {transform}]\n"
-    )
+    source = f"""\
+from typing import TypedDict
+from typeforge._markers import Case, Default, Map as CanonicalMap
+from typeforge._markers import Equal
+from typeforge import Drop, Field, Map, Fields, Record
+class Row(TypedDict):
+    value: int
+type Public[U] = Record(({transform} for field in Fields[Row]))
+"""
     module = parse_source(source).unwrap().source
     (record,) = build_record_shapes(module.typed_dicts)
     unknown = s.UnresolvedType(NamedType("U"), s.TypeSymbol(("Public",), "U"))

@@ -4,16 +4,7 @@ import pytest
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 from pydantic import Field as PydanticField
-from typeforge import (
-    Drop,
-    Field,
-    Key,
-    Map,
-    MapFields,
-    OptionalField,
-    ReadonlyField,
-    Value,
-)
+from typeforge import Drop, Field, Fields, Map, OptionalField, ReadonlyField, Record
 from typeforge._markers import Equal
 from typeforge.pydantic import Schema
 
@@ -24,17 +15,14 @@ class User(TypedDict):
     password: str
 
 
-type Public[T] = MapFields[
-    T,
+type Public[T] = Record(
     Map[
-        Key,
-        Equal[Key, Literal["password"]] : Drop,
-        ... : Field[
-            Key,
-            Map[Value, int:str, ...:Value],
-        ],
-    ],
-]
+        field.name,
+        Equal[field.name, Literal["password"]] : Drop,
+        ... : Field[field.name, Map[field.type, int:str, ... : field.type]],
+    ]
+    for field in Fields[T]
+)
 
 
 def test_map_fields_validates_transforms_and_drops_fields() -> None:
@@ -59,14 +47,16 @@ def test_map_fields_preserves_nested_error_location() -> None:
 
 
 def test_map_fields_can_rename_and_make_fields_optional() -> None:
-    type Renamed[T] = MapFields[
-        T,
+    type Renamed[T] = Record(
         Map[
-            Key,
-            Equal[Key, Literal["name"]] : OptionalField[Literal["display_name"], Value],
+            field.name,
+            Equal[field.name, Literal["name"]] : OptionalField[
+                Literal["display_name"], field.type
+            ],
             ...:Drop,
-        ],
-    ]
+        ]
+        for field in Fields[T]
+    )
     adapter = TypeAdapter(Schema[Renamed[User]])
 
     assert adapter.validate_python({}) == {}
@@ -81,7 +71,7 @@ def test_map_fields_supports_inherited_non_total_and_readonly_fields() -> None:
         identifier: int
         token: ReadOnly[NotRequired[bytes]]
 
-    type Copy[T] = MapFields[T, ReadonlyField[Key, Value]]
+    type Copy[T] = Record(ReadonlyField[field.name, field.type] for field in Fields[T])
     adapter = TypeAdapter(Schema[Copy[Payload]])
 
     assert adapter.validate_python(
@@ -94,7 +84,9 @@ def test_map_fields_preserves_constrained_leaf_metadata() -> None:
     class Payload(TypedDict):
         count: Annotated[int, PydanticField(gt=0)]
 
-    type Copy[T] = MapFields[T, Map[Key, ... : Field[Key, Value]]]
+    type Copy[T] = Record(
+        Map[field.name, ... : Field[field.name, field.type]] for field in Fields[T]
+    )
     adapter = TypeAdapter(Schema[Copy[Payload]])
 
     assert adapter.validate_python({"count": "2"}) == {"count": 2}
@@ -103,7 +95,9 @@ def test_map_fields_preserves_constrained_leaf_metadata() -> None:
 
 
 def test_map_fields_rejects_non_typed_dict_records() -> None:
-    type Invalid = Schema[MapFields[User, Field[Literal["same"], Value]]]
+    type Invalid = Schema[
+        Record(Field[Literal["same"], field.type] for field in Fields[User])
+    ]
 
     with pytest.raises(Exception, match="duplicate_field"):
         TypeAdapter(Invalid)
@@ -112,4 +106,6 @@ def test_map_fields_rejects_non_typed_dict_records() -> None:
         value: int
 
     with pytest.raises(Exception, match="supports TypedDict records only"):
-        TypeAdapter(Schema[MapFields[Model, Field[Key, Value]]])
+        TypeAdapter(
+            Schema[Record(Field[field.name, field.type] for field in Fields[Model])]
+        )

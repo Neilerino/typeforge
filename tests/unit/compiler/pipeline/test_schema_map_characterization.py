@@ -401,28 +401,28 @@ def test_schema_relationship_aliases_preserve_type_outputs(
     ("transform", "expected_field"),
     (
         param(
-            'Field[Literal["renamed"], Value]',
+            'Field[Literal["renamed"], field.type]',
             "renamed: int",
             id="literal-field-name",
         ),
         param(
             (
-                'Field[Map[Key, Literal["original"] : '
-                'Literal["renamed"], ... : Key], Value]'
+                'Field[Map[field.name, Literal["original"] : '
+                'Literal["renamed"], ... : field.name], field.type]'
             ),
             "renamed: int",
             id="literal-field-name-case",
         ),
         param(
             (
-                'Field[Map[Key, Equal[Key, Literal["original"]] : '
-                'Literal["renamed"], ... : Key], Value]'
+                'Field[Map[field.name, Equal[field.name, Literal["original"]] : '
+                'Literal["renamed"], ... : field.name], field.type]'
             ),
             "renamed: int",
             id="literal-field-name-predicate",
         ),
         param(
-            "Field[Key, Map[Value, str : str, ... : Never]]",
+            "Field[field.name, Map[field.type, str : str, ... : Never]]",
             "original: tf_typing.Never",
             id="field-value-never",
         ),
@@ -433,15 +433,20 @@ def test_schema_field_transforms_preserve_typing_emission(
 ) -> None:
     path = tmp_path / "records.py"
     path.write_text(
-        "from typing import Literal, Never, TypedDict\n"
-        "from typeforge import Field, Key, Map, MapFields, Value\n"
-        "from typeforge._markers import Equal\n"
-        "from typeforge.pydantic import Schema\n\n"
-        "class Record(TypedDict):\n"
-        "    original: int\n\n"
-        f"type Transform[T] = MapFields[T, {transform}]\n\n"
-        "class Payload:\n"
-        "    value: Schema[Transform[Record]]\n",
+        f"""\
+from typing import Literal, Never, TypedDict
+from typeforge import Field, Map, Fields, Record
+from typeforge._markers import Equal
+from typeforge.pydantic import Schema
+
+class Row(TypedDict):
+    original: int
+
+type Transform[T] = Record(({transform} for field in Fields[T]))
+
+class Payload:
+    value: Schema[Transform[Row]]
+""",
         encoding="utf-8",
     )
 
@@ -452,14 +457,14 @@ def test_schema_field_transforms_preserve_typing_emission(
         import typing as tf_typing
         from typing import Literal, Never, TypedDict
 
-        class Record(tf_typing.TypedDict):
+        class Row(tf_typing.TypedDict):
             original: int
 
-        class Transform_Record(tf_typing.TypedDict):
+        class Transform_Row(tf_typing.TypedDict):
             {expected_field}
 
         type Transform[T] = object
 
         class Payload:
-            value: Transform_Record
+            value: Transform_Row
         """)

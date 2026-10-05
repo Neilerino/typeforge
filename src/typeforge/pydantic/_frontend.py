@@ -19,17 +19,21 @@ from typeforge import (
     Each,
     Field,
     Is,
-    Key,
-    MapFields,
     OptionalField,
     ReadonlyField,
-    Value,
 )
 from typeforge import semantics as s
 from typeforge._capture import Capture, CaptureSymbol
 from typeforge._map import normalize_selector_literal
 from typeforge._markers import All, Assignable, Case, Default, Equal, Map, Not
 from typeforge._markers import Any as AnyCondition
+from typeforge._record import (
+    FieldNameTemplate,
+    FieldSymbol,
+    FieldTypeTemplate,
+    RecordTemplate,
+    SymbolicField,
+)
 from typeforge._type_function import SymbolicTypeParameter
 from typeforge.pydantic._errors import SchemaIssue, UnresolvedAnnotationIssue
 from typeforge.pydantic._markers import Input
@@ -50,6 +54,10 @@ class AdaptedAnnotation:
 
 
 _MARKERS = (
+    RecordTemplate,
+    SymbolicField,
+    FieldNameTemplate,
+    FieldTypeTemplate,
     Capture,
     SymbolicTypeParameter,
     Map,
@@ -62,9 +70,6 @@ _MARKERS = (
     AnyCondition,
     Not,
     Input,
-    Key,
-    Value,
-    MapFields,
     Field,
     OptionalField,
     ReadonlyField,
@@ -221,6 +226,26 @@ class _AnnotationAdapter:
     ) -> s.Expression[RuntimeType]:
         origin = get_origin(value) or value
         arguments: tuple[object, ...] = get_args(value)
+        if origin in (SymbolicField, FieldNameTemplate, FieldTypeTemplate):
+            field_symbol = _field_binding(value, arguments)
+            if origin is FieldNameTemplate:
+                return s.FieldNameReference(field_symbol)
+
+            if origin is FieldTypeTemplate:
+                return s.FieldTypeReference(field_symbol)
+
+            return s.FieldReference(field_symbol)
+
+        if origin is RecordTemplate:
+            if len(arguments) != 3 or get_origin(arguments[1]) is not SymbolicField:
+                raise invalid(value, "invalid record template")
+
+            return s.RecordExpression(
+                self.adapt(arguments[0]),
+                _field_binding(arguments[1], get_args(arguments[1])),
+                self.adapt(arguments[2]),
+            )
+
         if origin is Capture:
             if len(arguments) != 1 or not isinstance(arguments[0], CaptureSymbol):
                 raise invalid(value, "invalid capture declaration")
@@ -242,14 +267,6 @@ class _AnnotationAdapter:
         if origin is Map:
             return self._map(value, arguments)
 
-        if origin is MapFields:
-            if len(arguments) != 2:
-                raise invalid(value, "MapFields requires a record and a transform")
-
-            return s.MapFieldsExpression(
-                self.adapt(arguments[0]), self.adapt(arguments[1])
-            )
-
         if origin in (Field, OptionalField, ReadonlyField):
             return self._field(value, origin, arguments)
 
@@ -270,12 +287,6 @@ class _AnnotationAdapter:
 
         if origin is Not:
             return self._not(value, arguments, selector_subject)
-
-        if origin is Key:
-            return s.KeyReference()
-
-        if origin is Value:
-            return s.ValueReference()
 
         if origin is Input:
             return s.InputReference()
@@ -338,7 +349,7 @@ class _AnnotationAdapter:
             else:
                 default = adapted
 
-        if isinstance(subject, s.KeyReference | s.FieldName):
+        if isinstance(subject, s.FieldNameReference | s.FieldName):
             cases = [
                 replace(case, test=self._name_expression(case.test)) for case in cases
             ]
@@ -488,7 +499,7 @@ class _AnnotationAdapter:
             case s.ParameterizedTypePattern() | s.AlternativeTypePattern():
                 raise invalid(
                     self.origins[id(expression)],
-                    "A field name must be Key or a string Literal",
+                    "A field name must be field.name or a string Literal",
                 )
 
             case _:
@@ -539,13 +550,6 @@ class _AnnotationAdapter:
         match expression:
             case s.AnnotatedExpression(value=value):
                 return self._pattern(value)
-
-            case s.ValueReference():
-                raise invalid(
-                    self.origins[id(expression)],
-                    "Value is a field reference; "
-                    "declare Capture for structural matching",
-                )
 
             case s.CaptureReference():
                 return expression
@@ -606,8 +610,8 @@ class _AnnotationAdapter:
         else:
             raise invalid(value, "Binary predicates require two operands")
 
-        if isinstance(left, s.KeyReference | s.FieldName) or isinstance(
-            right, s.KeyReference | s.FieldName
+        if isinstance(left, s.FieldNameReference | s.FieldName) or isinstance(
+            right, s.FieldNameReference | s.FieldName
         ):
             left, right = self._name_expression(left), self._name_expression(right)
 
@@ -808,6 +812,13 @@ class _AnnotationAdapter:
             )
 
         return s.TypeReference(concrete_type(value))
+
+
+def _field_binding(value: object, arguments: tuple[object, ...]) -> s.TypeSymbol:
+    if len(arguments) != 1 or not isinstance(arguments[0], FieldSymbol):
+        raise invalid(value, "invalid symbolic field binding")
+
+    return s.TypeSymbol(("runtime-field", str(id(arguments[0]))), "field")
 
 
 def invalid(expression: object, message: str) -> SchemaIssue:

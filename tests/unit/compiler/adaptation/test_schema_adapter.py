@@ -35,12 +35,14 @@ def schema_source(
 ) -> tuple[SourceModule, SchemaTypeExpression]:
     source = (
         parse_source(
-            "from typeforge._markers import Equal, Assignable\n"
-            "from typeforge import Capture, Map, Value\n"
-            "from typeforge._markers import All, Any, Not\n"
-            "from typeforge import MapFields, Field, Key\n"
-            "from typeforge.pydantic import Input, Schema\n"
-            'Item = Capture("Item")\n'
+            """\
+from typeforge._markers import Equal, Assignable
+from typeforge import Capture, Map
+from typeforge._markers import All, Any, Not
+from typeforge import Field, Fields, Record
+from typeforge.pydantic import Input, Schema
+Item = Capture("Item")
+"""
             f"{aliases}\n"
             f"type Selected = Schema[{expression}]\n",
             Path("schema.py"),
@@ -147,11 +149,11 @@ def test_schema_adapter_composes_nested_types(
     [
         ("Equal[int]", "Equal requires two type arguments"),
         ("Input", "Input requires value-time evaluation"),
-        ("Value", "Value requires MapFields"),
+        ("Item", "capture 'Item' is unbound"),
         ("Equal[int, int]", "Schema must evaluate to a type"),
         (
-            "MapFields[int, Field[Key, Value]]",
-            "MapFields requires a supported record type",
+            "Record((Field[field.name, field.type] for field in Fields[int]))",
+            "Record requires a supported record type",
         ),
         ("Map[int, int : Equal[int, int]]", "Schema must evaluate to a type"),
     ],

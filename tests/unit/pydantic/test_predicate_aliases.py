@@ -4,7 +4,7 @@ import pytest
 from returns.result import Failure
 
 from pydantic import PydanticSchemaGenerationError, TypeAdapter, ValidationError
-from typeforge import Capture, Field, Key, Map, MapFields, Value
+from typeforge import Capture, Field, Fields, Map, Record
 from typeforge import semantics as s
 from typeforge._markers import All, Assignable, Equal, Not
 from typeforge._markers import Any as AnyCondition
@@ -97,9 +97,13 @@ def test_field_and_capture_subjects_are_independent() -> None:
     class Row(TypedDict):
         value: int
 
-    fields = MapFields[
-        Row, Map[Key, Name : Field[Key, Map[Value, Integer:str, ...:bytes]]]
-    ]
+    fields = Record(
+        Map[
+            field.name,
+            Name : Field[field.name, Map[field.type, Integer:str, ...:bytes]],
+        ]
+        for field in Fields[Row]
+    )
     assert TypeAdapter(Schema[fields]).validate_python({"value": "x"}) == {"value": "x"}
     captured = Map[list[int], list[Item] : Map[Item, Integer:str, ...:bytes]]
     assert TypeAdapter(Schema[captured]).validate_python("x") == "x"

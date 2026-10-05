@@ -87,7 +87,7 @@ def test_unbound_field_value_cannot_publish_an_identity_overlay() -> None:
 
     result = transform_source(source, maximum_arity=1)
     assert isinstance(result, Failure)
-    assert "declare Capture" in result.failure().message
+    assert "Record and Fields" in result.failure().message
 
 
 def test_alias_generated_overloads_do_not_broaden_diagnostic_selection() -> None:

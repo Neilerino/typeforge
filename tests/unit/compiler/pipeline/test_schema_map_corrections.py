@@ -151,21 +151,32 @@ def test_schema_alias_cycles_report_authored_paths(
 def test_literal_type_output_in_a_transformed_schema_record(tmp_path: Path) -> None:
     path = tmp_path / "schemas.py"
     path.write_text(
-        "from typing import TypedDict, Literal\n"
-        "from typeforge import Map, MapFields, Field, Key, "
-        "Value\n"
-        "from typeforge.pydantic import Schema\n"
-        "class Record(TypedDict):\n"
-        "    original: int\n"
-        "type Transform[T] = MapFields[T, Field[Key, Map[Value,"
-        ' int : Literal["accepted"], ... : bytes]]]\n'
-        "class Payload:\n"
-        "    value: Schema[Transform[Record]]\n"
+        """\
+from typing import TypedDict, Literal
+from typeforge import Map, Field, Fields, Record
+from typeforge.pydantic import Schema
+
+
+class Row(TypedDict):
+    original: int
+
+
+type Transform[T] = Record(
+    (
+        Field[field.name, Map[field.type, int : Literal["accepted"], ...:bytes]]
+        for field in Fields[T]
+    )
+)
+
+
+class Payload:
+    value: Schema[Transform[Row]]
+"""
     )
 
     generated = generate_module(path, maximum_arity=1).unwrap()
     assert (
-        "class Transform_Record(tf_typing.TypedDict):\n"
+        "class Transform_Row(tf_typing.TypedDict):\n"
         '    original: Literal["accepted"]\n' in generated.content
     )
-    assert generated.content.endswith("class Payload:\n    value: Transform_Record\n")
+    assert generated.content.endswith("class Payload:\n    value: Transform_Row\n")
