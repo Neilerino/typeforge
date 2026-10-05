@@ -49,7 +49,9 @@ each matching environment instantiates a complete output before unioning.
 For record construction, field scope, passthrough metadata, or generic rebuilds,
 read [explicit record semantics](DESIGN.md#explicit-record-semantics) and
 [the compiler/runtime contracts](tests/unit/test_record_fields_contract.py).
-Local aliases remain a later slice.
+For local generic scope, alias cycles, or composed record operands, read
+[the local alias contracts](tests/unit/test_local_alias_contract.py) and
+[Reusable type functions](DESIGN.md#reusable-type-functions).
 
 ## Language
 

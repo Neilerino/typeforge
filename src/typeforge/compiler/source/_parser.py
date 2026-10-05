@@ -392,7 +392,7 @@ def _type_function_body(
 
 
 def _type_function_return(
-    path: Path, node: ast.FunctionDef | ast.AsyncFunctionDef, bindings: _ImportBindings
+    path: Path, node: ast.FunctionDef | ast.AsyncFunctionDef
 ) -> ast.expr:
     body = _type_function_body(node)
     if not body or not isinstance(body[-1], ast.Return) or body[-1].value is None:
@@ -401,9 +401,7 @@ def _type_function_return(
             _span(path, body[0] if body else node),
         )
 
-    returned = body[-1].value
-    _validate_construction_expression(path, returned, bindings)
-    return returned
+    return body[-1].value
 
 
 def _validate_construction_expression(
@@ -508,11 +506,14 @@ def _capture_bindings(
     captures = dict(bindings.captures)
     declared: set[str] = set()
     for statement in statements:
+        if strict and isinstance(statement, ast.TypeAlias):
+            continue
+
         declaration = _capture_declaration(path, statement, bindings)
         if declaration is None:
             if strict:
                 raise _AnnotationSyntaxError(
-                    "type_function supports capture declarations "
+                    "type_function supports capture declarations and local aliases "
                     "before its final return",
                     _span(path, statement),
                 )
@@ -581,7 +582,7 @@ def _parse_type_function(
     bindings: _ImportBindings,
 ) -> TypeAliasDeclaration:
     _validate_type_function_signature(path, node, scope)
-    returned = _type_function_return(path, node, bindings)
+    returned = _type_function_return(path, node)
     parameters = tuple(
         _parse_type_parameter(source, parameter)
         for parameter in node.type_params
@@ -589,7 +590,13 @@ def _parse_type_function(
     )
     parameter_names = {parameter.name for parameter in parameters}
     local_bindings = _ImportBindings(
-        names=tuple(item for item in bindings.names if item[0] not in parameter_names),
+        names=(
+            *(item for item in bindings.names if item[0] not in parameter_names),
+            *(
+                (parameter.name, (node.name, parameter.name))
+                for parameter in parameters
+            ),
+        ),
         captures=tuple(
             item for item in bindings.captures if item[0] not in parameter_names
         ),
@@ -597,6 +604,10 @@ def _parse_type_function(
     local_bindings = _capture_bindings(
         path, _type_function_body(node)[:-1], local_bindings, strict=True
     )
+    local_aliases, local_bindings = _parse_local_aliases(
+        path, source, node, local_bindings
+    )
+    _validate_construction_expression(path, returned, local_bindings)
     value = _parse_annotation(path, source, returned, local_bindings)
     assert value is not None
     if isinstance(value, RawTypeExpression) and not (
@@ -613,7 +624,80 @@ def _parse_type_function(
         value=value,
         span=_span(path, node),
         is_type_function=True,
+        local_aliases=local_aliases,
     )
+
+
+def _parse_local_aliases(
+    path: Path,
+    source: str,
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    bindings: _ImportBindings,
+) -> tuple[tuple[TypeAliasDeclaration, ...], _ImportBindings]:
+    statements = _type_function_body(node)[:-1]
+    declarations = [item for item in statements if isinstance(item, ast.TypeAlias)]
+    declared = {
+        item.targets[0].id
+        for item in statements
+        if isinstance(item, ast.Assign) and isinstance(item.targets[0], ast.Name)
+    }
+    for alias in declarations:
+        if alias.name.id in declared:
+            raise _AnnotationSyntaxError(
+                f"type_function local name {alias.name.id!r} "
+                "is declared more than once",
+                _span(path, alias),
+            )
+
+        declared.add(alias.name.id)
+
+    names = {alias.name.id for alias in declarations}
+    bindings = replace(
+        bindings,
+        names=(
+            *(item for item in bindings.names if item[0] not in names),
+            *((name, (node.name, name)) for name in sorted(names)),
+        ),
+        captures=tuple(item for item in bindings.captures if item[0] not in names),
+    )
+    aliases: list[TypeAliasDeclaration] = []
+    for alias in declarations:
+        if any(
+            not isinstance(parameter, ast.TypeVar)
+            or parameter.bound is not None
+            or parameter.default_value is not None
+            for parameter in alias.type_params
+        ):
+            raise _AnnotationSyntaxError(
+                "type_function local aliases require unconstrained ordinary "
+                "type parameters without defaults",
+                _span(path, alias),
+            )
+
+        parameter_names = {
+            parameter.name
+            for parameter in alias.type_params
+            if isinstance(parameter, ast.TypeVar)
+        }
+        alias_bindings = replace(
+            bindings,
+            names=(
+                *(item for item in bindings.names if item[0] not in parameter_names),
+                *(
+                    (name, (node.name, alias.name.id, name))
+                    for name in sorted(parameter_names)
+                ),
+            ),
+            captures=tuple(
+                item for item in bindings.captures if item[0] not in parameter_names
+            ),
+        )
+        _validate_construction_expression(path, alias.value, alias_bindings)
+        aliases.append(
+            _parse_type_alias(path, source, alias, (node.name,), alias_bindings)
+        )
+
+    return tuple(aliases), bindings
 
 
 def _parse_classes(

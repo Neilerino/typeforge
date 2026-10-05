@@ -225,6 +225,7 @@ class TypeAliasDeclaration:
     value: SourceTypeExpression
     span: SourceSpan
     is_type_function: bool = False
+    local_aliases: tuple[TypeAliasDeclaration, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

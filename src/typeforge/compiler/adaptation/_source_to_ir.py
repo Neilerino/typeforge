@@ -114,6 +114,7 @@ _ADAPTATION_ERRORS: tuple[type[AdaptationError | RecordMaterializationError], ..
 def adapt_source_module(
     module: SourceModule,
 ) -> StubModule:
+    module = _expand_type_function_templates(module)
     # Record aliases retain their references until the materialization stage.
     type_context = SourceTypeContext(
         aliases=tuple(alias for alias in module.aliases if not is_record_alias(alias)),
@@ -333,6 +334,33 @@ def adapt_source_module(
         module,
         replace(adapted_module, origins=ordered_origins),
     )
+
+
+def _expand_type_function_templates(module: SourceModule) -> SourceModule:
+    """Resolve lexical aliases before outer parameters or record classification."""
+    aliases = tuple(
+        replace(
+            alias,
+            value=expand_schema_aliases(
+                alias.value, alias.local_aliases, declaration=alias.name
+            ).unwrap(),
+        )
+        if alias.is_type_function
+        else alias
+        for alias in module.aliases
+    )
+    expanded: list[SourceTypeAlias] = []
+    for alias in aliases:
+        if not alias.is_type_function:
+            expanded.append(alias)
+            continue
+
+        value = expand_schema_aliases(
+            alias.value, aliases, declaration=alias.name
+        ).unwrap()
+        expanded.append(replace(alias, value=value))
+
+    return replace(module, aliases=tuple(expanded))
 
 
 def _is_type_function_application(
