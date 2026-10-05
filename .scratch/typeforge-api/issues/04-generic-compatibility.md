@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Scalar matching and Is.
 
-**Status:** implemented; draft PR pending
+**Status:** implemented; [draft PR #4](https://github.com/Neilerino/typeforge/pull/4)
 
 **Derisking required:** Verify union selection, correlation, identity, and failure behavior across the relevant compiler, runtime, and checker paths during this slice.
 
