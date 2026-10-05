@@ -49,6 +49,7 @@ from typeforge.compiler.stub_ir import (
 )
 from typeforge.semantics import (
     MapFieldsExpression,
+    MapNoMatch,
     RecordFamily,
     RecordField,
     RecordShape,
@@ -260,10 +261,19 @@ def _derive_record_shapes(
 
             evaluated_result = evaluate(semantic_expression, COMPILER_TYPE_SYSTEM)
             if isinstance(evaluated_result, Failure):
+                issue = evaluated_result.failure()
+                if isinstance(issue, MapNoMatch):
+                    message = (
+                        "Map cannot transform a field: no case matched and no default "
+                        "was provided"
+                    )
+                else:
+                    message = issue.message
+
                 raise RecordMaterializationError(
                     alias.name,
                     alias.value.source,
-                    evaluated_result.failure().message,
+                    message,
                 )
 
             evaluated = evaluated_result.unwrap()
