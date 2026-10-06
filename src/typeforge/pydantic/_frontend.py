@@ -13,6 +13,8 @@ from typing import (
     get_origin,
 )
 
+from returns.result import Result
+
 from typeforge import (
     Collect,
     Drop,
@@ -38,6 +40,7 @@ from typeforge.pydantic._markers import Input
 from typeforge.pydantic._type_system import (
     RUNTIME_TYPE_SYSTEM,
     RuntimeType,
+    RuntimeTypeSystem,
     concrete_type,
     runtime_type,
 )
@@ -184,6 +187,39 @@ _ADAPTATION_ERRORS: tuple[type[SchemaIssue | s.SemanticIssue], ...] = (
 
 
 @safe_result(errors=_ADAPTATION_ERRORS)
+def _selection_runtime_type(value: RuntimeType) -> RuntimeType:
+    return _AnnotationAdapter().selection_runtime_type(value)
+
+
+def _selection_issue(
+    issue: SchemaIssue | s.SemanticIssue | s.MapNoMatch[RuntimeType],
+) -> s.SemanticIssue:
+    if isinstance(issue, s.SemanticIssue):
+        return issue
+
+    message = (
+        "selection operand Map has no matching branch"
+        if isinstance(issue, s.MapNoMatch)
+        else issue.message
+    )
+    return s.SemanticAdapterError(message)
+
+
+def selection_runtime_type(
+    value: RuntimeType,
+) -> Result[RuntimeType, s.SemanticIssue]:
+    """Resolve reflected operands through the frontend's alias-binding owner.
+
+    The effective value already contains record parameter substitutions. Keep its
+    original annotation for field passthrough, metadata, and Pydantic references.
+    """
+    return _selection_runtime_type(value).alt(_selection_issue)
+
+
+ANNOTATION_TYPE_SYSTEM = RuntimeTypeSystem(selection_type=selection_runtime_type)
+
+
+@safe_result(errors=_ADAPTATION_ERRORS)
 def adapt_annotation(source: object) -> AdaptedAnnotation:
     adapter = _AnnotationAdapter()
     expression = adapter.adapt(source)
@@ -217,6 +253,18 @@ class _AnnotationAdapter:
         expression = self._lower(value, selector_subject=selector_subject)
         self.origins[id(expression)] = value
         return expression
+
+    def selection_runtime_type(self, value: RuntimeType) -> RuntimeType:
+        expression = self._selection_type(self.adapt(value.value))
+        evaluated = (
+            s.evaluate(expression, RUNTIME_TYPE_SYSTEM).alt(_selection_issue).unwrap()
+        )
+        if not isinstance(evaluated, s.ResolvedType):
+            raise s.ExpectedTypeSemanticError(
+                "selection operands must resolve to types"
+            )
+
+        return replace(value, value=evaluated.value.value)
 
     def _lower(
         self, value: object, *, selector_subject: s.Expression[RuntimeType] | None

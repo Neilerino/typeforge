@@ -120,7 +120,10 @@ The compiler's source schema adapter expands authored aliases before shared
 lowering, keeping callable relationship IR separate. It requires the source
 snapshot's alias context and preserves omitted defaults and authored cycles.
 The same expansion owner resolves predicate aliases for callable adaptation and
-record materialization while preserving ordinary type aliases on those paths.
+record materialization. Record adaptation also expands ordinary field aliases
+when a Map needs field type facts; passthrough retains its existing alias policy.
+Record materialization receives parsed class ancestry through the semantic
+environment used for both original fields and transform selectors.
 After expansion, each Map binds unary selector predicates to its own subject via
 the source selector normalizer, before binary arity validation. Predicate alias
 declarations remain unbound templates with a bool fallback in emitted interfaces.
@@ -372,6 +375,12 @@ distinct from an explicit None type or false flag. Replacing the type replaces i
 complete Annotated value; wrapping field.type keeps its metadata at the nested
 position. Replacement type Drop removes the entry; other field positions require
 a valid name, type, or boolean. Output names must be Python identifiers.
+Known union field types retain their member structure for matching. Only the
+replacement type position enables Map's field-replacement output role: a concrete
+Drop consumes the whole entry after every selected member and capture alternative
+has evaluated successfully. Ordinary unions and nested type arguments remain
+type-only. A speculative Drop returns a typed unsupported-layout failure rather
+than becoming a definite removal.
 Runtime templates transport string names as Literals so typing reconstruction
 preserves names rather than resolving them as forward references.
 Record construction clears its operand's whole-record metadata; explicit outer
@@ -401,6 +410,11 @@ specializations and rebuilds. There is no separate runtime expression evaluator.
 
 The frontend owns marker recognition and alias binding; the runtime TypeSystem
 owns primitive type operations, with TypedDict reflection in the record adapter.
+Runtime matching uses a TypeSystem configured with the frontend's selection-type
+resolver. Reflected aliases reuse ordinary alias binding and cycle detection when
+their type facts are needed. Original field annotations remain available for
+passthrough and Pydantic metadata; Annotated unions expose effective member types
+while retaining their member annotations.
 Policy owns generic fallback and Input test admissibility from adapted facts.
 Outcome translation preserves authored expressions and distinguishes no-match
 from explicit Never and unsupported record operands. Resolved and deferred
