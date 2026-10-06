@@ -1,0 +1,21 @@
+{
+  "evidenceKind": "perceptual-review",
+  "artifact": {
+    "sha256": "e3d9bcf3fb30daa9caad76a07bd53a8b764e7a9a40b380e4f0652e9ef7a13a18",
+    "bytes": 723122
+  },
+  "visual_review": "passed",
+  "correction_rounds": 0,
+  "reviewer": "image-capable assistant",
+  "screenshots": [
+    "architecture.visual-check.1440x900.light.png",
+    "architecture.visual-check.1440x900.dark.png",
+    "architecture.visual-check.2048x1320.light.png",
+    "architecture.visual-check.2048x1320.dark.png"
+  ],
+  "observations": [
+    "Both themes have legible node labels and source badges.",
+    "Routes, relationship labels, and conclusion cards remain clear and complete.",
+    "The largest viewport preserves balanced spacing and the authored main path."
+  ]
+}

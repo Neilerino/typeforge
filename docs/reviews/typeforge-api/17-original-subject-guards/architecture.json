@@ -1,0 +1,402 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Slice 17 \u00b7 Original type subjects and guarded returns",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1390,
+      630
+    ],
+    "repository": {
+      "url": "https://github.com/Neilerino/typeforge",
+      "revision": "f1aa56d42eb8511132183730fcc9f87ee84e33d6"
+    }
+  },
+  "components": [
+    {
+      "id": "guard-author",
+      "type": "external",
+      "label": "Guarded Map implementation",
+      "sublabel": "A value guard cannot establish whole T",
+      "tag": "User outcome",
+      "pos": [
+        45,
+        70
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_guard_subject_contract.py",
+          "line": 67,
+          "label": "Reject exact-subject counterexamples"
+        }
+      ]
+    },
+    {
+      "id": "guard-contract",
+      "type": "backend",
+      "label": "ReturnContract",
+      "sublabel": "Original Map plus authored domain",
+      "tag": "Changed contract owner",
+      "pos": [
+        390,
+        70
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/verification/model.py",
+          "line": 33,
+          "label": "Original relationship data"
+        },
+        {
+          "path": "src/typeforge/compiler/verification/contracts.py",
+          "line": 29,
+          "label": "Build bounded alternatives"
+        }
+      ]
+    },
+    {
+      "id": "guard-flow",
+      "type": "backend",
+      "label": "_partition_guard",
+      "sublabel": "Whole unions reach both value paths",
+      "tag": "Changed flow owner",
+      "pos": [
+        735,
+        70
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/verification/planner.py",
+          "line": 372,
+          "label": "Any-member and all-member decisions"
+        },
+        {
+          "path": "src/typeforge/compiler/verification/model.py",
+          "line": 43,
+          "label": "Independent narrowed value facts"
+        }
+      ]
+    },
+    {
+      "id": "guard-obligation",
+      "type": "backend",
+      "label": "ReturnObligation",
+      "sublabel": "Expected outputs at authored returns",
+      "tag": "Existing data seam",
+      "pos": [
+        1080,
+        70
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/verification/planner.py",
+          "line": 463,
+          "label": "Produce return obligations"
+        }
+      ]
+    },
+    {
+      "id": "guard-facts",
+      "type": "backend",
+      "label": "stub_type_environment",
+      "sublabel": "Reuse local ancestry and identities",
+      "tag": "Shared facts owner",
+      "pos": [
+        45,
+        280
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_stub_types.py",
+          "line": 104,
+          "label": "Class facts without execution"
+        }
+      ]
+    },
+    {
+      "id": "guard-coverage",
+      "type": "backend",
+      "label": "Scalar coverage proof",
+      "sublabel": "Clip bounds; prove fallback reachability",
+      "tag": "Existing owner reused",
+      "pos": [
+        390,
+        280
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/verification/contracts.py",
+          "line": 90,
+          "label": "Bounded original-subject outputs"
+        },
+        {
+          "path": "src/typeforge/compiler/specialization/_coverage.py",
+          "line": 127,
+          "label": "Covered native input domain"
+        }
+      ]
+    },
+    {
+      "id": "guard-native",
+      "type": "external",
+      "label": "mypy / Pyright / Pyrefly",
+      "sublabel": "Infer and check return expressions",
+      "tag": "No Python inference engine",
+      "pos": [
+        735,
+        280
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_guard_subject_contract.py",
+          "line": 91,
+          "label": "Compatible body is accepted"
+        }
+      ]
+    },
+    {
+      "id": "guard-overlay",
+      "type": "frontend",
+      "label": "Overlay return assignments",
+      "sublabel": "Diagnostics retain authored spans",
+      "tag": "Existing overlay consumer",
+      "pos": [
+        1080,
+        280
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/overlay/transform.py",
+          "line": 643,
+          "label": "Typed assignments and provenance"
+        }
+      ]
+    },
+    {
+      "id": "guard-tests",
+      "type": "security",
+      "label": "25 public guard contracts",
+      "sublabel": "Bool, union bounds, local inheritance",
+      "tag": "Verified slice 17",
+      "pos": [
+        45,
+        490
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_guard_subject_contract.py",
+          "line": 16,
+          "label": "Bounded bool selects bytes"
+        },
+        {
+          "path": "tests/unit/test_guard_subject_contract.py",
+          "line": 143,
+          "label": "Original union reaches both paths"
+        }
+      ]
+    },
+    {
+      "id": "guard-semantics",
+      "type": "backend",
+      "label": "Shared Map selection",
+      "sublabel": "Runtime selection rules stay intact",
+      "tag": "Existing semantic baseline",
+      "pos": [
+        390,
+        490
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 1,
+          "label": "Shared evaluator"
+        },
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_stub_types.py",
+          "line": 148,
+          "label": "Relationship lowering"
+        }
+      ]
+    },
+    {
+      "id": "guard-bound-only",
+      "type": "backend",
+      "label": "Unsupported flow",
+      "sublabel": "Retain aggregate body checking",
+      "tag": "Explicit existing frontier",
+      "pos": [
+        735,
+        490
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/verification/test_implementation_verification.py",
+          "line": 590,
+          "label": "Unknown and disconnected guards"
+        }
+      ]
+    },
+    {
+      "id": "guard-future",
+      "type": "backend",
+      "label": "Next: module integration",
+      "sublabel": "Publish reusable checker/runtime APIs",
+      "tag": "Slice 18 \u2014 future",
+      "pos": [
+        1080,
+        490
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/pipeline/_generation.py",
+          "line": 33,
+          "label": "Existing complete-interface owner"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "author-contract",
+      "from": "guard-author",
+      "to": "guard-contract",
+      "label": "retain",
+      "variant": "emphasis"
+    },
+    {
+      "id": "contract-flow",
+      "from": "guard-contract",
+      "to": "guard-flow",
+      "label": "analyze",
+      "variant": "emphasis"
+    },
+    {
+      "id": "flow-obligation",
+      "from": "guard-flow",
+      "to": "guard-obligation",
+      "label": "outputs",
+      "variant": "emphasis"
+    },
+    {
+      "id": "facts-coverage",
+      "from": "guard-facts",
+      "to": "guard-coverage",
+      "label": "facts",
+      "variant": "default"
+    },
+    {
+      "id": "coverage-contract",
+      "from": "guard-coverage",
+      "to": "guard-contract",
+      "label": "domains",
+      "variant": "default"
+    },
+    {
+      "id": "obligation-overlay",
+      "from": "guard-obligation",
+      "to": "guard-overlay",
+      "label": "project",
+      "variant": "emphasis",
+      "labelDy": 24
+    },
+    {
+      "id": "overlay-native",
+      "from": "guard-overlay",
+      "to": "guard-native",
+      "label": "check",
+      "variant": "emphasis"
+    },
+    {
+      "id": "native-bounds",
+      "from": "guard-native",
+      "to": "guard-bound-only",
+      "label": "fallback",
+      "variant": "default",
+      "labelDy": 24
+    },
+    {
+      "id": "overlay-integration",
+      "from": "guard-overlay",
+      "to": "guard-future",
+      "label": "integrate",
+      "variant": "dashed",
+      "labelDy": 24
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "User contract",
+      "items": [
+        "Is[int] keeps bool and original-union fallbacks after a value guard.",
+        "Bare int remains compatible with Python guard behavior."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Shared proofs",
+      "items": [
+        "Authored bounds and local ancestry clip reachable alternatives.",
+        "Native checkers own expression types and report authored returns."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Review boundary",
+      "items": [
+        "Both paths retain a whole-union case until every member is excluded.",
+        "25 guard contracts and all six repository gates pass."
+      ]
+    }
+  ]
+}

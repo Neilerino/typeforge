@@ -29,7 +29,7 @@ and test files were unchanged when those artifacts were removed from PR diffs.
 | 14 | Callable input contracts without fallback | 02 | [#14](https://github.com/Neilerino/typeforge/pull/14) |
 | 15 | Callable output precision | 07, 08, 14 | [#15](https://github.com/Neilerino/typeforge/pull/15) |
 | 16 | Each and Collect bounds and precision | 15 | [#16](https://github.com/Neilerino/typeforge/pull/16) |
-| 17 | Guard verification with original subjects | 02 | Pending |
+| 17 | Guard verification with original subjects | 02 | [#17](https://github.com/Neilerino/typeforge/pull/17) |
 | 18 | Cross-module publication and integration | 03, 11, 12, 13, 15 | Pending |
 
 Every slice includes its relevant production behavior, tests, diagnostics, and
