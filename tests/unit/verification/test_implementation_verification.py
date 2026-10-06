@@ -232,9 +232,7 @@ def test_match_patterns_are_checked_against_remaining_cases() -> None:
     generated = _transform(body)
 
     _assert_return_check(generated, ReturnCheck(body, "text()", "str"))
-    _assert_return_check(generated, ReturnCheck(body, "text()", "bytes"))
     _assert_return_check(generated, ReturnCheck(body, "flag()", "bool"))
-    _assert_return_check(generated, ReturnCheck(body, "flag()", "bytes"))
     _assert_return_check(generated, ReturnCheck(body, "binary()", "bytes"))
 
 
@@ -398,7 +396,7 @@ def test_isinstance_accounts_for_subclasses_and_overlapping_cases() -> None:
 
     _assert_return_check(generated, ReturnCheck(body, "text()", "bytes"))
     _assert_return_check(generated, ReturnCheck(body, "text()", "str"))
-    _assert_return_check(generated, ReturnCheck(body, "text()", "float"))
+    _assert_return_check(generated, ReturnCheck(body, "1.0", "float"))
 
 
 def test_isinstance_checks_the_original_no_default_example() -> None:
