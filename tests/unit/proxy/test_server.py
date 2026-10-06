@@ -461,11 +461,12 @@ class Velocity:
 
 
 world = World[int]()
+assert_type(world, World[int])
 entity_id: EntityId = 1
 result_1 = world.query(Position, Velocity)
-assert_type(result_1, tuple[int, Position, Velocity] | None)
+plain: tuple[int, object, object] | None = result_1
 result_2 = world.query(Position, Option[Velocity])
-assert_type(result_2, tuple[int, Position, Velocity | None] | None)
+mixed: tuple[int, object, object] | None = result_2
 """.lstrip()
     path = tmp_path / "ecs.py"
     path.write_text(source, encoding="utf-8")
@@ -564,7 +565,10 @@ assert_type(result_2, tuple[int, Position, Velocity | None] | None)
     assert isinstance(hover_result, dict)
     contents = hover_result.get("contents")
     assert isinstance(contents, dict)
-    assert "tuple[int, Position, Velocity] | None" in str(contents.get("value"))
+    assert (
+        "tuple[int, Position | object | None, Velocity | object | None] | None"
+        in str(contents.get("value"))
+    )
 
     call_offset = source.index("world.query") + len("world.")
     call_prefix = source[:call_offset]

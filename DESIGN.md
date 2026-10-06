@@ -248,8 +248,8 @@ same CaptureReference data. Alias substitution preserves those identities.
 Module capture declarations remain public values with an `object` annotation in
 generated interfaces; they do not leak Typeforge helper annotations. Callable
 relationship IR retains the same symbol in CaptureType. Ordinary callable Maps
-support independent captures; finite Each/Collect branches currently retain their
-single-capture frontier.
+and finite Each/Collect positions support independent captures. Each position
+receives fresh native parameters while retaining capture declaration identities.
 
 EvaluationContext stores immutable named bindings. Matching extends tentative
 bindings, reconciles repeated positions through the existing exact type operation,
@@ -320,8 +320,8 @@ Exact-only class selectors cannot establish a subtype-closed native parameter
 domain. Structural TypedDict/Protocol parameters also require matching structural
 facts before their coverage can be promised. Unsupported coverage returns
 UNREPRESENTABLE_COVERAGE on the authored callable with bound, specialization, or
-fallback guidance. No-default Each/Collect currently returns that diagnostic until
-its input-contract projection is implemented. Explicit defaults retain the
+fallback guidance. Each/Collect uses the same covered native input domain at
+finite positions and in its variadic fallback. Explicit defaults retain the
 existing output-projection path.
 
 Pipeline exposes type-parameter projections using retained contracts, generated
@@ -356,12 +356,34 @@ existing native-domain proof covers that entire bound. An exact selector does no
 cover compatible subclasses. Internal template evaluation retains its existing
 speculative policy.
 
-Pipeline return projections expose the generated output and authored annotation
-span. Body annotations retain original generic names and erase generated parameters
+Pipeline AnnotationProjection facts expose native input and output annotations
+with their authored spans. Body annotations retain original generic names and erase generated parameters
 absent from that scope. Native checkers enforce these ordinary bounds; this does
 not prove an arbitrary dependent implementation. Native inference for gradual Any
-remains checker-owned. Each/Collect precision and original-whole-subject guard
-verification retain their separate frontiers.
+remains checker-owned. Original-whole-subject guard verification remains a
+separate frontier.
+
+### Each and Collect projection
+
+Each positions reuse scalar callable specialization for coverage, complete output
+alternatives, missing captures, and nested no-match failures. Fresh position
+parameters preserve authored bounds and constraints, including native constraint
+coercion. Name allocation reserves enclosing parameters and previously generated
+positions. The configured arity frontier controls finite tuple signatures.
+
+Finite closed branch combinations retain per-position outputs. Crossing partial
+generic fallbacks can overlap with incompatible tuple returns in existing
+checkers; specialization emits one complete fixed-arity aggregate instead of
+claiming those exclusions. Its output retains both reachable transformations and
+the fallback. Independent capture parameters and complete alternative unions
+remain local to each position.
+
+Beyond the frontier, the same scalar coverage proof supplies the variadic input
+domain and a homogeneous possible-output tuple. This preserves omitted-default
+input contracts at every arity. Untransformed TypeVarTuple identity still uses
+native variadic typing and retains known positions beyond the configured frontier.
+Adaptation retains mapped Each/Collect contracts for native body projection;
+ordinary unmapped roots retain their existing origin and emission behavior.
 
 ## Implementation verification
 
