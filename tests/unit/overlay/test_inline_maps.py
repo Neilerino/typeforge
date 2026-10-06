@@ -157,7 +157,7 @@ def test_qualified_maps_project_without_changing_value_slices(
     assert "sliced = values[1:]\n_tripwire: int = 1 // 0\n" in document.generated_text
 
 
-def test_assignability_guard_keeps_existing_conservative_verification() -> None:
+def test_assignability_guard_uses_the_covered_native_domain() -> None:
     source = """from typeforge._markers import Assignable
 from typeforge import Map
 def encode[T](value: T) -> MAPPING:
@@ -178,7 +178,8 @@ def encode[T](value: T) -> MAPPING:
         )
 
     assert signatures[0] == signatures[1]
-    assert TypeName("bytes") in signatures[0][0]
+    assert TypeName("bytes") not in signatures[0][0]
+    assert signatures[0][1] == (TypeName("bytes"),)
 
 
 def test_module_and_local_variable_annotations_are_projected() -> None:
@@ -209,8 +210,7 @@ def test_real_checkers_accept_nested_union_maps_and_reject_wrong_returns(
 ) -> None:
     source = """from typing import assert_type
 from typeforge import Map
-from typeforge._markers import Equal
-type Numeric = Equal[int]
+type Numeric = int
 class Encoder:
     payload: list[Map[int, int: str | None, ...: bytes]]
     def encode[T](self, value: T) -> Map[T, Numeric: str | None, ...: bytes]:
@@ -222,7 +222,7 @@ class Encoder:
     ]]:
         return value
 encoder = Encoder()
-assert_type(encoder.encode(1), str | bytes | None)
+assert_type(encoder.encode(1), str | None)
 assert_type(encoder.nested(["x"]), list[str | bytes])
 payload: Map[int, int: str, ...: bytes] = "x"
 """

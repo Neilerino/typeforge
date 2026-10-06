@@ -12,6 +12,7 @@ from typeforge.compiler.semantic_adapter._types import (
     ParameterizedType,
     StaticType,
     is_static,
+    named_type_environment,
     union_of,
 )
 from typeforge.compiler.stub_ir import (
@@ -19,6 +20,7 @@ from typeforge.compiler.stub_ir import (
     AnyPredicate,
     AssignablePredicate,
     CaptureType,
+    ClassDeclaration,
     EqualPredicate,
     FixedTuple,
     HomogeneousTuple,
@@ -27,6 +29,7 @@ from typeforge.compiler.stub_ir import (
     NotPredicate,
     Predicate,
     RuntimeInputType,
+    StubModule,
     StubTypeExpression,
     TypeApplication,
     TypeName,
@@ -96,6 +99,34 @@ def _static_type(
             raise SemanticLoweringError(
                 "a concrete input type is required for callable coverage"
             )
+
+
+def stub_type_environment(module: StubModule) -> SemanticEnvironment:
+    return named_type_environment(
+        tuple(
+            (
+                declaration.name,
+                (
+                    *(
+                        name
+                        for base in declaration.bases
+                        if (name := _base_name(base)) is not None
+                    ),
+                    *(("typing.Protocol",) if declaration.is_protocol else ()),
+                ),
+            )
+            for declaration in module.declarations
+            if isinstance(declaration, ClassDeclaration)
+        )
+    )
+
+
+def _base_name(base: StubTypeExpression) -> str | None:
+    match base:
+        case TypeName(name) | TypeApplication(TypeName(name), _):
+            return name
+        case _:
+            return None
 
 
 @safe(exceptions=(SemanticLoweringError,))
