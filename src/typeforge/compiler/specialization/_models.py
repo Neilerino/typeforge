@@ -18,6 +18,7 @@ class LoweringErrorCode(StrEnum):
     MISSING_CONTROLLER = "missing_controller"
     UNSUPPORTED_PREDICATE = "unsupported_predicate"
     DUPLICATE_MAP_CASE = "duplicate_map_case"
+    UNREPRESENTABLE_COVERAGE = "unrepresentable_coverage"
 
 
 @dataclass(frozen=True, slots=True)

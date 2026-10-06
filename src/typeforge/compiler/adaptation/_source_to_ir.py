@@ -48,6 +48,7 @@ from typeforge.compiler.source import (
     SourceSpan,
     SourceTypeExpression,
     StarredTypeExpression,
+    TypeParameter,
     UnionTypeExpression,
     annotation_expressions,
     bind_map_selector,
@@ -597,7 +598,16 @@ def _adapt_class(
     )
     methods = tuple(
         _adapt_function(
-            method, parameter_names, origins=origins, type_context=type_context
+            method,
+            parameter_names,
+            origins=origins,
+            type_context=type_context,
+            enclosing_domains=_adapt_parameter_domains(
+                source_class.type_parameters,
+                source_class.name,
+                parameter_names,
+                type_context=type_context,
+            ),
         )
         for method in source_class.methods
     )
@@ -611,7 +621,21 @@ def _adapt_class(
         ),
         keywords=source_class.keywords,
         decorators=source_class.decorators,
+        is_protocol=any(_is_protocol_base(base) for base in source_class.bases),
     )
+
+
+def _is_protocol_base(expression: SourceTypeExpression) -> bool:
+    match expression:
+        case AppliedTypeExpression(constructor=constructor):
+            return _is_protocol_base(constructor)
+        case NameTypeExpression(qualified_name=qualified):
+            return qualified in {
+                ("typing", "Protocol"),
+                ("typing_extensions", "Protocol"),
+            }
+        case _:
+            return False
 
 
 def _adapt_alias_fallback(
@@ -709,6 +733,7 @@ def _adapt_function(
     origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
     *,
     type_context: SourceTypeContext,
+    enclosing_domains: tuple[tuple[str, StubTypeExpression], ...] = (),
 ) -> FunctionDeclaration:
     parameter_names = tuple(parameter.name for parameter in function.type_parameters)
     visible_type_parameters = (*enclosing_type_parameters, *parameter_names)
@@ -753,6 +778,47 @@ def _adapt_function(
         type_parameters=type_parameters,
         is_async=function.is_async,
         decorators=function.decorators,
+        type_parameter_domains=(
+            *enclosing_domains,
+            *_adapt_parameter_domains(
+                function.type_parameters,
+                function.name,
+                visible_type_parameters,
+                type_context=type_context,
+            ),
+        ),
+        type_parameter_defaults=tuple(
+            parameter.name
+            for parameter in function.type_parameters
+            if parameter.has_default
+        ),
+    )
+
+
+def _adapt_parameter_domains(
+    parameters: tuple[TypeParameter, ...],
+    declaration: str,
+    visible_parameters: tuple[str, ...],
+    *,
+    type_context: SourceTypeContext,
+) -> tuple[tuple[str, StubTypeExpression], ...]:
+    return tuple(
+        (
+            parameter.name,
+            _adapt_type_expression(
+                expand_schema_aliases(
+                    parameter.domain,
+                    type_context.aliases,
+                    declaration=declaration,
+                    type_parameters=visible_parameters,
+                ).unwrap(),
+                declaration,
+                visible_parameters,
+                type_context=type_context,
+            ),
+        )
+        for parameter in parameters
+        if parameter.domain is not None
     )
 
 
@@ -819,7 +885,11 @@ def _(
         )
 
     expanded = expand_schema_aliases(
-        expression, type_context.aliases, declaration=declaration, predicates_only=True
+        expression,
+        type_context.aliases,
+        declaration=declaration,
+        predicates_only=True,
+        type_parameters=type_parameters,
     ).unwrap()
     if isinstance(expanded, MarkerTypeExpression):
         return _adapt_type_expression(
@@ -1004,7 +1074,7 @@ def _(
                 None,
             )
             default = (
-                TypeName("Never")
+                None
                 if default_entry is None
                 else _adapt_type_expression(
                     default_entry.output,
@@ -1061,6 +1131,12 @@ def _adapt_map_test(
     *,
     type_context: SourceTypeContext,
 ) -> StubTypeExpression | Predicate:
+    expression = expand_schema_aliases(
+        expression,
+        type_context.aliases,
+        declaration=declaration,
+        type_parameters=type_parameters,
+    ).unwrap()
     if isinstance(expression, MarkerTypeExpression):
         marker = _normalize_marker(declaration, expression)
         if isinstance(
