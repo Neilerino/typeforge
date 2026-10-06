@@ -177,7 +177,7 @@ containers use invariant arguments; immutable containers use covariance;
 Mapping keeps invariant keys and covariant values. Any retains Python's gradual
 compatibility. Unknown generic variance produces a diagnostic instead of selecting
 a fallback. Identical opaque generic types can still match. Compatible interface
-captures and full reasoning over unresolved parameters remain subsequent slices.
+captures preserve known arguments; callable projection bounds opaque positions.
 
 Typeforge overlays project inline Maps in parameters, returns, fields, variable
 annotations, and nested alias values to ordinary checker types. Generated overloads
@@ -191,10 +191,26 @@ Published stubs support slice-authored callable relationships and finite
 `Each`/`Collect` specialization. Consumers use ordinary mypy, Pyright, or Pyrefly without
 running Typeforge. For example, `Map[T, int: str | None, ...: bytes]` gives an
 integer call `str | None`; calls outside that overload retain `str | None | bytes`.
-Relationship aliases themselves publish as `object`. Named captures resolve through
-type-function and Schema templates and retain existing finite Each/Collect
-specialization with one capture per structural branch. Broader callable capture
-precision is a later slice.
+Relationship aliases themselves publish as `object`. Callable Maps reuse named
+captures in standard generics, including multiple independent captures and complete
+alternative outputs:
+
+```python
+from typeforge import Capture, Map
+
+Item = Capture("Item")
+
+def paired[T](value: T) -> Map[T, list[Item]: tuple[Item, Item], ...: bytes]: ...
+
+def example(values: list[bool]) -> None:
+    result = paired(values)  # tuple[bool, bool] | bytes after Typeforge projection
+```
+
+The captured element stays precise. The bytes possibility includes container
+subclasses whose original type lacks structural argument facts. A whole-subject
+capture can preserve the original generic identity without that loss. Nested Maps
+retain known captures and bound unknown inner arguments using object in covariant
+positions and Any in invariant positions. Unbound captures remain errors.
 
 Without a fallback, callable Maps publish only their covered input domain:
 
@@ -218,8 +234,12 @@ for a covered bound, explicit specialization, or fallback. This includes exact-o
 class matching, structural TypedDict/Protocol ranges, and currently no-default
 Each/Collect maps. Portable overloads cannot exclude subtypes such as `bool` from
 `int`; overlapping bool/int literal overloads use their complete output union.
-Broader callable output precision and defaulted-map selection remain subsequent
-work.
+Captured container ranges without a fallback also need coverage proof: a native
+parameter cannot exclude subclasses lacking structural facts. Generated overloads
+respect authored bounds. Repeated captures still require exact semantic agreement;
+native repeated type variables can infer a join, so their returns include possible
+fallbacks. Gradual Any inference follows the underlying checker and can differ
+between checkers. Each/Collect retain their finite specialization frontier.
 See the [callable support limits](CONTEXT.md#callable-support)
 before relying on these forms to reproduce `Schema` selection.
 
@@ -293,8 +313,8 @@ def QueryResult[T]():
 type Result = QueryResult[Option[int]]  # compiler output: int | None
 ```
 
-Concrete template specializations retain their captured arguments. Callable
-structural capture publication remains a later slice.
+Concrete template specializations retain their captured arguments. Callable Maps
+reuse supported captures with the bounds described above.
 
 Map a `TypedDict` and attach Markdown documentation to the resulting type:
 
@@ -472,8 +492,8 @@ unioned, so this result excludes mixed pairs. Nested alternatives retain the sam
 rule, and repeated captures within an alternative still require exact agreement.
 Separate Map branches express ordered priority. If a matching alternative needs
 an unbound output capture, evaluation fails rather than using another alternative
-or the fallback. Unknown subjects retain conservative bounds; broader callable
-precision remains a later slice.
+or the fallback. Unknown callable subjects retain conservative output bounds while
+preserving known capture positions and complete alternatives.
 
 ## Pydantic integration
 

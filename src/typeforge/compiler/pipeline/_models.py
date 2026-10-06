@@ -52,6 +52,12 @@ class TypeParameterProjection:
     span: SourceSpan
 
 
+@dataclass(frozen=True, slots=True)
+class ReturnTypeProjection:
+    expression: StubTypeExpression
+    span: SourceSpan
+
+
 class AuthoredParameterKind(StrEnum):
     POSITIONAL_ONLY = "positional_only"
     POSITIONAL_OR_KEYWORD = "positional_or_keyword"

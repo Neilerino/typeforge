@@ -9,7 +9,6 @@ from sys import executable
 import pytest
 from returns.result import Failure
 
-from typeforge.compiler.emission import EmissionError
 from typeforge.compiler.pipeline import compile_source, generate_module
 from typeforge.compiler.specialization import LoweringError, LoweringErrorCode
 from typeforge.overlay import transform_source
@@ -73,11 +72,11 @@ assert_type(flag(True), str)
 assert_type(number(-1), str)
 assert_type(normalize(1), str)
 assert_type(normalize(True), str)
-assert_type(together(1), str)
+assert_type(together(1), str | bytes)
 assert_type(exclude_bool(1), str | bytes)
 assert_type(exclude_bool(True), bytes)
-assert_type(either(b"text"), str)
-assert_type(either("text"), str)
+assert_type(either(b"text"), str | float)
+assert_type(either("text"), str | float)
 assert_type(encode(1), str | None)
 assert_type(encode(b"text"), str | None | bytes)
 assert_type(partial(1), str)
@@ -200,7 +199,9 @@ def test_unsupported_slice_callables_return_typed_failures(
     assert compile_source(source, path, maximum_arity=2) == result
 
 
-def test_unbounded_capture_does_not_publish_a_partial_interface(tmp_path: Path) -> None:
+def test_captured_callable_publishes_its_complete_generic_interface(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / "unsupported.py"
     path.write_text(
         "from typeforge import Capture, Map\n"
@@ -210,9 +211,10 @@ def test_unbounded_capture_does_not_publish_a_partial_interface(tmp_path: Path) 
         "Map[T, list[Item]: tuple[Item, ...], ...: bytes]: ...\n"
     )
 
-    result = generate_module(path, maximum_arity=2)
-    assert isinstance(result, Failure)
-    assert result == Failure(EmissionError("unlowered type expression: CaptureType"))
+    published = generate_module(path, maximum_arity=2).unwrap().content
+    assert "def identity[T](value: T) -> T: ..." in published
+    assert "def choose[T1](value: list[T1]) -> tuple[T1, ...] | bytes: ..." in published
+    assert "def choose[T](value: T) -> tuple[object, ...] | bytes: ..." in published
 
 
 def test_publication_and_overlay_keep_distinct_alias_bounds(tmp_path: Path) -> None:

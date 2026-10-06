@@ -329,7 +329,7 @@ def test_lowers_known_false_not_predicate_case() -> None:
     assert emit_stub_module(lowered.unwrap()) == Success(
         "from typing import overload\n\n"
         "@overload\n"
-        "def choose(kind: bytes) -> bytes: ...\n"
+        "def choose(kind: bytes) -> str | bytes: ...\n"
         "@overload\n"
         "def choose[T](kind: T) -> str | bytes: ...\n"
     )
@@ -365,7 +365,7 @@ def test_lowers_known_true_all_predicate_case() -> None:
     assert emit_stub_module(lowered.unwrap()) == Success(
         "from typing import overload\n\n"
         "@overload\n"
-        "def choose(kind: str) -> str: ...\n"
+        "def choose(kind: str) -> str | bytes: ...\n"
         "@overload\n"
         "def choose[T](kind: T) -> str | bytes: ...\n"
     )
@@ -463,7 +463,7 @@ def test_predicate_and_pattern_cases_share_first_match_order() -> None:
     assert emit_stub_module(lowered.unwrap()) == Success(
         "from typing import overload\n\n"
         "@overload\n"
-        "def choose(value: int) -> str: ...\n"
+        "def choose(value: int) -> str | bytes: ...\n"
         "@overload\n"
         "def choose[T](value: T) -> str | bytes | float: ...\n"
     )

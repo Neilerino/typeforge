@@ -29,7 +29,7 @@ from typeforge.semantics.domain.models import (
     UnresolvedType,
 )
 from typeforge.semantics.generic_compatibility import sequence_elements
-from typeforge.semantics.protocols import TypeSystem
+from typeforge.semantics.protocols import TypeSystem, UnresolvedCaptureBindings
 from typeforge.semantics.type_evaluation import (
     assignable_types,
     build_type,
@@ -81,6 +81,7 @@ def match_map_pattern[T](
     subject: TypeValue[T],
     type_system: TypeSystem[T],
     captures: CaptureBindings[T] = (),
+    capture_bounds: UnresolvedCaptureBindings[T] | None = None,
 ) -> _PatternMatch[T]:
     """Resolved fixed selectors use compatibility; captures retain structural rules."""
     # Partially known shapes retain structural proofs and their provenance;
@@ -94,7 +95,9 @@ def match_map_pattern[T](
                 assignable_types(subject, target, type_system), captures
             )
 
-    return match_type_pattern(pattern, subject, type_system, captures)
+    return match_type_pattern(
+        pattern, subject, type_system, captures, capture_bounds=capture_bounds
+    )
 
 
 def _fixed_pattern_type[T](
@@ -141,6 +144,7 @@ def match_type_pattern[T](
     subject: TypeValue[T],
     type_system: TypeSystem[T],
     captures: CaptureBindings[T] = (),
+    capture_bounds: UnresolvedCaptureBindings[T] | None = None,
 ) -> _PatternMatch[T]:
     raise UnsupportedExpressionSemanticError(
         f"unsupported type pattern {type(pattern).__name__}"
@@ -153,6 +157,7 @@ def _[T](
     subject: TypeValue[T],
     type_system: TypeSystem[T],
     captures: CaptureBindings[T] = (),
+    capture_bounds: UnresolvedCaptureBindings[T] | None = None,
 ) -> _PatternMatch[T]:
     return _PatternMatch[T].from_condition(
         equal_types(
@@ -168,6 +173,7 @@ def _[T](
     subject: TypeValue[T],
     type_system: TypeSystem[T],
     captures: CaptureBindings[T] = (),
+    capture_bounds: UnresolvedCaptureBindings[T] | None = None,
 ) -> _PatternMatch[T]:
     bound = dict(captures).get(pattern.symbol)
     if bound is not None:
@@ -192,6 +198,7 @@ def _[T](
     subject: TypeValue[T],
     type_system: TypeSystem[T],
     captures: CaptureBindings[T] = (),
+    capture_bounds: UnresolvedCaptureBindings[T] | None = None,
 ) -> _PatternMatch[T]:
     return _PatternMatch[T].from_condition(
         equal_types(subject, pattern.value, type_system), captures
@@ -204,6 +211,7 @@ def _[T](
     subject: TypeValue[T],
     type_system: TypeSystem[T],
     captures: CaptureBindings[T] = (),
+    capture_bounds: UnresolvedCaptureBindings[T] | None = None,
 ) -> _PatternMatch[T]:
     alternatives: list[_PatternAlternative[T]] = []
     for member in pattern.members:
@@ -213,7 +221,9 @@ def _[T](
                 assignable_types(subject, fixed, type_system), captures
             )
             if fixed is not None
-            else match_map_pattern(member, subject, type_system, captures)
+            else match_map_pattern(
+                member, subject, type_system, captures, capture_bounds=capture_bounds
+            )
         )
         alternatives.extend(result.alternatives)
 
@@ -226,10 +236,17 @@ def _[T](
     subject: TypeValue[T],
     type_system: TypeSystem[T],
     captures: CaptureBindings[T] = (),
+    capture_bounds: UnresolvedCaptureBindings[T] | None = None,
 ) -> _PatternMatch[T]:
     if isinstance(subject, IndeterminateType):
         matches = tuple(
-            match_type_pattern(pattern, alternative, type_system, captures)
+            match_type_pattern(
+                pattern,
+                alternative,
+                type_system,
+                captures,
+                capture_bounds=capture_bounds,
+            )
             for alternative in subject.alternatives
         )
         return _PatternMatch(
@@ -244,6 +261,14 @@ def _[T](
     if is_symbol(subject):
         bound_symbols = frozenset(symbol for symbol, _ in captures)
         if _has_unbound_capture(pattern, bound_symbols):
+            if capture_bounds is not None:
+                return _alternative_match(
+                    tuple(
+                        _PatternAlternative(IndeterminateCondition(), bindings)
+                        for bindings in capture_bounds.bindings(pattern, captures)
+                    )
+                )
+
             raise UnresolvedCaptureSemanticError(
                 "cannot capture type arguments from an unresolved type parameter"
             )
@@ -276,7 +301,11 @@ def _[T](
         next_alternatives: list[_PatternAlternative[T]] = []
         for alternative in alternatives:
             nested_match = match_type_pattern(
-                nested_pattern, nested_subject, type_system, alternative.captures
+                nested_pattern,
+                nested_subject,
+                type_system,
+                alternative.captures,
+                capture_bounds=capture_bounds,
             )
             next_alternatives.extend(
                 _PatternAlternative(

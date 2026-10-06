@@ -30,8 +30,10 @@ from typeforge.compiler.pipeline import (
     RecordMaterializationError,
     SourceSyntaxError,
     VerificationPlan,
+    checker_type_bound,
     compile_source,
     describe_authored_callables,
+    describe_return_type_projections,
     describe_type_parameter_projections,
 )
 from typeforge.compiler.pipeline import SourceSpan as AuthoredSourceSpan
@@ -55,8 +57,6 @@ from typeforge.compiler.stub_ir import (
     UnionExpression,
     UnpackedType,
     is_declaration,
-    rewrite_type_children,
-    union_types,
 )
 from typeforge.utils.error_handling import safe_result
 
@@ -283,13 +283,13 @@ def _generate_overloads(
 
 def _checker_function(declaration: FunctionDeclaration) -> FunctionDeclaration:
     parameters = tuple(
-        replace(parameter, annotation=_checker_type(parameter.annotation))
+        replace(parameter, annotation=checker_type_bound(parameter.annotation))
         for parameter in declaration.parameters
     )
     return replace(
         declaration,
         parameters=parameters,
-        return_type=_checker_type(declaration.return_type),
+        return_type=checker_type_bound(declaration.return_type),
     )
 
 
@@ -476,7 +476,7 @@ def _alias_edits(source: str, plan: CompilationPlan) -> tuple[_Edit, ...]:
         alias = aliases[origin.origin]
         relationship = relationships.get(origin.origin)
         value = relationship if relationship is not None else declaration.value
-        projected = replace(declaration, value=_checker_type(value))
+        projected = replace(declaration, value=checker_type_bound(value))
         emitted = emit_stub_module(StubModule(module.path.stem, (projected,))).unwrap()
 
         span = _source_span(source, alias.span)
@@ -494,6 +494,7 @@ def _alias_edits(source: str, plan: CompilationPlan) -> tuple[_Edit, ...]:
 
 def _annotation_edits(source: str, plan: CompilationPlan) -> tuple[_Edit, ...]:
     module = plan.source
+    returns = describe_return_type_projections(plan)
     roots = {
         id(element): element
         for element in plan.module.reusable_elements
@@ -503,8 +504,20 @@ def _annotation_edits(source: str, plan: CompilationPlan) -> tuple[_Edit, ...]:
         origin.origin for origin in plan.module.origins if id(origin.generated) in roots
     )
     edits: list[_Edit] = []
+    for projection in returns:
+        span = _source_span(source, projection.span)
+        emitted = emit_type_expression(projection.expression).unwrap()
+        edits.append(_Edit(span.start.offset, span.end.offset, emitted, span))
+
     for origin in plan.module.origins:
         expression = roots.get(id(origin.generated))
+        if any(
+            projection.span.start <= origin.origin.start
+            and origin.origin.end <= projection.span.end
+            for projection in returns
+        ):
+            continue
+
         if expression is None or any(
             alias.span.start <= origin.origin.start
             and origin.origin.end <= alias.span.end
@@ -520,7 +533,7 @@ def _annotation_edits(source: str, plan: CompilationPlan) -> tuple[_Edit, ...]:
         ):
             continue
 
-        emitted = emit_type_expression(_checker_type(expression)).unwrap()
+        emitted = emit_type_expression(checker_type_bound(expression)).unwrap()
 
         span = _source_span(source, origin.origin)
         edits.append(
@@ -576,31 +589,6 @@ def _render_derived_records(
         rendered.append(emitted.rstrip())
 
     return tuple(rendered)
-
-
-def _relationship_fallback(expression: MapType) -> StubTypeExpression:
-    defaults = (
-        () if expression.default is None else (_checker_type(expression.default),)
-    )
-    return union_types(
-        (
-            *(_checker_type(case.output_type) for case in expression.cases),
-            *defaults,
-        )
-    )
-
-
-def _checker_type(expression: StubTypeExpression) -> StubTypeExpression:
-    if isinstance(expression, CaptureType):
-        return TypeName("object")
-
-    if isinstance(expression, MapType):
-        return _relationship_fallback(expression)
-
-    if isinstance(expression, UnionExpression):
-        return union_types(tuple(_checker_type(item) for item in expression.members))
-
-    return rewrite_type_children(expression, _checker_type)
 
 
 def _verification_edits(

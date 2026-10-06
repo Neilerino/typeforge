@@ -1,17 +1,23 @@
+from collections.abc import Iterator
+
 from typeforge.compiler.pipeline._models import (
     AuthoredCallable,
     AuthoredParameter,
     AuthoredParameterKind,
     CompilationPlan,
+    ReturnTypeProjection,
     TypeParameterProjection,
 )
+from typeforge.compiler.source import FunctionDeclaration as SourceFunction
 from typeforge.compiler.source import ParameterKind, enriched_functions
+from typeforge.compiler.specialization import checker_type_bound
 from typeforge.compiler.stub_ir import (
     FunctionDeclaration,
     MapType,
     OverloadDeclaration,
     StubTypeExpression,
     TypeVariable,
+    walk_declaration,
 )
 
 _PARAMETER_KINDS = {
@@ -51,27 +57,8 @@ def describe_authored_callables(plan: CompilationPlan) -> tuple[AuthoredCallable
 def describe_type_parameter_projections(
     plan: CompilationPlan,
 ) -> tuple[TypeParameterProjection, ...]:
-    sources = {function.span: function for function in plan.source.functions}
-    reusable = {id(element) for element in plan.module.reusable_elements}
-    contracts = {
-        origin.origin: origin.generated
-        for origin in plan.module.origins
-        if id(origin.generated) in reusable
-        and isinstance(origin.generated, FunctionDeclaration)
-    }
     projections: list[TypeParameterProjection] = []
-    for origin in plan.module.origins:
-        declaration = origin.generated
-        if id(declaration) in reusable or not isinstance(
-            declaration, FunctionDeclaration | OverloadDeclaration
-        ):
-            continue
-
-        source = sources.get(origin.origin)
-        contract = contracts.get(origin.origin)
-        if source is None or contract is None:
-            continue
-
+    for source, contract, declaration in _mapped_callables(plan):
         mapping = contract.return_type
         if (
             not isinstance(mapping, MapType)
@@ -102,6 +89,65 @@ def describe_type_parameter_projections(
     return tuple(projections)
 
 
+def describe_return_type_projections(
+    plan: CompilationPlan,
+) -> tuple[ReturnTypeProjection, ...]:
+    projections: list[ReturnTypeProjection] = []
+    for source, contract, declaration in _mapped_callables(plan):
+        if source.returns is None:
+            continue
+
+        signature = (
+            declaration.fallback
+            if isinstance(declaration, OverloadDeclaration)
+            else declaration
+        )
+        projections.append(
+            ReturnTypeProjection(
+                checker_type_bound(
+                    signature.return_type,
+                    type_parameters=frozenset(
+                        item.name
+                        for item in walk_declaration(contract)
+                        if isinstance(item, TypeVariable)
+                    ),
+                ),
+                source.returns.span,
+            )
+        )
+
+    return tuple(projections)
+
+
+def _mapped_callables(
+    plan: CompilationPlan,
+) -> Iterator[
+    tuple[
+        SourceFunction, FunctionDeclaration, FunctionDeclaration | OverloadDeclaration
+    ]
+]:
+    sources = {function.span: function for function in plan.source.functions}
+    reusable = {id(element) for element in plan.module.reusable_elements}
+    contracts = {
+        origin.origin: origin.generated
+        for origin in plan.module.origins
+        if id(origin.generated) in reusable
+        and isinstance(origin.generated, FunctionDeclaration)
+        and isinstance(origin.generated.return_type, MapType)
+    }
+    for origin in plan.module.origins:
+        declaration = origin.generated
+        if id(declaration) in reusable or not isinstance(
+            declaration, FunctionDeclaration | OverloadDeclaration
+        ):
+            continue
+
+        source = sources.get(origin.origin)
+        contract = contracts.get(origin.origin)
+        if source is not None and contract is not None:
+            yield source, contract, declaration
+
+
 def _projected_domain(
     contract: FunctionDeclaration,
     signature: FunctionDeclaration,
@@ -122,7 +168,7 @@ def _projected_domain(
     if parameter is None:
         return None
 
-    return next(
+    projected = next(
         (
             item.annotation
             for item in signature.parameters
@@ -130,3 +176,4 @@ def _projected_domain(
         ),
         None,
     )
+    return None if projected == TypeVariable(controller) else projected

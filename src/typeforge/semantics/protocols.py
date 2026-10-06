@@ -7,6 +7,7 @@ from returns.result import Result
 from typeforge.semantics.domain.exceptions import SemanticIssue
 from typeforge.semantics.domain.generics import GenericType
 from typeforge.semantics.domain.models import (
+    CaptureBindings,
     DeferredMap,
     EvaluationContext,
     Expression,
@@ -24,6 +25,14 @@ class DeferredTypes[T](Protocol):
     def defer(
         self, plan: DeferredMap[T]
     ) -> Result[T, SemanticIssue | MapNoMatch[T]]: ...
+
+
+class UnresolvedCaptureBindings[T](Protocol):
+    """Supply speculative capture bindings when structural arguments are opaque."""
+
+    def bindings(
+        self, pattern: TypePattern[T], captures: CaptureBindings[T]
+    ) -> tuple[CaptureBindings[T], ...]: ...
 
 
 class InputObserver[T](Protocol):
