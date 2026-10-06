@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/neilwadden/.codex/visualizations/2026/09/07/01a07d18-ce62-7e82-bf3c-06a7362ad7d9/typeforge-stack/docs/reviews/typeforge-api/15-callable-output-precision/architecture.json",
+  "output": "/Users/neilwadden/.codex/visualizations/2026/09/07/01a07d18-ce62-7e82-bf3c-06a7362ad7d9/typeforge-stack/docs/reviews/typeforge-api/15-callable-output-precision/architecture.html",
+  "specification": {
+    "sha256": "8c9e042f3d8e47c33241a1a402cd68c51bbc8f198ad6ac927b1a0fb35c76c1a8",
+    "bytes": 8545
+  },
+  "artifact": {
+    "sha256": "a6677d4f8ade307e28ef69afe6a8e46a636d974f02b03ea38f230bb766c15f47",
+    "bytes": 718576
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  },
+  "evidence": {
+    "verified": true,
+    "repository": "https://github.com/Neilerino/typeforge",
+    "revision": "8c80c372c90a4da95940f6d52c66cd1dca435d1a",
+    "references": 19
+  }
+}

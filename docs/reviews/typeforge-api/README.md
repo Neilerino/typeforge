@@ -27,7 +27,7 @@ and test files were unchanged when those artifacts were removed from PR diffs.
 | 12 | Union-valued field transforms and Drop | 02, 10, 11 | [#12](https://github.com/Neilerino/typeforge/pull/12) |
 | 13 | Correlated record unions | 02, 10 | [#13](https://github.com/Neilerino/typeforge/pull/13) |
 | 14 | Callable input contracts without fallback | 02 | [#14](https://github.com/Neilerino/typeforge/pull/14) |
-| 15 | Callable output precision | 07, 08, 14 | Pending |
+| 15 | Callable output precision | 07, 08, 14 | [#15](https://github.com/Neilerino/typeforge/pull/15) |
 | 16 | Each and Collect bounds and precision | 15 | Pending |
 | 17 | Guard verification with original subjects | 02 | Pending |
 | 18 | Cross-module publication and integration | 03, 11, 12, 13, 15 | Pending |

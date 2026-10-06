@@ -1,0 +1,353 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "15 \u00b7 Callable outputs retain capture precision",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "viewBox": [
+      1390,
+      630
+    ],
+    "repository": {
+      "url": "https://github.com/Neilerino/typeforge",
+      "revision": "8c80c372c90a4da95940f6d52c66cd1dca435d1a"
+    }
+  },
+  "components": [
+    {
+      "id": "callable-signatures",
+      "type": "backend",
+      "label": "Callable signatures",
+      "sublabel": "_captured_map_signature",
+      "tag": "Changed \u00b7 native input bounds",
+      "pos": [
+        45,
+        70
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/specialization/_lowering.py",
+          "line": 380,
+          "label": "Map lowering"
+        },
+        {
+          "path": "src/typeforge/compiler/specialization/_lowering.py",
+          "line": 566,
+          "label": "Fresh capture parameters"
+        }
+      ]
+    },
+    {
+      "id": "semantic-ir",
+      "type": "backend",
+      "label": "Semantic IR adapter",
+      "sublabel": "lower_stub_expression",
+      "tag": "Changed \u00b7 owned IR to expressions",
+      "pos": [
+        390,
+        70
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_stub_types.py",
+          "line": 102,
+          "label": "Lower callable expressions"
+        },
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_stub_types.py",
+          "line": 171,
+          "label": "Scoped selector patterns"
+        }
+      ]
+    },
+    {
+      "id": "shared-capture-match",
+      "type": "backend",
+      "label": "Shared capture matching",
+      "sublabel": "match_map_pattern",
+      "tag": "Extended \u00b7 known + opaque bindings",
+      "pos": [
+        735,
+        70
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/map_matching.py",
+          "line": 79,
+          "label": "Shared pattern selection"
+        },
+        {
+          "path": "src/typeforge/compiler/specialization/_opaque_bounds.py",
+          "line": 19,
+          "label": "Opaque binding provider"
+        }
+      ]
+    },
+    {
+      "id": "complete-output",
+      "type": "backend",
+      "label": "Complete output evaluation",
+      "sublabel": "instantiate_output",
+      "tag": "New \u00b7 preserve alternatives",
+      "pos": [
+        1080,
+        70
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/specialization/_evaluation.py",
+          "line": 54,
+          "label": "Instantiate complete output"
+        },
+        {
+          "path": "src/typeforge/compiler/specialization/_captures.py",
+          "line": 19,
+          "label": "Replace scoped captures"
+        }
+      ]
+    },
+    {
+      "id": "portable-bound",
+      "type": "backend",
+      "label": "Portable output bound",
+      "sublabel": "checker_type_bound",
+      "tag": "New \u00b7 variance-aware erasure",
+      "pos": [
+        1080,
+        280
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/specialization/_bounds.py",
+          "line": 20,
+          "label": "Preserve known type parameters"
+        },
+        {
+          "path": "src/typeforge/compiler/specialization/_bounds.py",
+          "line": 87,
+          "label": "Invariant argument rules"
+        }
+      ]
+    },
+    {
+      "id": "pipeline-projections",
+      "type": "backend",
+      "label": "Pipeline projections",
+      "sublabel": "describe_return_type_projections",
+      "tag": "Changed \u00b7 stubs + authored spans",
+      "pos": [
+        735,
+        280
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/pipeline/_callables.py",
+          "line": 92,
+          "label": "Return projection seam"
+        },
+        {
+          "path": "src/typeforge/overlay/transform.py",
+          "line": 495,
+          "label": "Body annotation edits"
+        }
+      ]
+    },
+    {
+      "id": "native-checking",
+      "type": "external",
+      "label": "Native checker contracts",
+      "sublabel": "mypy \u00b7 Pyright \u00b7 Pyrefly",
+      "tag": "Existing \u00b7 inference + body checks",
+      "pos": [
+        390,
+        280
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_callable_output_contract.py",
+          "line": 22,
+          "label": "Whole generic identity"
+        },
+        {
+          "path": "tests/unit/test_callable_output_contract.py",
+          "line": 496,
+          "label": "Partly known output shapes"
+        },
+        {
+          "path": "tests/unit/test_callable_output_contract.py",
+          "line": 680,
+          "label": "Nested authored coverage"
+        }
+      ]
+    },
+    {
+      "id": "coverage-owner",
+      "type": "security",
+      "label": "Native coverage proof",
+      "sublabel": "map_input_domain",
+      "tag": "Existing owner \u00b7 extended reuse",
+      "pos": [
+        45,
+        280
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/specialization/_coverage.py",
+          "line": 36,
+          "label": "Covered input intersection"
+        },
+        {
+          "path": "src/typeforge/compiler/specialization/_evaluation.py",
+          "line": 110,
+          "label": "Reject unproved no-match paths"
+        }
+      ]
+    },
+    {
+      "id": "next-callable-slices",
+      "type": "external",
+      "label": "Next callable slices",
+      "sublabel": "Each / Collect \u00b7 guards \u00b7 integration",
+      "tag": "Future \u00b7 slices 16\u201318",
+      "pos": [
+        735,
+        490
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/specialization/_lowering.py",
+          "line": 289,
+          "label": "Current finite arity frontier"
+        },
+        {
+          "path": "DESIGN.md",
+          "line": 363,
+          "label": "Verification boundary"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "lower-owned-ir",
+      "from": "callable-signatures",
+      "to": "semantic-ir",
+      "label": "Lower IR",
+      "variant": "emphasis"
+    },
+    {
+      "id": "select-captures",
+      "from": "semantic-ir",
+      "to": "shared-capture-match",
+      "label": "Bind tokens",
+      "variant": "emphasis"
+    },
+    {
+      "id": "instantiate-alternatives",
+      "from": "shared-capture-match",
+      "to": "complete-output",
+      "label": "Evaluate",
+      "variant": "emphasis"
+    },
+    {
+      "id": "erase-only-unknown",
+      "from": "complete-output",
+      "to": "portable-bound",
+      "label": "Bound unknowns",
+      "variant": "emphasis",
+      "labelDy": 60
+    },
+    {
+      "id": "publish-native-types",
+      "from": "portable-bound",
+      "to": "pipeline-projections",
+      "label": "Project",
+      "variant": "emphasis"
+    },
+    {
+      "id": "check-native-contracts",
+      "from": "pipeline-projections",
+      "to": "native-checking",
+      "label": "Check types",
+      "variant": "emphasis"
+    },
+    {
+      "id": "keep-input-contract",
+      "from": "coverage-owner",
+      "to": "callable-signatures",
+      "label": "Prove coverage",
+      "variant": "security"
+    },
+    {
+      "id": "reuse-output-seams",
+      "from": "pipeline-projections",
+      "to": "next-callable-slices",
+      "label": "Extend later",
+      "variant": "dashed",
+      "labelDy": 60
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Developer outcome",
+      "items": [
+        "list[bool] \u2192 tuple[bool, bool] | bytes",
+        "Whole captures retain authored generic identity."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Review the precision boundary",
+      "items": [
+        "Known positions and complete alternatives survive.",
+        "Unknowns: object covariantly, Any invariantly."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Failure and future scope",
+      "items": [
+        "Missing captures and uncovered inputs still fail.",
+        "65 cases; finite arity and guards follow separately."
+      ]
+    }
+  ]
+}
