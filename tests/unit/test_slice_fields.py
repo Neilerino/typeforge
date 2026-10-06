@@ -322,7 +322,7 @@ class Row(TypedDict):
 type Public[U] = Record(({transform} for field in Fields[Row]))
 """
     module = parse_source(source).unwrap().source
-    (record,) = build_record_shapes(module.typed_dicts)
+    (record,) = build_record_shapes(module.typed_dicts).unwrap()
     unknown = s.UnresolvedType(NamedType("U"), s.TypeSymbol(("Public",), "U"))
     expression = lower_semantic_expression(
         module.aliases[0].value, (("Row", record), ("U", unknown))

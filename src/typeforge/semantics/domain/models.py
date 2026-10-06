@@ -273,6 +273,13 @@ class EvaluationMode(StrEnum):
     SPECULATIVE = "speculative"
 
 
+class MapOutputRole(StrEnum):
+    """Whether Map output combination can retain field-removal effects."""
+
+    TYPE = "type"
+    FIELD_REPLACEMENT = "field_replacement"
+
+
 class NoMatchDecision(StrEnum):
     """Accept the language's Never output, or reject an exhausted selection."""
 
@@ -288,6 +295,7 @@ class EvaluationContext[T]:
     fields: tuple[tuple[TypeSymbol, RecordField[T]], ...] = ()
     input_type: TypeValue[T] | None = None
     mode: EvaluationMode = EvaluationMode.DEFINITE
+    map_output_role: MapOutputRole = MapOutputRole.TYPE
 
 
 @dataclass(frozen=True, slots=True)
