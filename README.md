@@ -416,6 +416,14 @@ supported construction syntax without importing or executing the application and
 emits ordinary typing aliases and specialized annotations for existing checkers.
 An unresolved Selected[T] has the output bound str | bytes.
 
+Concrete public module annotations also retain their result in generated stubs:
+`text: Selected[int]` becomes `text: str`. Record applications preserve complete
+TypedDict alternatives. Public imports, re-exports, constants, and ordinary
+generic aliases remain available to consumers through normal checker imports.
+An imported conditional alias retains its published output bound; export a
+concrete alias or specialized callable when consumers need finer precision.
+Runtime imports preserve the symbolic template and require no compilation.
+
 The basic compiler scope supports a module-level synchronous function with no
 value parameters or other decorators, unconstrained ordinary type parameters
 without defaults, an optional docstring, and one final return of a type expression.

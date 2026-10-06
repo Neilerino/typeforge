@@ -100,6 +100,7 @@ from typeforge.compiler.stub_ir import (
     TypeVariable,
     UnionExpression,
     UnpackedType,
+    VariableDeclaration,
     rewrite_type_children,
     substitute_type,
     walk_module,
@@ -202,6 +203,21 @@ def adapt_source_module(
             if relationship is not None:
                 reusable_elements.append(relationship)
                 origins.append(GeneratedElementOrigin(alias.span, relationship))
+
+    for variable in module.variables:
+        annotation = _adapt_type_expression(
+            variable.annotation,
+            variable.name,
+            (),
+            origins=origins,
+            type_context=type_context,
+        )
+        annotation = expand_map_aliases(annotation, semantic_aliases)
+        generated_variable = VariableDeclaration(variable.name, annotation)
+        declarations.append((variable.span.start.line, generated_variable))
+        reusable_elements.append(annotation)
+        origins.append(GeneratedElementOrigin(variable.annotation.span, annotation))
+        origins.append(GeneratedElementOrigin(variable.span, generated_variable))
 
     for source_class in module.classes:
         generated_class = expand_class_map_aliases(
@@ -1309,11 +1325,15 @@ def _annotation_boundaries(
     module: SourceModule,
 ) -> tuple[SchemaTypeExpression | MarkerTypeExpression, ...]:
     alias_spans = {alias.span for alias in module.aliases}
+    variable_spans = tuple(variable.annotation.span for variable in module.variables)
     expressions = annotation_expressions(module)
     boundaries: dict[SourceSpan, SchemaTypeExpression | MarkerTypeExpression] = {}
     for expression in expressions:
         for boundary in _outer_annotation_boundaries(expression):
-            if boundary.span in alias_spans:
+            if boundary.span in alias_spans or any(
+                span.start <= boundary.span.start and boundary.span.end <= span.end
+                for span in variable_spans
+            ):
                 continue
 
             boundaries[boundary.span] = boundary
