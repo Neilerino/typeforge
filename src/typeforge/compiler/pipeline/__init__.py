@@ -5,7 +5,10 @@ from typeforge.compiler.adaptation import (
 )
 from typeforge.compiler.emission import EmissionError
 from typeforge.compiler.module_surface import UnsupportedPublicDeclaration
-from typeforge.compiler.pipeline._callables import describe_authored_callables
+from typeforge.compiler.pipeline._callables import (
+    describe_authored_callables,
+    describe_type_parameter_projections,
+)
 from typeforge.compiler.pipeline._compilation import compile_source
 from typeforge.compiler.pipeline._generation import generate_module
 from typeforge.compiler.pipeline._models import (
@@ -16,6 +19,7 @@ from typeforge.compiler.pipeline._models import (
     CompilationPlan,
     GeneratedModule,
     GenerationError,
+    TypeParameterProjection,
 )
 from typeforge.compiler.record_materialization import (
     RecordMaterializationError,
@@ -39,9 +43,11 @@ __all__ = [
     "RecordMaterializationError",
     "SourceSpan",
     "SourceSyntaxError",
+    "TypeParameterProjection",
     "UnsupportedPublicDeclaration",
     "VerificationPlan",
     "compile_source",
     "describe_authored_callables",
+    "describe_type_parameter_projections",
     "generate_module",
 ]

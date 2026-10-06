@@ -37,12 +37,14 @@ def expand_schema_aliases(
     *,
     declaration: str,
     predicates_only: bool = False,
+    type_parameters: tuple[str, ...] = (),
 ) -> SourceTypeExpression:
-    """Expand with authored origins; preserve ordinary aliases outside Schema.
+    """Expand aliases while preserving authored origins and lexical parameters.
 
-    Callable and record paths request predicate-only expansion so their existing
-    alias and specialization policies remain in control of ordinary types.
+    Predicate-only callers retain ordinary type aliases for their own output
+    policies. Callable selectors and bounds request complete selection facts.
     """
+    aliases = tuple(alias for alias in aliases if alias.name not in type_parameters)
 
     def expand(
         item: SourceTypeExpression, stack: tuple[tuple[str, ...], ...] = ()

@@ -7,6 +7,7 @@ from typeforge.compiler.semantic_adapter._lowering import (
     lower_capture_reference,
     lower_semantic_expression,
 )
+from typeforge.compiler.semantic_adapter._stub_types import stub_static_type
 from typeforge.compiler.semantic_adapter._type_system import (
     COMPILER_TYPE_SYSTEM,
     CompilerTypeSystem,
@@ -21,6 +22,7 @@ from typeforge.compiler.semantic_adapter._types import (
     UnpackedType,
     VariadicType,
     is_static,
+    named_type_environment,
     union_of,
 )
 
@@ -40,6 +42,8 @@ __all__ = [
     "is_static",
     "lower_capture_reference",
     "lower_semantic_expression",
+    "named_type_environment",
     "static_type_expression",
+    "stub_static_type",
     "union_of",
 ]

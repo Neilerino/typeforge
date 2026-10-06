@@ -112,7 +112,7 @@ class MapCase:
 class MapType:
     subject: StubTypeExpression
     cases: tuple[MapCase, ...]
-    default: StubTypeExpression
+    default: StubTypeExpression | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,6 +166,8 @@ class FunctionDeclaration:
     type_parameters: tuple[str, ...] = ()
     is_async: bool = False
     decorators: tuple[str, ...] = ()
+    type_parameter_domains: tuple[tuple[str, StubTypeExpression], ...] = ()
+    type_parameter_defaults: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,6 +206,7 @@ class ClassDeclaration:
     type_parameters: tuple[str, ...] = ()
     keywords: tuple[str, ...] = ()
     decorators: tuple[str, ...] = ()
+    is_protocol: bool = False
 
 
 type Declaration = (

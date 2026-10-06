@@ -80,7 +80,7 @@ assert_type(either(b"text"), str)
 assert_type(either("text"), str)
 assert_type(encode(1), str | None)
 assert_type(encode(b"text"), str | None | bytes)
-assert_type(partial("unmatched"), str)
+assert_type(partial(1), str)
 
 def inspect(value: int | str, data: bytes, alias: Encoded[int]) -> None:
     assert_type(encode(value), str | None | bytes)

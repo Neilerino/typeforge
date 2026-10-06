@@ -11,10 +11,11 @@ from typeforge.compiler.record_materialization import RecordMaterializationError
 from typeforge.compiler.source import (
     FrontendError,
     SourceModule,
+    SourceSpan,
     SourceSyntaxError,
 )
 from typeforge.compiler.specialization import LoweringError
-from typeforge.compiler.stub_ir import StubModule
+from typeforge.compiler.stub_ir import StubModule, StubTypeExpression
 from typeforge.compiler.verification import VerificationPlan
 
 type CompilationError = (
@@ -42,6 +43,13 @@ class CompilationPlan:
 class GeneratedModule:
     source_path: Path
     content: str
+
+
+@dataclass(frozen=True, slots=True)
+class TypeParameterProjection:
+    name: str
+    domain: StubTypeExpression
+    span: SourceSpan
 
 
 class AuthoredParameterKind(StrEnum):

@@ -3,6 +3,15 @@ from itertools import product
 
 from returns.result import Failure, Result, Success
 
+from typeforge.compiler.semantic_adapter import (
+    SemanticEnvironment,
+    named_type_environment,
+)
+from typeforge.compiler.specialization._coverage import (
+    map_covered_cases,
+    map_input_domain,
+    map_output_bound,
+)
 from typeforge.compiler.specialization._models import (
     ArityFrontier,
     LoweringError,
@@ -50,6 +59,7 @@ from typeforge.compiler.stub_ir import (
     walk_module,
     walk_type,
 )
+from typeforge.utils.error_handling import safe_result
 
 
 def lower_variadic_module(
@@ -79,10 +89,30 @@ def lower_variadic_module(
             )
 
     has_overloads = False
+    environment = named_type_environment(
+        tuple(
+            (
+                item.name,
+                (
+                    *(
+                        name
+                        for base in item.bases
+                        if (name := _base_name(base)) is not None
+                    ),
+                    *(("typing.Protocol",) if item.is_protocol else ()),
+                ),
+            )
+            for item in module.declarations
+            if isinstance(item, ClassDeclaration)
+        )
+    )
     for declaration in module.declarations:
         if isinstance(declaration, ClassDeclaration):
             class_result = _lower_class(
-                declaration, frontier, on_rewrite=record_rewrite
+                declaration,
+                frontier,
+                on_rewrite=record_rewrite,
+                environment=environment,
             )
             if isinstance(class_result, Failure):
                 return class_result
@@ -101,7 +131,9 @@ def lower_variadic_module(
             lowered.append(declaration)
             continue
 
-        result = _lower_function(declaration, frontier, on_rewrite=record_rewrite)
+        result = _lower_function(
+            declaration, frontier, on_rewrite=record_rewrite, environment=environment
+        )
         if isinstance(result, Failure):
             return result
 
@@ -175,6 +207,8 @@ def _lower_class(
     declaration: ClassDeclaration,
     frontier: ArityFrontier,
     on_rewrite: TypeRewriteObserver | None = None,
+    *,
+    environment: SemanticEnvironment = (),
 ) -> Result[tuple[ClassDeclaration, bool], LoweringError]:
     methods: list[FunctionDeclaration | OverloadDeclaration] = []
     has_overloads = False
@@ -184,7 +218,9 @@ def _lower_class(
             has_overloads = True
             continue
 
-        lowered = _lower_function(method, frontier, on_rewrite=on_rewrite)
+        lowered = _lower_function(
+            method, frontier, on_rewrite=on_rewrite, environment=environment
+        )
         if isinstance(lowered, Failure):
             return lowered
 
@@ -195,14 +231,27 @@ def _lower_class(
     return Success((replace(declaration, methods=tuple(methods)), has_overloads))
 
 
+def _base_name(base: StubTypeExpression) -> str | None:
+    match base:
+        case TypeName(name) | TypeApplication(TypeName(name), _):
+            return name
+        case _:
+            return None
+
+
 def _lower_function(
     declaration: FunctionDeclaration,
     frontier: ArityFrontier,
     on_rewrite: TypeRewriteObserver | None = None,
+    *,
+    environment: SemanticEnvironment = (),
 ) -> Result[FunctionDeclaration | OverloadDeclaration, LoweringError]:
     if isinstance(declaration.return_type, MapType):
         return _lower_map_function(
-            declaration, declaration.return_type, on_rewrite=on_rewrite
+            declaration,
+            declaration.return_type,
+            on_rewrite=on_rewrite,
+            environment=environment,
         )
 
     return _lower_each_function(declaration, frontier, on_rewrite=on_rewrite)
@@ -253,6 +302,16 @@ def _lower_each_function(
 
     captured_name = captured_names[0]
     structural_map = _find_collected_map(declaration.return_type, captured_name)
+    if structural_map is not None and structural_map.default is None:
+        return Failure(
+            LoweringError(
+                LoweringErrorCode.UNREPRESENTABLE_COVERAGE,
+                declaration.name,
+                "no-default Each/Collect coverage cannot be published portably; "
+                "supply an explicit specialization or fallback",
+            )
+        )
+
     if structural_map is not None and any(
         not is_predicate(case.test) and len(_capture_tokens(case.test)) > 1
         for case in structural_map.cases
@@ -292,6 +351,8 @@ def _lower_map_function(
     declaration: FunctionDeclaration,
     mapping: MapType,
     on_rewrite: TypeRewriteObserver | None = None,
+    *,
+    environment: SemanticEnvironment = (),
 ) -> Result[FunctionDeclaration | OverloadDeclaration, LoweringError]:
     if not isinstance(mapping.subject, TypeVariable):
         return Failure(
@@ -340,6 +401,11 @@ def _lower_map_function(
                     )
                 )
 
+    if mapping.default is None:
+        return _lower_covered_map_function(
+            declaration, mapping, controller, on_rewrite, environment
+        )
+
     specializations = map_specializations(mapping, controller)
     signatures = tuple(
         _specialized_signature(
@@ -367,6 +433,107 @@ def _lower_map_function(
         return Success(fallback)
 
     return Success(OverloadDeclaration(signatures, fallback))
+
+
+@safe_result(errors=(LoweringError,))
+def _lower_covered_map_function(
+    declaration: FunctionDeclaration,
+    mapping: MapType,
+    controller: str,
+    on_rewrite: TypeRewriteObserver | None,
+    environment: SemanticEnvironment,
+) -> FunctionDeclaration | OverloadDeclaration:
+    domain = map_input_domain(declaration, mapping, controller, environment).unwrap()
+    controller_type = TypeVariable(controller)
+    original_domain = dict(declaration.type_parameter_domains).get(controller)
+    local_parameter = next(
+        (
+            parameter
+            for parameter in declaration.type_parameters
+            if _type_parameter_name(parameter) == controller
+        ),
+        None,
+    )
+    if (
+        original_domain is not None
+        and original_domain != domain
+        and (
+            local_parameter is None or controller in declaration.type_parameter_defaults
+        )
+    ):
+        Failure(
+            LoweringError(
+                LoweringErrorCode.UNREPRESENTABLE_COVERAGE,
+                declaration.name,
+                "the existing type parameter cannot be safely restricted; supply "
+                "a covered bound, explicit specialization, or fallback",
+            )
+        ).unwrap()
+
+    controlled_parameters = tuple(
+        parameter
+        for parameter in declaration.parameters
+        if _has_variable(parameter.annotation, controller)
+    )
+    preserve_generic = (
+        original_domain is not None
+        or len(controlled_parameters) != 1
+        or controlled_parameters[0].annotation != controller_type
+        or any(_has_variable(case.output_type, controller) for case in mapping.cases)
+    )
+    replacement = controller_type if preserve_generic else domain
+    output = map_output_bound(
+        declaration, mapping, controller, domain, replacement, environment
+    ).unwrap()
+
+    if preserve_generic:
+        parameters = tuple(
+            controller
+            if _type_parameter_name(parameter) == controller
+            and original_domain != domain
+            else parameter
+            for parameter in declaration.type_parameters
+        )
+        domains = tuple(
+            (name, bound)
+            for name, bound in declaration.type_parameter_domains
+            if name != controller
+        )
+        result = replace(
+            declaration,
+            return_type=output,
+            type_parameters=parameters,
+            type_parameter_domains=(*domains, (controller, domain)),
+        )
+        if on_rewrite is not None:
+            on_rewrite(mapping, result.return_type)
+
+        return result
+
+    cases = map_covered_cases(
+        declaration, mapping, controller, domain, environment
+    ).unwrap()
+    signatures = tuple(
+        _specialized_signature(
+            declaration, controller, case.test, case.output_type, on_rewrite=on_rewrite
+        )
+        for case in cases
+        if not is_predicate(case.test)
+    )
+    fallback = _specialized_signature(
+        declaration, controller, domain, output, on_rewrite=on_rewrite
+    )
+    if on_rewrite is not None:
+        for signature in (*signatures, fallback):
+            on_rewrite(mapping, signature.return_type)
+
+    if len(signatures) <= 1:
+        return fallback
+
+    if signatures[-1] == fallback:
+        signatures = signatures[:-1]
+
+    return OverloadDeclaration(signatures, fallback)
 
 
 def map_specializations(mapping: MapType, controller: str) -> tuple[MapCase, ...]:
@@ -401,7 +568,7 @@ def map_default_output(mapping: MapType, controller: str) -> StubTypeExpression:
                 TypeVariable(controller),
             )
         ),
-        mapping.default,
+        TypeName("Never") if mapping.default is None else mapping.default,
     )
 
 
@@ -419,7 +586,7 @@ def _map_output_for_input(
         if matched:
             return case.output_type
 
-    return mapping.default
+    return TypeName("Never") if mapping.default is None else mapping.default
 
 
 def _predicate_result_for_input(
@@ -551,6 +718,17 @@ def _specialized_signature(
             for item in declaration.type_parameters
             if _type_parameter_name(item) != controller
         ),
+        type_parameter_domains=tuple(
+            (
+                name,
+                _substitute(bound, controller, input_type, on_rewrite=on_rewrite),
+            )
+            for name, bound in declaration.type_parameter_domains
+            if name != controller
+        ),
+        type_parameter_defaults=tuple(
+            name for name in declaration.type_parameter_defaults if name != controller
+        ),
     )
 
 
@@ -635,6 +813,9 @@ def predicate_matches(
 def predicate_is_supported(predicate: Predicate, controller: str) -> bool:
     variable = TypeVariable(controller)
     if isinstance(predicate, EqualPredicate):
+        if predicate.left == variable and predicate.right == variable:
+            return True
+
         return (
             predicate.left == variable
             and not _has_variable(predicate.right, controller)
@@ -894,6 +1075,9 @@ def _structural_map_choices(
                 False,
             )
         )
+
+    if mapping.default is None:
+        return tuple(cases)
 
     return (
         *cases,

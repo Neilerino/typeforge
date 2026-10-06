@@ -68,6 +68,12 @@ def emit_type_expression(
     return _emit_type(expression).alt(EmissionError)
 
 
+def emit_type_parameter(
+    name: str, domain: StubTypeExpression
+) -> Result[str, EmissionError]:
+    return _emit_type_parameter(name, domain).alt(EmissionError)
+
+
 def _emit_declaration(declaration: Declaration) -> Result[str, str]:
     match declaration:
         case FunctionDeclaration():
@@ -96,18 +102,39 @@ def _emit_declaration(declaration: Declaration) -> Result[str, str]:
 
 
 def _emit_function(declaration: FunctionDeclaration) -> Result[str, str]:
-    type_parameters = _emit_type_parameters(declaration.type_parameters)
+    type_parameters = _emit_function_type_parameters(declaration)
     parameters = _emit_parameters(declaration.parameters)
     return_type = _emit_type(declaration.return_type)
     prefix = "async def" if declaration.is_async else "def"
     decorators = "\n".join(f"@{item}" for item in declaration.decorators)
     return Result.do(
         (f"{decorators}\n" if decorators else "")
-        + f"{prefix} {declaration.name}{type_parameters}"
+        + f"{prefix} {declaration.name}{rendered_type_parameters}"
         + f"({rendered_parameters}) -> {rendered_return}: ..."
         for rendered_parameters in parameters
+        for rendered_type_parameters in type_parameters
         for rendered_return in return_type
     )
+
+
+def _emit_function_type_parameters(
+    declaration: FunctionDeclaration,
+) -> Result[str, str]:
+    domains = dict(declaration.type_parameter_domains)
+    parameters = _collect(
+        _emit_type_parameter(parameter, domains.get(parameter))
+        for parameter in declaration.type_parameters
+    )
+    return parameters.map(_emit_type_parameters)
+
+
+def _emit_type_parameter(
+    parameter: str, domain: StubTypeExpression | None
+) -> Result[str, str]:
+    if domain is None:
+        return Success(parameter)
+
+    return _emit_type(domain).map(lambda rendered: f"{parameter}: {rendered}")
 
 
 def _emit_class(declaration: ClassDeclaration) -> Result[str, str]:

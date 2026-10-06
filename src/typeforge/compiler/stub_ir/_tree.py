@@ -127,7 +127,7 @@ def _rewrite_type_children(
                     )
                     for case in cases
                 ),
-                rewrite(default),
+                None if default is None else rewrite(default),
             )
         case (
             TypeName()
@@ -198,7 +198,8 @@ def walk_type(expression: StubTypeExpression) -> Iterator[StubTypeExpression]:
 
                 yield from walk_type(case.output_type)
 
-            yield from walk_type(default)
+            if default is not None:
+                yield from walk_type(default)
         case (
             TypeName()
             | TypeVariable()
@@ -244,11 +245,17 @@ def walk_declaration(declaration: Declaration) -> Iterator[GeneratedElement]:
     """Yield a declaration and its nested declarations and type expressions."""
     yield declaration
     match declaration:
-        case FunctionDeclaration(parameters=parameters, return_type=return_type):
+        case FunctionDeclaration(
+            parameters=parameters,
+            return_type=return_type,
+            type_parameter_domains=domains,
+        ):
             for parameter in parameters:
                 yield from walk_type(parameter.annotation)
 
             yield from walk_type(return_type)
+            for _, domain in domains:
+                yield from walk_type(domain)
         case OverloadDeclaration(signatures=signatures, fallback=fallback):
             for signature in (*signatures, fallback):
                 yield from walk_declaration(signature)

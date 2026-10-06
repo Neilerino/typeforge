@@ -196,9 +196,30 @@ type-function and Schema templates and retain existing finite Each/Collect
 specialization with one capture per structural branch. Broader callable capture
 precision is a later slice.
 
-Callable overloads follow checker subtype matching, so exact selectors cannot
-exclude subtypes such as `bool` from `int`. Callable union selectors and selection
-involving `Any` do not yet have a portable cross-consumer guarantee.
+Without a fallback, callable Maps publish only their covered input domain:
+
+```python
+def convert[T](value: T) -> Map[T, int: str]: ...
+
+# Published interface: def convert(value: int) -> str: ...
+convert(1)          # str
+convert(True)      # str; bool is compatible with int
+convert("text")    # checker error: input is outside the contract
+```
+
+Covered unions retain whole output alternatives. Type parameters remain generic
+when an output or another parameter needs their identity; overlays add the same
+covered bound while retaining the binder used by the function body. Ordinary
+checker handling of `Any` still applies. An explicit `...: Never` is a fallback
+with ordinary non-returning semantics, distinct from omitting the fallback.
+
+Coverage that cannot be expressed soundly produces an authored diagnostic asking
+for a covered bound, explicit specialization, or fallback. This includes exact-only
+class matching, structural TypedDict/Protocol ranges, and currently no-default
+Each/Collect maps. Portable overloads cannot exclude subtypes such as `bool` from
+`int`; overlapping bool/int literal overloads use their complete output union.
+Broader callable output precision and defaulted-map selection remain subsequent
+work.
 See the [callable support limits](CONTEXT.md#callable-support)
 before relying on these forms to reproduce `Schema` selection.
 

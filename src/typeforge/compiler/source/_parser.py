@@ -287,7 +287,7 @@ def _parse_function(
         parameters=_parse_parameters(path, source, node.args, bindings),
         returns=_parse_annotation(path, source, node.returns, bindings),
         type_parameters=tuple(
-            _parse_type_parameter(source, parameter)
+            _parse_type_parameter(path, source, parameter, bindings)
             for parameter in node.type_params
             if isinstance(parameter, ast.TypeVar | ast.TypeVarTuple | ast.ParamSpec)
         ),
@@ -320,7 +320,7 @@ def _parse_type_alias(
         name=node.name.id,
         qualified_name=(*scope, node.name.id),
         type_parameters=tuple(
-            _parse_type_parameter(source, parameter)
+            _parse_type_parameter(path, source, parameter, bindings)
             for parameter in node.type_params
             if isinstance(parameter, ast.TypeVar | ast.TypeVarTuple | ast.ParamSpec)
         ),
@@ -584,7 +584,7 @@ def _parse_type_function(
     _validate_type_function_signature(path, node, scope)
     returned = _type_function_return(path, node)
     parameters = tuple(
-        _parse_type_parameter(source, parameter)
+        _parse_type_parameter(path, source, parameter, bindings)
         for parameter in node.type_params
         if isinstance(parameter, ast.TypeVar)
     )
@@ -747,7 +747,7 @@ def _parse_class(
         name=node.name,
         qualified_name=(node.name,),
         type_parameters=tuple(
-            _parse_type_parameter(source, parameter)
+            _parse_type_parameter(path, source, parameter, bindings)
             for parameter in node.type_params
             if isinstance(parameter, ast.TypeVar | ast.TypeVarTuple | ast.ParamSpec)
         ),
@@ -1056,8 +1056,10 @@ def _parse_parameter(
 
 
 def _parse_type_parameter(
+    path: Path,
     source: str,
     parameter: ast.TypeVar | ast.TypeVarTuple | ast.ParamSpec,
+    bindings: _ImportBindings,
 ) -> TypeParameter:
     if isinstance(parameter, ast.TypeVar):
         kind = TypeParameterKind.TYPE_VAR
@@ -1066,10 +1068,30 @@ def _parse_type_parameter(
     else:
         kind = TypeParameterKind.PARAM_SPEC
 
+    domain: SourceTypeExpression | None = None
+    if isinstance(parameter, ast.TypeVar) and parameter.bound is not None:
+        if isinstance(parameter.bound, ast.Tuple):
+            members = tuple(
+                expression
+                for item in parameter.bound.elts
+                if (expression := _parse_annotation(path, source, item, bindings))
+                is not None
+            )
+            domain = UnionTypeExpression(
+                source=ast.unparse(parameter.bound),
+                span=_span(path, parameter.bound),
+                members=members,
+            )
+        else:
+            domain = _parse_annotation(path, source, parameter.bound, bindings)
+
     return TypeParameter(
         name=parameter.name,
         kind=kind,
         declaration=ast.get_source_segment(source, parameter) or ast.unparse(parameter),
+        domain=domain,
+        span=_span(path, parameter),
+        has_default=parameter.default_value is not None,
     )
 
 

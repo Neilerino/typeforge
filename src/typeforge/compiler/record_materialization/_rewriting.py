@@ -88,7 +88,16 @@ class RecordAliasRewriter:
             for parameter in declaration.parameters
         )
         return_type = self.rewrite_type(declaration.return_type)
-        return replace(declaration, parameters=parameters, return_type=return_type)
+        domains = tuple(
+            (name, self.rewrite_type(domain))
+            for name, domain in declaration.type_parameter_domains
+        )
+        return replace(
+            declaration,
+            parameters=parameters,
+            return_type=return_type,
+            type_parameter_domains=domains,
+        )
 
     def _rewrite_callable(
         self, declaration: FunctionDeclaration | OverloadDeclaration

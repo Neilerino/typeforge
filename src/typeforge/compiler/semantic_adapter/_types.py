@@ -56,6 +56,27 @@ type StaticType = (
 NEVER = NeverType()
 
 
+def named_type_environment(
+    classes: tuple[tuple[str, tuple[str, ...]], ...],
+) -> tuple[tuple[str, NamedType], ...]:
+    parents = dict(classes)
+    types: list[tuple[str, NamedType]] = []
+    for name, bases in parents.items():
+        pending = list(bases)
+        ancestors: list[str] = []
+        while pending:
+            base = pending.pop(0)
+            if base == name or base in ancestors:
+                continue
+
+            ancestors.append(base)
+            pending.extend(parents.get(base, ()))
+
+        types.append((name, NamedType(name, tuple(ancestors))))
+
+    return tuple(types)
+
+
 def union_of(*members: StaticType) -> StaticType:
     flattened: list[StaticType] = []
     for member in members:
