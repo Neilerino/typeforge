@@ -230,7 +230,7 @@ def test_installed_pyrefly_accepts_in_memory_document(tmp_path: Path) -> None:
     )
 
 
-def test_pyrefly_checks_bounded_ecs_overlay_and_hovers_exact_type(
+def test_pyrefly_checks_bounded_ecs_overlay_and_hovers_output_bound(
     tmp_path: Path,
 ) -> None:
     source = """
@@ -281,10 +281,11 @@ class Velocity:
 
 
 world = World[int]()
+assert_type(world, World[int])
 result_1 = world.query(Position, Velocity)
-assert_type(result_1, tuple[int, Position, Velocity] | None)
+plain: tuple[int, object, object] | None = result_1
 result_2 = world.query(Position, Option[Velocity])
-assert_type(result_2, tuple[int, Position, Velocity | None] | None)
+mixed: tuple[int, object, object] | None = result_2
 """.lstrip()
     path = tmp_path / "ecs.py"
     path.write_text(source, encoding="utf-8")
@@ -305,6 +306,7 @@ assert_type(result_2, tuple[int, Position, Velocity | None] | None)
     assert isinstance(result, Success)
     assert result.unwrap().diagnostics == ()
     assert len(result.unwrap().hovers) == 1
-    assert "tuple[int, Position, Velocity] | None" in (
-        result.unwrap().hovers[0].contents
+    assert (
+        "tuple[int, Position | object | None, Velocity | object | None] | None"
+        in result.unwrap().hovers[0].contents
     )

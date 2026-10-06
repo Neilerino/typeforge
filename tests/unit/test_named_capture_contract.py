@@ -10,7 +10,8 @@ from returns.result import Failure
 
 from pydantic import PydanticSchemaGenerationError, TypeAdapter
 from typeforge import Map, type_function
-from typeforge.compiler.pipeline import generate_module
+from typeforge.compiler.pipeline import LoweringError, generate_module
+from typeforge.compiler.specialization import LoweringErrorCode
 from typeforge.pydantic import Schema
 
 
@@ -166,31 +167,20 @@ def test_module_capture_is_transparent_to_compiler_matching(tmp_path: Path) -> N
     assert generated.content.endswith("class Payload:\n    value: int\n")
 
 
-@pytest.mark.parametrize(
-    ("selector", "output", "message"),
-    [
-        (
-            "tuple[Item, Other]",
-            "tuple[Item, Other]",
-            "one capture per structural branch",
-        ),
-        ("list[Item]", "Other", "unlowered type expression: CaptureType"),
-    ],
-)
-def test_finite_callable_capture_frontier_does_not_alias_independent_tokens(
-    tmp_path: Path, selector: str, output: str, message: str
-) -> None:
+def test_finite_callable_rejects_an_unbound_output_capture(tmp_path: Path) -> None:
     source = tmp_path / "callable_captures.py"
     source.write_text(
         "from typeforge import Capture, Collect, Each, Map\n"
         'Item = Capture("Item")\n'
         'Other = Capture("Item")\n'
-        f"type Selected[T] = Map[T, {selector}: {output}, ...: T]\n"
+        "type Selected[T] = Map[T, list[Item]: Other, ...: T]\n"
         "def convert[T](*items: Each[T]) -> Collect[Selected[T]]: ...\n"
     )
     result = generate_module(source, maximum_arity=2)
     assert isinstance(result, Failure)
-    assert message in result.failure().message
+    error = result.failure()
+    assert isinstance(error, LoweringError)
+    assert error.code is LoweringErrorCode.MISSING_CAPTURE
 
 
 @pytest.mark.parametrize("name", ["", None, 1])

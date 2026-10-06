@@ -33,7 +33,7 @@ from typeforge.compiler.pipeline import (
     checker_type_bound,
     compile_source,
     describe_authored_callables,
-    describe_return_type_projections,
+    describe_callable_annotations,
     describe_type_parameter_projections,
 )
 from typeforge.compiler.pipeline import SourceSpan as AuthoredSourceSpan
@@ -494,7 +494,7 @@ def _alias_edits(source: str, plan: CompilationPlan) -> tuple[_Edit, ...]:
 
 def _annotation_edits(source: str, plan: CompilationPlan) -> tuple[_Edit, ...]:
     module = plan.source
-    returns = describe_return_type_projections(plan)
+    projections = describe_callable_annotations(plan)
     roots = {
         id(element): element
         for element in plan.module.reusable_elements
@@ -504,7 +504,7 @@ def _annotation_edits(source: str, plan: CompilationPlan) -> tuple[_Edit, ...]:
         origin.origin for origin in plan.module.origins if id(origin.generated) in roots
     )
     edits: list[_Edit] = []
-    for projection in returns:
+    for projection in projections:
         span = _source_span(source, projection.span)
         emitted = emit_type_expression(projection.expression).unwrap()
         edits.append(_Edit(span.start.offset, span.end.offset, emitted, span))
@@ -514,7 +514,7 @@ def _annotation_edits(source: str, plan: CompilationPlan) -> tuple[_Edit, ...]:
         if any(
             projection.span.start <= origin.origin.start
             and origin.origin.end <= projection.span.end
-            for projection in returns
+            for projection in projections
         ):
             continue
 

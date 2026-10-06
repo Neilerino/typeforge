@@ -230,7 +230,7 @@ def adapt_source_module(
             method
             for method in generated_class.methods
             if isinstance(method, FunctionDeclaration)
-            and isinstance(method.return_type, MapType)
+            and _has_callable_relationship(method)
         )
 
     class_method_spans = {
@@ -275,7 +275,7 @@ def adapt_source_module(
         if has_origin:
             origins.append(GeneratedElementOrigin(function.span, generated_function))
 
-        if isinstance(generated_function.return_type, MapType):
+        if _has_callable_relationship(generated_function):
             reusable_elements.append(generated_function)
 
     # Annotation roots retain their authored span and independent identity so
@@ -792,6 +792,18 @@ def _adapt_function(
             for parameter in function.type_parameters
             if parameter.has_default
         ),
+    )
+
+
+def _has_callable_relationship(declaration: FunctionDeclaration) -> bool:
+    return isinstance(declaration.return_type, MapType) or (
+        any(
+            isinstance(parameter.annotation, EachType)
+            for parameter in declaration.parameters
+        )
+        and any(
+            isinstance(item, MapType) for item in walk_type(declaration.return_type)
+        )
     )
 
 

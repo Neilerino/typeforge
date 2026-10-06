@@ -53,7 +53,7 @@ class TypeParameterProjection:
 
 
 @dataclass(frozen=True, slots=True)
-class ReturnTypeProjection:
+class AnnotationProjection:
     expression: StubTypeExpression
     span: SourceSpan
 
