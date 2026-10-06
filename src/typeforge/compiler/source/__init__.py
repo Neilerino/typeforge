@@ -2,6 +2,7 @@
 
 from typeforge.compiler.source._exports import static_export_names
 from typeforge.compiler.source._expression_operations import (
+    annotation_expressions,
     opaque_enriched_annotations,
     walk_type_expression,
 )
@@ -121,6 +122,7 @@ __all__ = [
     "TypedDictDeclaration",
     "TypedDictField",
     "UnionTypeExpression",
+    "annotation_expressions",
     "bind_map_selector",
     "contains_marker",
     "enriched_functions",

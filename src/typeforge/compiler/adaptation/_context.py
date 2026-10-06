@@ -10,6 +10,8 @@ from typeforge.compiler.source import SourceModule, TypeAliasDeclaration
 class SourceTypeContext:
     aliases: tuple[TypeAliasDeclaration, ...]
     types: SemanticEnvironment
+    record_aliases: frozenset[str] = frozenset()
+    record_types: frozenset[str] = frozenset()
 
 
 def class_type_environment(module: SourceModule) -> SemanticEnvironment:

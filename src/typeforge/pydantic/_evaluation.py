@@ -66,11 +66,13 @@ def evaluation_issue(
 
 def schema_output(
     value: s.EvaluationValue[RuntimeType], source: object
-) -> Result[RuntimeType | s.RecordShape[RuntimeType], SchemaIssue]:
+) -> Result[
+    RuntimeType | s.RecordShape[RuntimeType] | s.RecordUnion[RuntimeType], SchemaIssue
+]:
     if isinstance(value, s.ResolvedType):
         return Success(value.value)
 
-    if isinstance(value, s.RecordShape):
+    if isinstance(value, s.RecordShape | s.RecordUnion):
         return Success(value)
 
     return Failure(

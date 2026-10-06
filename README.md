@@ -510,6 +510,11 @@ existing base-type projection for Annotated fields. Nested Maps distribute over
 known union-valued fields in both compiler materialization and runtime evaluation.
 Ordinary field aliases expand when selection needs their type facts; unchanged
 fields can retain recursive aliases delegated to their consumer.
+`Public[Left | Right]` transforms both TypedDict alternatives and produces a union
+of complete outputs. Each discriminator stays paired with its payload type and
+field layout. Alias operands and composed record templates preserve this behavior;
+the original generic argument remains the whole union inside each transform.
+An unsupported alternative such as `Public[Left | int]` fails the whole application.
 See the [field support limits](CONTEXT.md#field-support).
 
 ### Generic model fields
@@ -617,8 +622,10 @@ An invalid concrete
 record operand fails construction; an invalid unparametrized fallback reports
 `typeforge_unsupported_record` at validation while allowing valid specialization.
 The compiler specializes named record aliases with one type parameter over
-visible TypedDict declarations. Runtime Schema also accepts concrete inline
-records. Record-union operands remain a later slice.
+visible TypedDict declarations and concrete unions of those records. Runtime
+Schema also accepts concrete inline records and record-union operands. Generated
+interfaces use standard unions of complete TypedDict declarations, understood by
+mypy, Pyright, and Pyrefly.
 
 Ordinary model output types delegate to Pydantic. Transforming BaseModel records
 or structurally capturing their generic arguments is outside this integration's

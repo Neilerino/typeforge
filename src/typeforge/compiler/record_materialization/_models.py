@@ -23,6 +23,7 @@ class DerivedRecord:
     alias: str
     input_name: str
     shape: RecordShape[StaticType]
+    source_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,3 +32,4 @@ class RecordMaterialization:
     replacements: tuple[tuple[str, OverloadDeclaration], ...]
     imports: tuple[ModuleImport, ...]
     derived: tuple[DerivedRecord, ...] = ()
+    source_shapes: tuple[RecordShape[StaticType], ...] = ()

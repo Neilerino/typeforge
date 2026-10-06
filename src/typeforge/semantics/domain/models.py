@@ -37,6 +37,14 @@ class RecordShape[T]:
 
 
 @dataclass(frozen=True, slots=True)
+class RecordUnion[T]:
+    """Complete record alternatives whose field correlations stay independent."""
+
+    members: tuple[RecordShape[T], ...]
+    metadata: tuple[T, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class AnnotatedExpression[T]:
     """Backend-owned metadata attached to a type or a synthesized record."""
 
@@ -338,6 +346,7 @@ class MapNoMatch[T]:
 type EvaluationValue[T] = (
     TypeValue[T]
     | RecordShape[T]
+    | RecordUnion[T]
     | RecordField[T]
     | FieldName
     | DroppedField
