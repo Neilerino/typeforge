@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/neilwadden/.codex/visualizations/2026/09/07/01a07d18-ce62-7e82-bf3c-06a7362ad7d9/typeforge-stack/docs/reviews/typeforge-api/13-correlated-record-unions/architecture.json",
+  "output": "/Users/neilwadden/.codex/visualizations/2026/09/07/01a07d18-ce62-7e82-bf3c-06a7362ad7d9/typeforge-stack/docs/reviews/typeforge-api/13-correlated-record-unions/architecture.html",
+  "specification": {
+    "sha256": "06c76cb4297ba3d94d6f117ae6eaceb069fd66e5203351e05e8ace3741eb98a9",
+    "bytes": 7755
+  },
+  "artifact": {
+    "sha256": "a5b493b9b34b284aba0720c126afd72b18cb4afedca8c15e142de5ef3b6b2510",
+    "bytes": 718251
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  },
+  "evidence": {
+    "verified": true,
+    "repository": "https://github.com/Neilerino/typeforge",
+    "revision": "70d9c53550eff5c3521edbb2e12f46c80b48b22e",
+    "references": 15
+  }
+}

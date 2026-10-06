@@ -25,7 +25,7 @@ and test files were unchanged when those artifacts were removed from PR diffs.
 | 10 | Field construction and immutable edits | 09 | [#10](https://github.com/Neilerino/typeforge/pull/10) |
 | 11 | Local generic aliases and composition | 06, 09 | [#11](https://github.com/Neilerino/typeforge/pull/11) |
 | 12 | Union-valued field transforms and Drop | 02, 10, 11 | [#12](https://github.com/Neilerino/typeforge/pull/12) |
-| 13 | Correlated record unions | 02, 10 | Pending |
+| 13 | Correlated record unions | 02, 10 | [#13](https://github.com/Neilerino/typeforge/pull/13) |
 | 14 | Callable input contracts without fallback | 02 | Pending |
 | 15 | Callable output precision | 07, 08, 14 | Pending |
 | 16 | Each and Collect bounds and precision | 15 | Pending |

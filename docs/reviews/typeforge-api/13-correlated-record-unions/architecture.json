@@ -1,0 +1,329 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Slice 13 · Correlated record unions · C4 code",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Neilerino/typeforge",
+      "revision": "70d9c53550eff5c3521edbb2e12f46c80b48b22e"
+    },
+    "viewBox": [
+      1395,
+      660
+    ]
+  },
+  "components": [
+    {
+      "id": "public-union-call",
+      "type": "frontend",
+      "label": "Public[Left | Right]",
+      "sublabel": "Authored Record / Fields",
+      "tag": "USER OUTCOME",
+      "pos": [
+        30,
+        285
+      ],
+      "size": [
+        220,
+        100
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_record_union_contract.py",
+          "line": 33,
+          "label": "Complete-alternative contract"
+        }
+      ]
+    },
+    {
+      "id": "alias-expression-entry",
+      "type": "backend",
+      "label": "Existing frontends",
+      "sublabel": "Parse and bind templates",
+      "tag": "EXISTING",
+      "pos": [
+        355,
+        285
+      ],
+      "size": [
+        240,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/adaptation/_schema_aliases.py",
+          "line": 34,
+          "label": "expand_schema_aliases"
+        },
+        {
+          "path": "src/typeforge/pydantic/_frontend.py",
+          "label": "Runtime annotation adaptation"
+        }
+      ]
+    },
+    {
+      "id": "single-family-facts",
+      "type": "backend",
+      "label": "TypedDict adapters",
+      "sublabel": "Reflect one record family",
+      "tag": "EXISTING",
+      "pos": [
+        355,
+        60
+      ],
+      "size": [
+        240,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_records.py",
+          "line": 44,
+          "label": "record_shape"
+        },
+        {
+          "path": "src/typeforge/compiler/record_materialization/_materialization.py",
+          "label": "build_record_shapes"
+        }
+      ]
+    },
+    {
+      "id": "memberwise-record-eval",
+      "type": "backend",
+      "label": "Evaluator._record",
+      "sublabel": "Transform each whole shape",
+      "tag": "CHANGED",
+      "pos": [
+        720,
+        285
+      ],
+      "size": [
+        260,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 264,
+          "label": "_record / _record_operands"
+        },
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 287,
+          "label": "_transform_record"
+        }
+      ]
+    },
+    {
+      "id": "complete-record-alternatives",
+      "type": "backend",
+      "label": "RecordUnion",
+      "sublabel": "Complete alternatives as data",
+      "tag": "NEW",
+      "pos": [
+        720,
+        60
+      ],
+      "size": [
+        260,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/domain/models.py",
+          "line": 40,
+          "label": "RecordUnion"
+        }
+      ]
+    },
+    {
+      "id": "pydantic-union-output",
+      "type": "backend",
+      "label": "_RecordUnionAnnotation",
+      "sublabel": "Native union schema emission",
+      "tag": "CHANGED",
+      "pos": [
+        1100,
+        285
+      ],
+      "size": [
+        270,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_emission.py",
+          "line": 58,
+          "label": "_RecordUnionAnnotation"
+        },
+        {
+          "path": "src/typeforge/pydantic/_evaluation.py",
+          "label": "schema_output"
+        }
+      ]
+    },
+    {
+      "id": "whole-argument-record-apps",
+      "type": "backend",
+      "label": "Record applications",
+      "sublabel": "Evaluate the original whole T",
+      "tag": "NEW",
+      "pos": [
+        720,
+        510
+      ],
+      "size": [
+        260,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/adaptation/_record_applications.py",
+          "line": 43,
+          "label": "materialize_record_applications"
+        },
+        {
+          "path": "src/typeforge/compiler/record_materialization/_materialization.py",
+          "line": 280,
+          "label": "evaluate_record_application"
+        }
+      ]
+    },
+    {
+      "id": "standard-typing-rewrite",
+      "type": "backend",
+      "label": "RecordAliasRewriter",
+      "sublabel": "Union of generated TypedDicts",
+      "tag": "CHANGED",
+      "pos": [
+        1100,
+        510
+      ],
+      "size": [
+        270,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/record_materialization/_rewriting.py",
+          "label": "RecordAliasRewriter"
+        },
+        {
+          "path": "tests/unit/test_record_union_contract.py",
+          "line": 218,
+          "label": "Three native checker consumers"
+        }
+      ]
+    },
+    {
+      "id": "future-record-publication",
+      "type": "external",
+      "label": "Slice 18: publication",
+      "sublabel": "Cross-module integration",
+      "tag": "FUTURE",
+      "pos": [
+        355,
+        510
+      ],
+      "size": [
+        240,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/pipeline/_generation.py",
+          "label": "Publication integration seam"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "author-template-entry",
+      "from": "public-union-call",
+      "to": "alias-expression-entry",
+      "label": "template",
+      "variant": "emphasis"
+    },
+    {
+      "id": "frontend-shared-lowering",
+      "from": "alias-expression-entry",
+      "to": "memberwise-record-eval",
+      "label": "lower",
+      "variant": "emphasis"
+    },
+    {
+      "id": "typed-record-facts",
+      "from": "single-family-facts",
+      "to": "memberwise-record-eval",
+      "label": "record facts"
+    },
+    {
+      "id": "preserve-member-shapes",
+      "from": "memberwise-record-eval",
+      "to": "complete-record-alternatives",
+      "label": "retain shapes"
+    },
+    {
+      "id": "emit-native-record-union",
+      "from": "memberwise-record-eval",
+      "to": "pydantic-union-output",
+      "label": "union schema",
+      "variant": "emphasis"
+    },
+    {
+      "id": "compiler-source-application",
+      "from": "alias-expression-entry",
+      "to": "whole-argument-record-apps",
+      "label": "concrete call"
+    },
+    {
+      "id": "compiler-shared-evaluation",
+      "from": "whole-argument-record-apps",
+      "to": "memberwise-record-eval",
+      "label": "evaluate"
+    },
+    {
+      "id": "publish-complete-union",
+      "from": "whole-argument-record-apps",
+      "to": "standard-typing-rewrite",
+      "label": "complete outputs"
+    },
+    {
+      "id": "future-reuses-record-results",
+      "from": "whole-argument-record-apps",
+      "to": "future-record-publication",
+      "label": "later integration",
+      "labelDy": 26,
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "User outcome",
+      "items": [
+        "Each tag keeps its payload and field layout.",
+        "Crossed alternatives fail native validation and checking."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Review the new rule",
+      "items": [
+        "Original T and captures stay intact for every member.",
+        "Any unsupported member fails the whole application."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Existing owners and next slice",
+      "items": [
+        "Native Pydantic unions and standard checker types consume results.",
+        "Slice 18 extends publication; callable precision stays separate."
+      ]
+    }
+  ]
+}

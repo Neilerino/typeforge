@@ -1,0 +1,29 @@
+{
+  "diagram_type": "architecture",
+  "artifact": {
+    "sha256": "a5b493b9b34b284aba0720c126afd72b18cb4afedca8c15e142de5ef3b6b2510",
+    "bytes": 718251
+  },
+  "specification": {
+    "sha256": "06c76cb4297ba3d94d6f117ae6eaceb069fd66e5203351e05e8ace3741eb98a9",
+    "bytes": 7755
+  },
+  "validation": "9/9 showcase, 0 errors, 0 warnings",
+  "browser_evidence": "passed",
+  "visual_review": "passed",
+  "correction_rounds": 0,
+  "evidence_kind": "image-capable-review",
+  "inspected_images": [
+    "architecture.visual-check.1440x900.light.png",
+    "architecture.visual-check.1440x900.dark.png",
+    "architecture.visual-check.2048x1320.light.png",
+    "architecture.visual-check.2048x1320.dark.png"
+  ],
+  "observations": [
+    "Both themes show readable node labels and source badges without clipping.",
+    "Main template-to-evaluator-to-runtime path is clear; compiler and future publication branches remain distinct.",
+    "Relationship labels leave visible route clearance; no opaque nodes mask unrelated edges.",
+    "Diagram and conclusion cards form a balanced first screen at the largest viewport."
+  ],
+  "automated_receipt": "architecture.visual-check.json"
+}
