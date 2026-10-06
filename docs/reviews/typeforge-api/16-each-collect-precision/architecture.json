@@ -1,0 +1,422 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Slice 16 \u00b7 Each / Collect contracts and portable precision",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1390,
+      630
+    ],
+    "repository": {
+      "url": "https://github.com/Neilerino/typeforge",
+      "revision": "97e81522b5e8c416a4522ce244d209a18f6282f4"
+    }
+  },
+  "components": [
+    {
+      "id": "each-author",
+      "type": "external",
+      "label": "Each / Collect authoring",
+      "sublabel": "Independent argument transformations",
+      "tag": "User outcome",
+      "pos": [
+        45,
+        70
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_each_collect_contract.py",
+          "line": 20,
+          "label": "Closed and beyond-frontier calls"
+        }
+      ]
+    },
+    {
+      "id": "each-positions",
+      "type": "backend",
+      "label": "_expand_signatures",
+      "sublabel": "Fresh native parameters per position",
+      "tag": "Changed owner",
+      "pos": [
+        390,
+        70
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/specialization/_lowering.py",
+          "line": 1203,
+          "label": "Finite combinations"
+        },
+        {
+          "path": "src/typeforge/compiler/specialization/_lowering.py",
+          "line": 1547,
+          "label": "Preserve constraints"
+        }
+      ]
+    },
+    {
+      "id": "each-scalar",
+      "type": "backend",
+      "label": "_each_map_projection",
+      "sublabel": "Reuse scalar coverage and outputs",
+      "tag": "Existing rules reused",
+      "pos": [
+        735,
+        70
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/specialization/_lowering.py",
+          "line": 1446,
+          "label": "Scalar callable seam"
+        },
+        {
+          "path": "src/typeforge/compiler/specialization/_bounds.py",
+          "line": 20,
+          "label": "Portable output bounds"
+        }
+      ]
+    },
+    {
+      "id": "each-interface",
+      "type": "backend",
+      "label": "OverloadDeclaration",
+      "sublabel": "Fixed tuples plus variadic aggregate",
+      "tag": "Standard Python typing",
+      "pos": [
+        1080,
+        70
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/stub_ir/_model.py",
+          "line": 174,
+          "label": "Native interface data"
+        },
+        {
+          "path": "src/typeforge/compiler/specialization/_lowering.py",
+          "line": 356,
+          "label": "Covered variadic fallback"
+        }
+      ]
+    },
+    {
+      "id": "each-retention",
+      "type": "backend",
+      "label": "Retained callable contract",
+      "sublabel": "Keep mapped Each roots and origins",
+      "tag": "Changed adaptation",
+      "pos": [
+        45,
+        280
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/adaptation/_source_to_ir.py",
+          "line": 798,
+          "label": "Selective contract retention"
+        }
+      ]
+    },
+    {
+      "id": "each-annotation",
+      "type": "backend",
+      "label": "AnnotationProjection",
+      "sublabel": "Native input/output with authored spans",
+      "tag": "Changed pipeline seam",
+      "pos": [
+        390,
+        280
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/pipeline/_models.py",
+          "line": 56,
+          "label": "Projection facts"
+        },
+        {
+          "path": "src/typeforge/compiler/pipeline/_callables.py",
+          "line": 105,
+          "label": "Describe callable annotations"
+        }
+      ]
+    },
+    {
+      "id": "each-overlay",
+      "type": "frontend",
+      "label": "_annotation_edits",
+      "sublabel": "Check bodies with ordinary annotations",
+      "tag": "Changed overlay consumer",
+      "pos": [
+        735,
+        280
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/overlay/transform.py",
+          "line": 495,
+          "label": "Project authored annotation spans"
+        }
+      ]
+    },
+    {
+      "id": "each-checkers",
+      "type": "external",
+      "label": "mypy / Pyright / Pyrefly",
+      "sublabel": "Enforce domains and output bounds",
+      "tag": "No Python inference engine",
+      "pos": [
+        1080,
+        280
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_each_collect_contract.py",
+          "line": 182,
+          "label": "Native body checks"
+        },
+        {
+          "path": "tests/unit/test_each_collect_contract.py",
+          "line": 264,
+          "label": "Reject false generic identity"
+        }
+      ]
+    },
+    {
+      "id": "each-runtime",
+      "type": "backend",
+      "label": "Runtime Schema selection",
+      "sublabel": "Shared Map rules remain unchanged",
+      "tag": "Existing runtime boundary",
+      "pos": [
+        45,
+        490
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_each_collect_contract.py",
+          "line": 325,
+          "label": "Position selection and no-match"
+        }
+      ]
+    },
+    {
+      "id": "each-evidence",
+      "type": "security",
+      "label": "36 public contract cases",
+      "sublabel": "Captures, alternatives, bounds, failures",
+      "tag": "Verified slice 16",
+      "pos": [
+        390,
+        490
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_each_collect_contract.py",
+          "line": 115,
+          "label": "Independent capture identities"
+        },
+        {
+          "path": "tests/unit/test_each_collect_contract.py",
+          "line": 293,
+          "label": "Complete per-position alternatives"
+        }
+      ]
+    },
+    {
+      "id": "each-future-guards",
+      "type": "backend",
+      "label": "Next: guard verification",
+      "sublabel": "Original subjects versus narrowed values",
+      "tag": "Slice 17 \u2014 future",
+      "pos": [
+        735,
+        490
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/verification/planner.py",
+          "line": 1,
+          "label": "Existing flow-analysis owner"
+        }
+      ]
+    },
+    {
+      "id": "each-future-integration",
+      "type": "backend",
+      "label": "Next: module integration",
+      "sublabel": "Publication, editors, runtime rebuilds",
+      "tag": "Slice 18 \u2014 future",
+      "pos": [
+        1080,
+        490
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/pipeline/_generation.py",
+          "line": 1,
+          "label": "Existing publication owner"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "author-positions",
+      "from": "each-author",
+      "to": "each-positions",
+      "label": "positions",
+      "variant": "emphasis"
+    },
+    {
+      "id": "positions-scalar",
+      "from": "each-positions",
+      "to": "each-scalar",
+      "label": "reuse",
+      "variant": "emphasis"
+    },
+    {
+      "id": "scalar-interface",
+      "from": "each-scalar",
+      "to": "each-interface",
+      "label": "emit",
+      "variant": "emphasis"
+    },
+    {
+      "id": "author-retention",
+      "from": "each-author",
+      "to": "each-retention",
+      "label": "retain",
+      "variant": "default",
+      "labelDy": 24
+    },
+    {
+      "id": "retention-annotation",
+      "from": "each-retention",
+      "to": "each-annotation",
+      "label": "spans",
+      "variant": "default"
+    },
+    {
+      "id": "annotation-overlay",
+      "from": "each-annotation",
+      "to": "each-overlay",
+      "label": "project",
+      "variant": "default"
+    },
+    {
+      "id": "overlay-checkers",
+      "from": "each-overlay",
+      "to": "each-checkers",
+      "label": "body checks",
+      "variant": "default"
+    },
+    {
+      "id": "interface-checkers",
+      "from": "each-interface",
+      "to": "each-checkers",
+      "label": "stubs",
+      "variant": "default",
+      "labelDy": 24
+    },
+    {
+      "id": "runtime-evidence",
+      "from": "each-runtime",
+      "to": "each-evidence",
+      "label": "Schema",
+      "variant": "default"
+    },
+    {
+      "id": "overlay-guards",
+      "from": "each-overlay",
+      "to": "each-future-guards",
+      "label": "extend",
+      "variant": "dashed",
+      "labelDy": 24
+    },
+    {
+      "id": "checkers-integration",
+      "from": "each-checkers",
+      "to": "each-future-integration",
+      "label": "integrate",
+      "variant": "dashed",
+      "labelDy": 24
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "User result",
+      "items": [
+        "Closed mappings retain fixed per-position tuples.",
+        "Beyond the frontier: a homogeneous union of possible outputs."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Sound native contracts",
+      "items": [
+        "No-default input coverage applies at every arity.",
+        "Generic fallbacks retain transforms; TypeVarTuple identity stays precise."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Review focus",
+      "items": [
+        "Independent captures and complete alternatives remain local to each position.",
+        "All six repository gates and 36 focused contracts pass."
+      ]
+    }
+  ]
+}

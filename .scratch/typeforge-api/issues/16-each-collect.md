@@ -4,11 +4,13 @@
 
 **Blocked by:** 15 — Callable output precision.
 
-**Status:** ready-for-agent
+**Status:** complete — [draft PR #16](https://github.com/Neilerino/typeforge/pull/16)
 
 **Derisking required:** Verify union selection, correlation, identity, and failure behavior across the relevant compiler, runtime, and checker paths during this slice.
 
-- [ ] Retain finite arity as an explicit frontier rather than claiming open-ended precision.
-- [ ] Use the agreed conservative union fallback when concrete inputs cannot be inferred.
-- [ ] Preserve input contracts, generic identities, and deterministic interfaces.
-- [ ] Verify supported and beyond-frontier calls with all three checkers.
+- [x] Retain finite arity as an explicit frontier rather than claiming open-ended precision.
+- [x] Use the agreed conservative union fallback when concrete inputs cannot be inferred.
+- [x] Preserve input contracts, generic identities, and deterministic interfaces.
+- [x] Verify supported and beyond-frontier calls with all three checkers.
+
+Evidence: all six repository gates pass. The 36 normal Each/Collect contracts cover all three checkers, runtime no-match behavior, independent captures, complete alternatives, native constraints, and body checking. Editor/proxy regressions expose the conservative generic output bound.
