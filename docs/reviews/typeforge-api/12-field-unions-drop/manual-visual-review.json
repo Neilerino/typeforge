@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "image-capable-review",
+  "artifact": {
+    "sha256": "cadb9e289193174892a295b430488c41affeab6e85f83249c0a833094520058d",
+    "bytes": 721093
+  },
+  "visualReview": "passed",
+  "correctionRounds": 1,
+  "inspectedScreenshots": [
+    "architecture.visual-check.1440x900.light.png",
+    "architecture.visual-check.1440x900.dark.png",
+    "architecture.visual-check.2048x1320.light.png",
+    "architecture.visual-check.2048x1320.dark.png"
+  ],
+  "observations": [
+    "All nine code nodes, source badges, relationships, legend, and three review cards fit both endpoint sizes.",
+    "Light and dark themes preserve readable code labels and clear relationship directions.",
+    "The large desktop composition expands across the screen with balanced diagram and review-card space.",
+    "The laptop view keeps all content visible without clipping, scrolling, or reduced node typography."
+  ],
+  "automatedBrowserEvidence": "passed",
+  "automatedVisualReviewField": "pending; unchanged"
+}

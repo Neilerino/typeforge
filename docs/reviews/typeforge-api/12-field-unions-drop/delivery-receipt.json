@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/neilwadden/.codex/visualizations/2026/09/07/01a07d18-ce62-7e82-bf3c-06a7362ad7d9/typeforge-stack/docs/reviews/typeforge-api/12-field-unions-drop/architecture.json",
+  "output": "/Users/neilwadden/.codex/visualizations/2026/09/07/01a07d18-ce62-7e82-bf3c-06a7362ad7d9/typeforge-stack/docs/reviews/typeforge-api/12-field-unions-drop/architecture.html",
+  "specification": {
+    "sha256": "08ee01d8edf347f92470d9194f2a10301494c26fce619791decde805e95c2ecf",
+    "bytes": 8258
+  },
+  "artifact": {
+    "sha256": "cadb9e289193174892a295b430488c41affeab6e85f83249c0a833094520058d",
+    "bytes": 721093
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  },
+  "evidence": {
+    "verified": true,
+    "repository": "https://github.com/Neilerino/typeforge",
+    "revision": "bfeb5ed84bf7e4be996f1093c4f0b26eaaebe468",
+    "references": 13
+  }
+}

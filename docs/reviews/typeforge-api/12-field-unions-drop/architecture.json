@@ -1,0 +1,345 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "12 / Field union transforms",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Neilerino/typeforge",
+      "revision": "bfeb5ed84bf7e4be996f1093c4f0b26eaaebe468"
+    },
+    "viewBox": [
+      1395,
+      650
+    ]
+  },
+  "components": [
+    {
+      "id": "published-native-fields",
+      "type": "frontend",
+      "label": "_published_source_scope",
+      "sublabel": "Keep native field structure",
+      "tag": "Changed \u00b7 compiler",
+      "pos": [
+        60,
+        50
+      ],
+      "size": [
+        230,
+        126
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/pipeline/_generation.py",
+          "line": 57,
+          "label": "Publication scope"
+        }
+      ]
+    },
+    {
+      "id": "record-source-facts",
+      "type": "backend",
+      "label": "materialize_records",
+      "sublabel": "Aliases and class ancestry",
+      "tag": "Changed \u00b7 compiler",
+      "pos": [
+        420,
+        50
+      ],
+      "size": [
+        230,
+        126
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/adaptation/_records.py",
+          "line": 39,
+          "label": "Record adaptation"
+        },
+        {
+          "path": "src/typeforge/compiler/adaptation/_context.py",
+          "line": 15,
+          "label": "Existing class facts"
+        }
+      ]
+    },
+    {
+      "id": "lowered-field-shapes",
+      "type": "backend",
+      "label": "build_record_shapes",
+      "sublabel": "Lower known field unions",
+      "tag": "Changed \u00b7 compiler",
+      "pos": [
+        780,
+        50
+      ],
+      "size": [
+        230,
+        126
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/record_materialization/_materialization.py",
+          "line": 181,
+          "label": "Field type lowering"
+        }
+      ]
+    },
+    {
+      "id": "standard-record-stubs",
+      "type": "frontend",
+      "label": "typed_dict_declaration",
+      "sublabel": "Standard checker interface",
+      "tag": "Existing output owner",
+      "pos": [
+        1140,
+        50
+      ],
+      "size": [
+        230,
+        126
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/record_materialization/_materialization.py",
+          "line": 148,
+          "label": "TypedDict emission"
+        }
+      ]
+    },
+    {
+      "id": "configured-schema-evaluation",
+      "type": "frontend",
+      "label": "_evaluate_annotation",
+      "sublabel": "Use the configured adapter",
+      "tag": "Changed \u00b7 runtime wiring",
+      "pos": [
+        60,
+        260
+      ],
+      "size": [
+        230,
+        126
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_compile.py",
+          "line": 49,
+          "label": "Schema orchestration"
+        }
+      ]
+    },
+    {
+      "id": "runtime-field-facts",
+      "type": "backend",
+      "label": "RuntimeTypeSystem",
+      "sublabel": "Reflect fields; expose members",
+      "tag": "Changed + family owner",
+      "pos": [
+        420,
+        260
+      ],
+      "size": [
+        230,
+        126
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_type_system.py",
+          "line": 219,
+          "label": "Union member facts"
+        },
+        {
+          "path": "src/typeforge/pydantic/_records.py",
+          "line": 44,
+          "label": "TypedDict reflection"
+        }
+      ]
+    },
+    {
+      "id": "shared-field-replacement",
+      "type": "backend",
+      "label": "Evaluator field edits",
+      "sublabel": "Concrete Drop removes the field",
+      "tag": "Changed \u00b7 shared semantics",
+      "pos": [
+        780,
+        260
+      ],
+      "size": [
+        230,
+        126
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 363,
+          "label": "Replacement scope"
+        },
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 491,
+          "label": "Combine complete outputs"
+        },
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "line": 566,
+          "label": "Speculative layout guard"
+        }
+      ]
+    },
+    {
+      "id": "pydantic-record-output",
+      "type": "frontend",
+      "label": "emit_output",
+      "sublabel": "Pydantic validates the result",
+      "tag": "Existing output owner",
+      "pos": [
+        1140,
+        260
+      ],
+      "size": [
+        230,
+        126
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_emission.py",
+          "line": 21,
+          "label": "Runtime schema emission"
+        }
+      ]
+    },
+    {
+      "id": "reflected-alias-resolution",
+      "type": "backend",
+      "label": "selection_runtime_type",
+      "sublabel": "Reuse alias binding and cycles",
+      "tag": "Changed \u00b7 runtime frontend",
+      "pos": [
+        420,
+        435
+      ],
+      "size": [
+        230,
+        126
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_frontend.py",
+          "line": 208,
+          "label": "Selection facts resolver"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Compiler \u00b7 parsed source, no application execution",
+      "wraps": [
+        "published-native-fields",
+        "record-source-facts",
+        "lowered-field-shapes",
+        "standard-record-stubs"
+      ],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "Runtime integration \u00b7 backend facts and original annotations",
+      "wraps": [
+        "configured-schema-evaluation",
+        "runtime-field-facts",
+        "reflected-alias-resolution"
+      ],
+      "pad": 22
+    }
+  ],
+  "connections": [
+    {
+      "id": "publish-record-adaptation",
+      "from": "published-native-fields",
+      "to": "record-source-facts",
+      "label": "parsed fields",
+      "variant": "emphasis"
+    },
+    {
+      "id": "adapt-field-shapes",
+      "from": "record-source-facts",
+      "to": "lowered-field-shapes",
+      "label": "type facts",
+      "variant": "emphasis"
+    },
+    {
+      "id": "compiler-shape-evaluation",
+      "from": "lowered-field-shapes",
+      "to": "shared-field-replacement",
+      "label": "RecordShape",
+      "variant": "emphasis",
+      "labelDy": 24
+    },
+    {
+      "id": "runtime-adapter-wiring",
+      "from": "configured-schema-evaluation",
+      "to": "runtime-field-facts",
+      "label": "configured TypeSystem",
+      "variant": "emphasis"
+    },
+    {
+      "id": "runtime-union-evaluation",
+      "from": "runtime-field-facts",
+      "to": "shared-field-replacement",
+      "label": "member facts",
+      "variant": "emphasis"
+    },
+    {
+      "id": "reflected-alias-query",
+      "from": "runtime-field-facts",
+      "to": "reflected-alias-resolution",
+      "label": "resolve aliases",
+      "labelDy": 24
+    },
+    {
+      "id": "publish-transformed-shape",
+      "from": "shared-field-replacement",
+      "to": "standard-record-stubs",
+      "label": "transformed shape"
+    },
+    {
+      "id": "emit-transformed-record",
+      "from": "shared-field-replacement",
+      "to": "pydantic-record-output",
+      "label": "transformed shape",
+      "variant": "emphasis",
+      "labelDy": 24
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "User outcome",
+      "items": [
+        "int | str \u2192 bare int: Drop removes the whole field; Is[int] keeps it.",
+        "int: bytes, str: float produces bytes | float in both consumers."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Review the guarantees",
+      "items": [
+        "Evaluate every member and capture output; Drop cannot hide failures.",
+        "Flags survive; runtime metadata stays native. Speculative Drop is an error."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Next on the stack",
+      "items": [
+        "13: retain complete RecordShape alternatives for correlated record unions.",
+        "18: preserve these field facts across module publication and integration."
+      ]
+    }
+  ]
+}
