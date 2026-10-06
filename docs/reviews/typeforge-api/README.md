@@ -30,7 +30,7 @@ and test files were unchanged when those artifacts were removed from PR diffs.
 | 15 | Callable output precision | 07, 08, 14 | [#15](https://github.com/Neilerino/typeforge/pull/15) |
 | 16 | Each and Collect bounds and precision | 15 | [#16](https://github.com/Neilerino/typeforge/pull/16) |
 | 17 | Guard verification with original subjects | 02 | [#17](https://github.com/Neilerino/typeforge/pull/17) |
-| 18 | Cross-module publication and integration | 03, 11, 12, 13, 15 | Pending |
+| 18 | Cross-module publication and integration | 03, 11, 12, 13, 15 | [#18](https://github.com/Neilerino/typeforge/pull/18) |
 
 Every slice includes its relevant production behavior, tests, diagnostics, and
 public documentation. Every PR carries a C4 code diagram with pinned source
@@ -38,3 +38,5 @@ links explaining the current change, its existing owners, and future extensions.
 
 Union slices require explicit derisking; removing compatibility work does not
 remove those semantic or integration checks.
+
+All 18 implementation drafts are published and attached. The final repository checks pass; each PR retains its individual source-pinned diagram and review evidence. Imported conditional aliases expose their portable published bounds; runtime imports retain symbolic templates.

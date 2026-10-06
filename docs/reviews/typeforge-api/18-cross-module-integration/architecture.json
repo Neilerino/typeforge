@@ -1,0 +1,403 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Slice 18 \u00b7 Reusable public APIs across modules",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1390,
+      690
+    ],
+    "repository": {
+      "url": "https://github.com/Neilerino/typeforge",
+      "revision": "522e2936b3e530c808b8cc48b38be760f67138d9"
+    }
+  },
+  "components": [
+    {
+      "id": "public-author",
+      "type": "external",
+      "label": "Public library annotations",
+      "sublabel": "Concrete variables and reusable APIs",
+      "tag": "User outcome",
+      "pos": [
+        50,
+        80
+      ],
+      "size": [
+        242,
+        108
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_public_api_integration_contract.py",
+          "line": 69,
+          "label": "Concrete module results"
+        }
+      ]
+    },
+    {
+      "id": "public-source",
+      "type": "backend",
+      "label": "ModuleVariable",
+      "sublabel": "Name, annotation, authored span",
+      "tag": "Changed source facts",
+      "pos": [
+        400,
+        80
+      ],
+      "size": [
+        242,
+        108
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/source/_model.py",
+          "line": 274,
+          "label": "Owned variable data"
+        },
+        {
+          "path": "src/typeforge/compiler/source/_parser.py",
+          "line": 130,
+          "label": "Public versus local annotation facts"
+        }
+      ]
+    },
+    {
+      "id": "public-adapt",
+      "type": "backend",
+      "label": "adapt_source_module",
+      "sublabel": "Reuse alias and type-function owners",
+      "tag": "Changed adaptation seam",
+      "pos": [
+        750,
+        80
+      ],
+      "size": [
+        242,
+        108
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/adaptation/_source_to_ir.py",
+          "line": 207,
+          "label": "Adapt variables and retain roots"
+        },
+        {
+          "path": "src/typeforge/compiler/adaptation/_source_to_ir.py",
+          "line": 1323,
+          "label": "Suppress nested boundary duplicates"
+        }
+      ]
+    },
+    {
+      "id": "public-records",
+      "type": "backend",
+      "label": "Record applications",
+      "sublabel": "Whole union succeeds or fails together",
+      "tag": "Existing owner reused",
+      "pos": [
+        1100,
+        80
+      ],
+      "size": [
+        242,
+        108
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/adaptation/_record_applications.py",
+          "line": 43,
+          "label": "Evaluate complete original operands"
+        },
+        {
+          "path": "src/typeforge/compiler/source/_expression_operations.py",
+          "line": 22,
+          "label": "Visit module variable annotations"
+        }
+      ]
+    },
+    {
+      "id": "public-editor",
+      "type": "frontend",
+      "label": "Editor projection",
+      "sublabel": "Hover and diagnostics at authored spans",
+      "tag": "Existing overlay and LSP consumer",
+      "pos": [
+        50,
+        300
+      ],
+      "size": [
+        242,
+        108
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/overlay/transform.py",
+          "line": 495,
+          "label": "Project complete annotation roots"
+        },
+        {
+          "path": "tests/unit/test_public_api_integration_contract.py",
+          "line": 232,
+          "label": "Cross-module hover and diagnostics"
+        }
+      ]
+    },
+    {
+      "id": "public-native",
+      "type": "external",
+      "label": "mypy / Pyright / Pyrefly",
+      "sublabel": "Check native aliases and complete outputs",
+      "tag": "Ordinary expression checking",
+      "pos": [
+        400,
+        300
+      ],
+      "size": [
+        242,
+        108
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_public_api_integration_contract.py",
+          "line": 83,
+          "label": "Three accepted and rejected consumers"
+        }
+      ]
+    },
+    {
+      "id": "public-barrel",
+      "type": "backend",
+      "label": "Barrel re-exports",
+      "sublabel": "Compose imported native generic aliases",
+      "tag": "Existing public import policy",
+      "pos": [
+        750,
+        300
+      ],
+      "size": [
+        242,
+        108
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/module_surface/_inspection.py",
+          "line": 185,
+          "label": "Retain exports and import spelling"
+        },
+        {
+          "path": "tests/unit/test_public_api_integration_contract.py",
+          "line": 89,
+          "label": "Forwarded type function in another module"
+        }
+      ]
+    },
+    {
+      "id": "public-publish",
+      "type": "backend",
+      "label": "generate_module",
+      "sublabel": "Merge adapted variables into the surface",
+      "tag": "Changed publication owner",
+      "pos": [
+        1100,
+        300
+      ],
+      "size": [
+        242,
+        108
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/pipeline/_generation.py",
+          "line": 95,
+          "label": "Native bounds and complete interface"
+        },
+        {
+          "path": "src/typeforge/compiler/pipeline/_generation.py",
+          "line": 59,
+          "label": "Exclude local body annotation roots"
+        }
+      ]
+    },
+    {
+      "id": "public-contracts",
+      "type": "security",
+      "label": "Eight integration contracts",
+      "sublabel": "Native stubs, rebuilds, atomic failures",
+      "tag": "Final slice evidence",
+      "pos": [
+        50,
+        520
+      ],
+      "size": [
+        242,
+        108
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_public_api_integration_contract.py",
+          "line": 289,
+          "label": "Unsupported alternative owns its failure"
+        }
+      ]
+    },
+    {
+      "id": "public-template",
+      "type": "backend",
+      "label": "type_function",
+      "sublabel": "Construct imported symbolic types once",
+      "tag": "Existing runtime template owner",
+      "pos": [
+        400,
+        520
+      ],
+      "size": [
+        242,
+        108
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/_type_function.py",
+          "line": 39,
+          "label": "Source-free construction and identity"
+        }
+      ]
+    },
+    {
+      "id": "public-runtime",
+      "type": "backend",
+      "label": "Schema and model_rebuild",
+      "sublabel": "Independent concrete runtime selections",
+      "tag": "Existing runtime integration",
+      "pos": [
+        750,
+        520
+      ],
+      "size": [
+        242,
+        108
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/pydantic/_compile.py",
+          "line": 24,
+          "label": "Shared semantic compilation"
+        },
+        {
+          "path": "tests/unit/test_public_api_integration_contract.py",
+          "line": 152,
+          "label": "Independent specializations without replay"
+        }
+      ]
+    },
+    {
+      "id": "public-future",
+      "type": "backend",
+      "label": "Future: Protocol output",
+      "sublabel": "Keep record families as explicit adapters",
+      "tag": "Outside these 18 slices",
+      "pos": [
+        1100,
+        520
+      ],
+      "size": [
+        242,
+        108
+      ],
+      "sources": [
+        {
+          "path": "DESIGN.md",
+          "line": 495,
+          "label": "Explicit family boundaries"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "public-read",
+      "from": "public-author",
+      "to": "public-source",
+      "label": "parse",
+      "variant": "emphasis"
+    },
+    {
+      "id": "public-project",
+      "from": "public-source",
+      "to": "public-adapt",
+      "label": "adapt",
+      "variant": "emphasis"
+    },
+    {
+      "id": "public-materialize",
+      "from": "public-adapt",
+      "to": "public-records",
+      "label": "resolve",
+      "variant": "emphasis"
+    },
+    {
+      "id": "public-emit",
+      "from": "public-records",
+      "to": "public-publish",
+      "label": "emit",
+      "variant": "emphasis",
+      "labelDy": 24
+    },
+    {
+      "id": "public-import",
+      "from": "public-publish",
+      "to": "public-barrel",
+      "label": "import",
+      "variant": "emphasis"
+    },
+    {
+      "id": "public-check",
+      "from": "public-barrel",
+      "to": "public-native",
+      "label": "check",
+      "variant": "emphasis"
+    },
+    {
+      "id": "public-lsp",
+      "from": "public-native",
+      "to": "public-editor",
+      "label": "LSP results",
+      "variant": "default"
+    },
+    {
+      "id": "public-runtime-selection",
+      "from": "public-template",
+      "to": "public-runtime",
+      "label": "evaluate",
+      "variant": "default"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Concrete publication",
+      "items": [
+        "Selected[int] module variables publish str; record unions retain complete shapes.",
+        "Unsupported members fail at the variable; constants and re-exports keep their owners."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Portable checker boundary",
+      "items": [
+        "Imported native generics compose; conditional aliases expose their published bound.",
+        "Complete annotation roots also feed authored editor diagnostics."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Runtime and next extensions",
+      "items": [
+        "Imported templates specialize and rebuild independently without construction replay.",
+        "TypedDict output stays explicit, leaving future Protocol output to its own adapter."
+      ]
+    }
+  ]
+}

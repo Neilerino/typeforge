@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/neilwadden/.codex/visualizations/2026/09/07/01a07d18-ce62-7e82-bf3c-06a7362ad7d9/typeforge-stack/docs/reviews/typeforge-api/18-cross-module-integration/architecture.json",
+  "output": "/Users/neilwadden/.codex/visualizations/2026/09/07/01a07d18-ce62-7e82-bf3c-06a7362ad7d9/typeforge-stack/docs/reviews/typeforge-api/18-cross-module-integration/architecture.html",
+  "specification": {
+    "sha256": "bd10a4b34f295ac82730eddb86ff1a556dd7d946f1e8e0fbf51961ebd2929fd4",
+    "bytes": 9723
+  },
+  "artifact": {
+    "sha256": "e9bb426b4e4d01abf217986995b720f80f94c987825b409de6f8686ac6622bf7",
+    "bytes": 724970
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  },
+  "evidence": {
+    "verified": true,
+    "repository": "https://github.com/Neilerino/typeforge",
+    "revision": "522e2936b3e530c808b8cc48b38be760f67138d9",
+    "references": 19
+  }
+}
