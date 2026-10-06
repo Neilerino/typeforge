@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/neilwadden/.codex/visualizations/2026/09/07/01a07d18-ce62-7e82-bf3c-06a7362ad7d9/typeforge-stack/docs/reviews/typeforge-api/14-callable-input-contracts/diagram.architecture.json",
+  "output": "/Users/neilwadden/.codex/visualizations/2026/09/07/01a07d18-ce62-7e82-bf3c-06a7362ad7d9/typeforge-stack/docs/reviews/typeforge-api/14-callable-input-contracts/diagram.html",
+  "specification": {
+    "sha256": "d5c529f8524fc5d1e0854598fbc375f6d5a76fe8280a50165773cb919889b432",
+    "bytes": 9227
+  },
+  "artifact": {
+    "sha256": "0450fb2cbfba146d536599406fad866bcc4f3919d00fd6e189086ec3274601df",
+    "bytes": 719456
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  },
+  "evidence": {
+    "verified": true,
+    "repository": "https://github.com/Neilerino/typeforge",
+    "revision": "67b07af4aacf130d31837b93bbda9c1e550222a9",
+    "references": 18
+  }
+}

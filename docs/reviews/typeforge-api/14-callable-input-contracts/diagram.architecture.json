@@ -1,0 +1,366 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "14 \u00b7 Callable input contracts \u00b7 C4 level 4",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Neilerino/typeforge",
+      "revision": "67b07af4aacf130d31837b93bbda9c1e550222a9"
+    },
+    "viewBox": [
+      1390,
+      630
+    ],
+    "views": [
+      {
+        "id": "coverage-path",
+        "label": "Covered calls",
+        "focus": [
+          "parameter-facts",
+          "callable-adaptation",
+          "input-coverage",
+          "portable-emission",
+          "checker-contracts"
+        ],
+        "note": "A no-default Map publishes the inputs it actually covers."
+      },
+      {
+        "id": "editor-body",
+        "label": "Editor and implementation",
+        "focus": [
+          "parameter-facts",
+          "callable-adaptation",
+          "input-coverage",
+          "editor-projection",
+          "checker-contracts"
+        ],
+        "note": "Restrict the same domain in memory while keeping the original generic binder."
+      },
+      {
+        "id": "semantics-frontier",
+        "label": "Rules and next slices",
+        "focus": [
+          "input-coverage",
+          "static-compatibility",
+          "runtime-contract",
+          "next-contracts"
+        ],
+        "note": "Reuse compatibility rules; diagnose unsupported coverage and extend output precision later."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "parameter-facts",
+      "type": "frontend",
+      "label": "Source type parameters",
+      "sublabel": "source._parse_type_parameter",
+      "tag": "CHANGED \u00b7 bounds + spans",
+      "pos": [
+        45,
+        70
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/source/_parser.py",
+          "label": "Parse authored parameters"
+        },
+        {
+          "path": "src/typeforge/compiler/source/_model.py",
+          "label": "Bounds and source spans"
+        }
+      ]
+    },
+    {
+      "id": "callable-adaptation",
+      "type": "backend",
+      "label": "Adapt callable facts",
+      "sublabel": "adaptation._adapt_function",
+      "tag": "CHANGED \u00b7 aliases + Protocol facts",
+      "pos": [
+        390,
+        70
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/adaptation/_source_to_ir.py",
+          "label": "Adapt callable and class facts"
+        },
+        {
+          "path": "src/typeforge/compiler/adaptation/_schema_aliases.py",
+          "label": "Reuse alias expansion"
+        },
+        {
+          "path": "src/typeforge/compiler/stub_ir/_model.py",
+          "label": "Omitted default and domain data"
+        }
+      ]
+    },
+    {
+      "id": "input-coverage",
+      "type": "security",
+      "label": "Prove covered inputs",
+      "sublabel": "specialization._coverage",
+      "tag": "NEW \u00b7 accepted domain",
+      "pos": [
+        735,
+        70
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/specialization/_coverage.py",
+          "label": "Coverage and possible outputs"
+        },
+        {
+          "path": "src/typeforge/compiler/specialization/_lowering.py",
+          "label": "Choose portable signatures"
+        }
+      ]
+    },
+    {
+      "id": "static-compatibility",
+      "type": "backend",
+      "label": "Static compatibility",
+      "sublabel": "semantic_adapter.stub_static_type",
+      "tag": "SHARED RULES \u00b7 new IR bridge",
+      "pos": [
+        1080,
+        70
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_stub_types.py",
+          "label": "Bridge closed IR to type facts"
+        },
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_types.py",
+          "label": "Local ancestry facts"
+        },
+        {
+          "path": "src/typeforge/compiler/semantic_adapter/_type_system.py",
+          "label": "Existing assignment rules"
+        }
+      ]
+    },
+    {
+      "id": "editor-projection",
+      "type": "frontend",
+      "label": "Project editor bounds",
+      "sublabel": "pipeline \u2192 overlay.transform",
+      "tag": "CHANGED \u00b7 keep body binder",
+      "pos": [
+        390,
+        280
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/pipeline/_callables.py",
+          "label": "Public projection facts"
+        },
+        {
+          "path": "src/typeforge/overlay/transform.py",
+          "label": "Apply authored header edits"
+        }
+      ]
+    },
+    {
+      "id": "portable-emission",
+      "type": "backend",
+      "label": "Emit standard signatures",
+      "sublabel": "emission._emit_function",
+      "tag": "CHANGED \u00b7 covered fallback",
+      "pos": [
+        735,
+        280
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/compiler/emission/_python.py",
+          "label": "Emit signatures and bounds"
+        },
+        {
+          "path": "src/typeforge/compiler/pipeline/_generation.py",
+          "label": "Existing publication owner"
+        }
+      ]
+    },
+    {
+      "id": "runtime-contract",
+      "type": "backend",
+      "label": "Runtime Map selection",
+      "sublabel": "Evaluator / Pydantic Schema",
+      "tag": "EXISTING \u00b7 no-match failure",
+      "pos": [
+        1080,
+        280
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/typeforge/semantics/evaluation.py",
+          "label": "Existing ordered evaluation"
+        },
+        {
+          "path": "src/typeforge/pydantic/_evaluation.py",
+          "label": "Existing runtime boundary"
+        }
+      ]
+    },
+    {
+      "id": "next-contracts",
+      "type": "external",
+      "label": "Next callable slices",
+      "sublabel": "15 precision \u00b7 16 Each/Collect",
+      "tag": "FUTURE \u00b7 17 guards \u00b7 18 imports",
+      "pos": [
+        390,
+        490
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "CONTEXT.md",
+          "label": "Current limits and accepted policy"
+        }
+      ]
+    },
+    {
+      "id": "checker-contracts",
+      "type": "external",
+      "label": "Native checker contracts",
+      "sublabel": "test_callable_input_contract",
+      "tag": "mypy \u00b7 Pyright \u00b7 Pyrefly",
+      "pos": [
+        735,
+        490
+      ],
+      "size": [
+        235,
+        100
+      ],
+      "sources": [
+        {
+          "path": "tests/unit/test_callable_input_contract.py",
+          "label": "Production and native checker tests"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "parse-bounds",
+      "from": "parameter-facts",
+      "to": "callable-adaptation",
+      "label": "bounds",
+      "variant": "emphasis"
+    },
+    {
+      "id": "adapt-domains",
+      "from": "callable-adaptation",
+      "to": "input-coverage",
+      "label": "IR facts",
+      "variant": "emphasis"
+    },
+    {
+      "id": "prove-native-domain",
+      "from": "input-coverage",
+      "to": "static-compatibility",
+      "label": "prove"
+    },
+    {
+      "id": "publish-covered-calls",
+      "from": "input-coverage",
+      "to": "portable-emission",
+      "label": "domain + outputs",
+      "variant": "emphasis",
+      "labelDy": 60
+    },
+    {
+      "id": "project-retained-binder",
+      "from": "input-coverage",
+      "to": "editor-projection",
+      "label": "plan bounds"
+    },
+    {
+      "id": "ordinary-consumers",
+      "from": "portable-emission",
+      "to": "checker-contracts",
+      "label": "published .pyi",
+      "variant": "emphasis",
+      "labelDy": 60
+    },
+    {
+      "id": "runtime-parity-checks",
+      "from": "checker-contracts",
+      "to": "runtime-contract",
+      "label": "runtime parity",
+      "variant": "dashed"
+    },
+    {
+      "id": "extend-projection",
+      "from": "editor-projection",
+      "to": "next-contracts",
+      "label": "next contracts",
+      "variant": "dashed",
+      "labelDy": 60
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "User outcome",
+      "items": [
+        "Map[T, int: str] publishes int \u2192 str; bool is accepted and str is rejected.",
+        "Explicit ...: Never remains a fallback with ordinary Python semantics."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Review the contract",
+      "items": [
+        "Keep complete output alternatives and generic identity; retain the binder in function bodies.",
+        "Unsupported structural or exact-only coverage is an authored error, never an unrestricted fallback."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Stack context",
+      "items": [
+        "Builds on shared union/no-match rules and the existing compiler plan.",
+        "15\u201318 extend output precision, Each/Collect input contracts, guards, and cross-module publication."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "image-capable-manual-review",
+  "artifact": {
+    "sha256": "0450fb2cbfba146d536599406fad866bcc4f3919d00fd6e189086ec3274601df",
+    "bytes": 719456
+  },
+  "specification": {
+    "sha256": "d5c529f8524fc5d1e0854598fbc375f6d5a76fe8280a50165773cb919889b432",
+    "bytes": 9227
+  },
+  "codeRevision": "67b07af4aacf130d31837b93bbda9c1e550222a9",
+  "browser_evidence": "passed",
+  "visual_review": "passed",
+  "correction_rounds": 0,
+  "scope": "Actual original-resolution PNGs at 1440x900 and 2048x1320 in both themes; default READ / Still view.",
+  "screenshots": [
+    {
+      "file": "diagram.visual-check.1440x900.light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "sha256": "9e5ec28bb39eb8037fd03ca430b015a542011b759fbb1dbfadc35ab02b7720fa"
+    },
+    {
+      "file": "diagram.visual-check.1440x900.dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "sha256": "ad80c01ec99df160d2b9672c1be0973aa527c5ee1b4822b638859fb190172599"
+    },
+    {
+      "file": "diagram.visual-check.2048x1320.light.png",
+      "width": 2048,
+      "height": 1320,
+      "theme": "light",
+      "sha256": "a0004018bcfa971edb44270ed28b885bf5011db0b8936083a8abe9264869c667"
+    },
+    {
+      "file": "diagram.visual-check.2048x1320.dark.png",
+      "width": 2048,
+      "height": 1320,
+      "theme": "dark",
+      "sha256": "c79b9b257dc06b5ae0e16584190a6d54915414e62dcf5f67c89cd01b064ce56b"
+    }
+  ],
+  "observations": [
+    "Main authored-facts to covered-domain to published-signature path is clear.",
+    "Labels, routes, nodes, source badges, navigation dock, and conclusion cards fit without clipping or ambiguous crossings.",
+    "Both themes remain legible at laptop and large desktop sizes; the diagram and necessary cards occupy the first screen.",
+    "The automated receipt remains visualReview=pending; this independent receipt records the actual image review."
+  ]
+}
