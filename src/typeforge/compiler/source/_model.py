@@ -272,6 +272,13 @@ class ClassDeclaration:
 
 
 @dataclass(frozen=True, slots=True)
+class ModuleVariable:
+    name: str
+    annotation: SourceTypeExpression
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
 class SourceModule:
     path: Path
     functions: tuple[FunctionDeclaration, ...]
@@ -284,6 +291,7 @@ class SourceModule:
     return_sites: tuple[ReturnSite, ...] = ()
     identifiers: tuple[IdentifierOccurrence, ...] = ()
     variable_annotations: tuple[SourceTypeExpression, ...] = ()
+    variables: tuple[ModuleVariable, ...] = ()
     captures: tuple[tuple[str, CaptureTypeExpression], ...] = ()
 
 

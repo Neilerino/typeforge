@@ -16,11 +16,8 @@ The agreed scope allows unresolved internal relationships with useful standard
 projections and supported generated obligations. Document bound-only checking;
 full Scala-style dependent verification is not promised.
 
-The [initial API decisions](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md) are complete
-as of 2026-09-30. Scalar and union matching, selection aliases, resolved generic
-compatibility, basic type functions, named and alternative captures, and
-Record/Fields construction are implemented. Later slices remain pending. Read the agreed
-batches before changing selector APIs, field construction, type-function scope,
+The [initial API decisions](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md) are implemented.
+Read the agreed batches before changing selector APIs, field construction, type-function scope,
 or callable input contracts. The support descriptions below describe current
 implementation unless explicitly identified as an agreed future contract.
 
@@ -28,9 +25,13 @@ Before implementing captures, type functions, field edits, or callable projectio
 read the [derisking findings](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/type-function-derisking.md). Bounded
 prototype/checker witnesses pass. The [agreed runtime boundary](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#runtime-construction-and-compiler-support)
 keeps compilation optional and distinguishes runtime template construction from
-the compiler's supported source forms. Compatibility frontiers and full
-compiler/proxy integration remain implementation gates; the prototype is not
-production support.
+the compiler's supported source forms. Current supported frontiers belong to DESIGN.md
+and the production contracts; prototype evidence alone does not establish support.
+
+For complete stub interfaces, module variable transformations, cross-module
+imports, or independent generic rebuilds, read
+[the public integration contracts](tests/unit/test_public_api_integration_contract.py)
+and [publication policy](DESIGN.md#compiler-plans-and-target-projections).
 
 Basic type_function construction executes once during import and retains original
 parameter identity in an immutable TypeAliasType. Specialization and Pydantic

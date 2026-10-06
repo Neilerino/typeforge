@@ -19,6 +19,7 @@ from typeforge.compiler.source import (
     opaque_enriched_annotations,
     parse_module,
 )
+from typeforge.compiler.specialization import checker_type_bound
 from typeforge.compiler.stub_ir import (
     ClassDeclaration,
     Declaration,
@@ -26,6 +27,7 @@ from typeforge.compiler.stub_ir import (
     StubModule,
     TypeAliasDeclaration,
     TypeName,
+    VariableDeclaration,
     merge_imports,
 )
 
@@ -64,8 +66,8 @@ def _published_source_scope(source: SourceModule) -> SourceModule:
     }
     return replace(
         source,
-        # Variable annotations are retained for overlay edits. Publication keeps
-        # their existing module-surface policy and does not inspect local bodies.
+        # Public module variables are owned declarations. Local annotation roots
+        # remain overlay facts; publication does not inspect those body positions.
         variable_annotations=(),
         functions=tuple(
             function
@@ -95,15 +97,20 @@ def _emit_generated_module(
     surface: ModuleSurface,
 ) -> Result[GeneratedModule, EmissionError]:
     lowered = plan.module
+    variables = {
+        item.name: replace(item, annotation=checker_type_bound(item.annotation))
+        for item in lowered.declarations
+        if isinstance(item, VariableDeclaration)
+    }
     generated = StubModule(
         name=lowered.name,
         declarations=(
             *(item for item in lowered.declarations if _is_record(item)),
-            *surface.declarations,
+            *(variables.get(item.name, item) for item in surface.declarations),
             *(
                 _project_published_declaration(item)
                 for item in lowered.declarations
-                if not _is_record(item)
+                if not _is_record(item) and not isinstance(item, VariableDeclaration)
             ),
         ),
         imports=merge_imports((*lowered.imports, *surface.imports)),
