@@ -7,11 +7,20 @@ from typeforge.compiler.semantic_adapter import (
     SemanticEnvironment,
     named_type_environment,
 )
+from typeforge.compiler.specialization._bounds import checker_type_bound
+from typeforge.compiler.specialization._captures import (
+    capture_tokens,
+    replace_captures,
+)
 from typeforge.compiler.specialization._coverage import (
+    map_case_covers_domain,
+    map_case_input,
     map_covered_cases,
+    map_default_reachable,
     map_input_domain,
     map_output_bound,
 )
+from typeforge.compiler.specialization._evaluation import instantiate_output
 from typeforge.compiler.specialization._models import (
     ArityFrontier,
     LoweringError,
@@ -56,6 +65,8 @@ from typeforge.compiler.stub_ir import (
     is_predicate,
     merge_imports,
     rewrite_type_children,
+    substitute_type,
+    walk_declaration,
     walk_module,
     walk_type,
 )
@@ -169,6 +180,15 @@ def lower_variadic_module(
         )
     )
     lowered_module = replace(lowered_module, origins=origins)
+    if any(
+        isinstance(item, TypeName) and item.name == "Any"
+        for item in walk_module(lowered_module)
+    ):
+        lowered_module = replace(
+            lowered_module,
+            imports=_add_import(lowered_module.imports, ImportFrom("typing", ("Any",))),
+        )
+
     if _module_contains_literal(lowered_module):
         lowered_module = replace(
             lowered_module,
@@ -219,7 +239,14 @@ def _lower_class(
             continue
 
         lowered = _lower_function(
-            method, frontier, on_rewrite=on_rewrite, environment=environment
+            method,
+            frontier,
+            on_rewrite=on_rewrite,
+            environment=environment,
+            reserved_type_parameters=tuple(
+                _type_parameter_name(parameter)
+                for parameter in declaration.type_parameters
+            ),
         )
         if isinstance(lowered, Failure):
             return lowered
@@ -245,6 +272,7 @@ def _lower_function(
     on_rewrite: TypeRewriteObserver | None = None,
     *,
     environment: SemanticEnvironment = (),
+    reserved_type_parameters: tuple[str, ...] = (),
 ) -> Result[FunctionDeclaration | OverloadDeclaration, LoweringError]:
     if isinstance(declaration.return_type, MapType):
         return _lower_map_function(
@@ -252,6 +280,7 @@ def _lower_function(
             declaration.return_type,
             on_rewrite=on_rewrite,
             environment=environment,
+            reserved_type_parameters=reserved_type_parameters,
         )
 
     return _lower_each_function(declaration, frontier, on_rewrite=on_rewrite)
@@ -313,7 +342,7 @@ def _lower_each_function(
         )
 
     if structural_map is not None and any(
-        not is_predicate(case.test) and len(_capture_tokens(case.test)) > 1
+        not is_predicate(case.test) and len(capture_tokens(case.test)) > 1
         for case in structural_map.cases
     ):
         return Failure(
@@ -347,42 +376,44 @@ class PredicateMatch:
     result: bool
 
 
+@safe_result(errors=(LoweringError,))
 def _lower_map_function(
     declaration: FunctionDeclaration,
     mapping: MapType,
     on_rewrite: TypeRewriteObserver | None = None,
     *,
     environment: SemanticEnvironment = (),
-) -> Result[FunctionDeclaration | OverloadDeclaration, LoweringError]:
+    reserved_type_parameters: tuple[str, ...] = (),
+) -> FunctionDeclaration | OverloadDeclaration:
     if not isinstance(mapping.subject, TypeVariable):
-        return Failure(
+        Failure(
             LoweringError(
                 LoweringErrorCode.MISSING_CONTROLLER,
                 declaration.name,
                 "Map subject must be a type parameter at a callable boundary",
             )
-        )
+        ).unwrap()
 
     controller = mapping.subject.name
     if not _function_has_controller(declaration, controller):
-        return Failure(
+        Failure(
             LoweringError(
                 LoweringErrorCode.MISSING_CONTROLLER,
                 declaration.name,
                 f"no parameter is controlled by {controller}",
             )
-        )
+        ).unwrap()
 
     seen: set[StubTypeExpression | Predicate] = set()
     for case in mapping.cases:
         if case.test in seen:
-            return Failure(
+            Failure(
                 LoweringError(
                     LoweringErrorCode.DUPLICATE_MAP_CASE,
                     declaration.name,
                     "Map branch selectors must be unique at a callable boundary",
                 )
-            )
+            ).unwrap()
 
         seen.add(case.test)
         if is_predicate(case.test):
@@ -392,36 +423,92 @@ def _lower_map_function(
                 or predicate_controller_result.unwrap() != controller
                 or not predicate_is_supported(case.test, controller)
             ):
-                return Failure(
+                Failure(
                     LoweringError(
                         LoweringErrorCode.UNSUPPORTED_PREDICATE,
                         declaration.name,
                         "Map predicate cases must compare the subject type parameter "
                         "to concrete types at a callable boundary",
                     )
-                )
+                ).unwrap()
+
+    if mapping.cases and isinstance(mapping.cases[0].test, CaptureType):
+        # A whole-subject capture covers every admitted input and retains its
+        # existing generic identity, including authored bounds and defaults.
+        result = replace(
+            declaration,
+            return_type=instantiate_output(declaration, mapping, environment).unwrap(),
+        )
+        if on_rewrite is not None:
+            on_rewrite(mapping, result.return_type)
+
+        return result
 
     if mapping.default is None:
         return _lower_covered_map_function(
             declaration, mapping, controller, on_rewrite, environment
-        )
+        ).unwrap()
+
+    reachability = map_default_reachable(declaration, mapping, controller, environment)
+    if isinstance(reachability, Failure) or reachability.unwrap():
+        # Validate reachable output bindings before projecting them to a bound.
+        instantiate_output(declaration, mapping.default, environment).unwrap()
 
     specializations = map_specializations(mapping, controller)
-    signatures = tuple(
-        _specialized_signature(
-            declaration,
-            controller,
-            case.test,
-            _substitute(case.output_type, controller, case.test, on_rewrite=on_rewrite),
-            on_rewrite=on_rewrite,
+    signatures: list[FunctionDeclaration] = []
+    covered_domain = False
+    for case in specializations:
+        if is_predicate(case.test):
+            continue
+
+        patterns = (
+            case.test.members
+            if isinstance(case.test, UnionExpression) and capture_tokens(case.test)
+            else (case.test,)
         )
-        for case in specializations
-        if not is_predicate(case.test)
-    )
+        for pattern in patterns:
+            projected = map_case_input(declaration, controller, pattern, environment)
+            if isinstance(projected, Failure):
+                # Unknown bound facts retain the original bounded aggregate;
+                # they never justify a wider specialized input parameter.
+                continue
+
+            input_type = projected.unwrap()
+            if input_type is None:
+                continue
+
+            signature = _captured_map_signature(
+                declaration,
+                controller,
+                input_type,
+                _callable_case_output(
+                    declaration,
+                    mapping,
+                    controller,
+                    input_type,
+                    environment,
+                    on_rewrite,
+                ),
+                selector=pattern,
+                reserved_type_parameters=reserved_type_parameters,
+                on_rewrite=on_rewrite,
+                environment=environment,
+            )
+            if signature not in signatures:
+                signatures.append(signature)
+
+            coverage = map_case_covers_domain(
+                declaration, controller, pattern, environment
+            )
+            covered_domain |= not isinstance(coverage, Failure) and coverage.unwrap()
+
     fallback = replace(
         declaration,
-        return_type=_union(
-            (*(case.output_type for case in mapping.cases), mapping.default),
+        return_type=checker_type_bound(
+            _union(
+                (*(case.output_type for case in mapping.cases), mapping.default),
+                on_rewrite=on_rewrite,
+            ),
             on_rewrite=on_rewrite,
         ),
     )
@@ -430,9 +517,146 @@ def _lower_map_function(
             on_rewrite(mapping, signature.return_type)
 
     if not signatures:
-        return Success(fallback)
+        return fallback
 
-    return Success(OverloadDeclaration(signatures, fallback))
+    if covered_domain:
+        # A broader aggregate would be an unreachable overload. The specialized
+        # signatures already include outputs from every admitted subtype.
+        return (
+            signatures[0]
+            if len(signatures) == 1
+            else OverloadDeclaration(tuple(signatures[:-1]), signatures[-1])
+        )
+
+    return OverloadDeclaration(tuple(signatures), fallback)
+
+
+def _callable_case_output(
+    declaration: FunctionDeclaration,
+    mapping: MapType,
+    controller: str,
+    pattern: StubTypeExpression,
+    environment: SemanticEnvironment,
+    on_rewrite: TypeRewriteObserver | None,
+) -> StubTypeExpression:
+    if capture_tokens(mapping):
+        return mapping
+
+    match pattern:
+        case (
+            LiteralType()
+            | TypeName("bool" | "None" | "NoneType" | "Never")
+            | TypeApplication(TypeName("Literal" | "typing.Literal"), _)
+        ):
+            # Closed native domains preserve the subject for shared evaluation.
+            return mapping
+        case _:
+            # Ordinary native parameters also admit compatible subtype subjects.
+            return map_output_bound(
+                declaration,
+                mapping,
+                controller,
+                pattern,
+                pattern,
+                environment,
+                on_rewrite=on_rewrite,
+            ).unwrap()
+
+
+def _captured_map_signature(
+    declaration: FunctionDeclaration,
+    controller: str,
+    pattern: StubTypeExpression,
+    output: StubTypeExpression,
+    on_rewrite: TypeRewriteObserver | None = None,
+    *,
+    environment: SemanticEnvironment = (),
+    selector: StubTypeExpression | None = None,
+    reserved_type_parameters: tuple[str, ...] = (),
+) -> FunctionDeclaration:
+    source_pattern = pattern if selector is None else selector
+    tokens = sorted(
+        capture_tokens(pattern),
+        key=lambda token: (token.symbol.scope, token.symbol.name),
+    )
+    reserved = (
+        *declaration.type_parameters,
+        *reserved_type_parameters,
+        *(
+            item.name
+            for item in walk_declaration(declaration)
+            if isinstance(item, TypeVariable | TypeName)
+        ),
+        *(item.name for item in walk_type(pattern) if isinstance(item, TypeName)),
+        *(item.name for item in walk_type(output) if isinstance(item, TypeName)),
+    )
+    names = _fresh_type_parameter_names(controller, len(tokens), reserved)
+    bindings = {
+        token: TypeVariable(name) for token, name in zip(tokens, names, strict=True)
+    }
+    input_type = replace_captures(pattern, bindings, on_rewrite=on_rewrite)
+    output_type = (
+        instantiate_output(
+            declaration,
+            substitute_type(output, controller, input_type, on_rewrite=on_rewrite),
+            environment,
+        ).unwrap()
+        if isinstance(output, MapType)
+        else replace_captures(output, bindings, on_rewrite=on_rewrite)
+    )
+    if (
+        isinstance(output, MapType)
+        and capture_tokens(source_pattern)
+        and any(
+            isinstance(item, TypeApplication | FixedTuple | HomogeneousTuple)
+            for item in walk_type(source_pattern)
+        )
+    ):
+        output_type = _native_capture_output_bound(
+            output, source_pattern, controller, input_type, output_type, on_rewrite
+        )
+
+    signature = _specialized_signature(
+        declaration,
+        controller,
+        input_type,
+        output_type,
+        on_rewrite=on_rewrite,
+    )
+    return replace(signature, type_parameters=(*signature.type_parameters, *names))
+
+
+def _native_capture_output_bound(
+    mapping: MapType,
+    pattern: StubTypeExpression,
+    controller: str,
+    input_type: StubTypeExpression,
+    selected_output: StubTypeExpression,
+    on_rewrite: TypeRewriteObserver | None,
+) -> StubTypeExpression:
+    # Native generics admit subclasses with different original type identities.
+    # They can fail this structural selector and reach another case or default.
+    remaining = tuple(
+        case.output_type
+        for case in mapping.cases
+        if case.test != pattern
+        and not (
+            isinstance(case.test, UnionExpression) and pattern in case.test.members
+        )
+    )
+    if mapping.default is not None:
+        remaining += (mapping.default,)
+
+    fallback_bound = checker_type_bound(
+        substitute_type(
+            _union(remaining, on_rewrite),
+            controller,
+            input_type,
+            on_rewrite=on_rewrite,
+        ),
+        on_rewrite=on_rewrite,
+    )
+    return _union((selected_output, fallback_bound), on_rewrite)
 
 
 @safe_result(errors=(LoweringError,))
@@ -1067,11 +1291,11 @@ def _structural_map_choices(
         if is_predicate(case.test):
             continue
 
-        bindings = {token: generated_type for token in _capture_tokens(case.test)}
+        bindings = {token: generated_type for token in capture_tokens(case.test)}
         cases.append(
             _StructuralMapChoice(
-                _replace_capture(case.test, bindings, on_rewrite=on_rewrite),
-                _replace_capture(case.output_type, bindings, on_rewrite=on_rewrite),
+                replace_captures(case.test, bindings, on_rewrite=on_rewrite),
+                replace_captures(case.output_type, bindings, on_rewrite=on_rewrite),
                 False,
             )
         )
@@ -1099,41 +1323,6 @@ def _map_subject_name(mapping: MapType) -> str:
         return mapping.subject.name
 
     return ""
-
-
-def _capture_tokens(expression: StubTypeExpression) -> frozenset[CaptureType]:
-    return frozenset(
-        item for item in walk_type(expression) if isinstance(item, CaptureType)
-    )
-
-
-def _replace_capture(
-    expression: StubTypeExpression,
-    bindings: dict[CaptureType, TypeVariable],
-    on_rewrite: TypeRewriteObserver | None = None,
-) -> StubTypeExpression:
-    result = _replace_capture_expression(expression, bindings, on_rewrite)
-    if on_rewrite is not None:
-        on_rewrite(expression, result)
-
-    return result
-
-
-def _replace_capture_expression(
-    expression: StubTypeExpression,
-    bindings: dict[CaptureType, TypeVariable],
-    on_rewrite: TypeRewriteObserver | None = None,
-) -> StubTypeExpression:
-    if isinstance(expression, CaptureType):
-        return bindings.get(expression, expression)
-
-    if isinstance(expression, TypeApplication | FixedTuple | UnionExpression):
-        return rewrite_type_children(
-            expression,
-            lambda child: _replace_capture(child, bindings, on_rewrite=on_rewrite),
-        )
-
-    return expression
 
 
 def _fallback_signature(

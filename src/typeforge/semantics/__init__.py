@@ -82,6 +82,7 @@ from typeforge.semantics.protocols import (
     EvaluationPolicy,
     InputObserver,
     TypeSystem,
+    UnresolvedCaptureBindings,
 )
 
 __all__ = (
@@ -155,6 +156,7 @@ __all__ = (
     "UnboundInputSemanticError",
     "UnionExpression",
     "UnionTypeShape",
+    "UnresolvedCaptureBindings",
     "UnresolvedCaptureSemanticError",
     "UnresolvedType",
     "UnsupportedExpressionSemanticError",
