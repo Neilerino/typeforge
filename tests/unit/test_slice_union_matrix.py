@@ -596,7 +596,7 @@ def test_union_field_values_through_existing_materialization(
 
 
 @pytest.mark.parametrize("sliced", [False, True])
-def test_record_unions_remain_unsupported(
+def test_constant_record_unions_preserve_complete_output_alternatives(
     tmp_path: Path,
     sliced: bool,
 ) -> None:
@@ -617,17 +617,22 @@ def test_record_unions_remain_unsupported(
 )
 """
     )
-    path = tmp_path / "unsupported.py"
+    path = tmp_path / "record_union.py"
     path.write_text(
         IMPORTS + RECORD_SETUP + f"type Mapped[T] = {expression}\n"
         "def f[T](x: T) -> Mapped[T]: ...\n"
     )
-    result = generate_module(path, maximum_arity=2)
-    assert isinstance(result, Failure)
-    assert "supported compiler record" in str(result.failure())
+    generated = generate_module(path, maximum_arity=2).unwrap().content
+    assert "-> Mapped_Row_Row | Mapped_Row_Other:" in generated
+    assert "-> Mapped_Other_Row | Mapped_Other_Other:" in generated
     annotation = runtime_expression(expression, sliced=sliced, setup=RECORD_SETUP)
-    with pytest.raises(PydanticSchemaGenerationError, match="unsupported_record"):
-        TypeAdapter(Schema[annotation])
+    adapter = TypeAdapter(Schema[annotation])
+    assert len(adapter.json_schema()["anyOf"]) == 2
+    assert adapter.validate_python({"value": 1, "label": "a"}, strict=True) == {
+        "value": 1,
+        "label": "a",
+    }
+    assert adapter.validate_python({"other": 2}, strict=True) == {"other": 2}
 
 
 @pytest.mark.parametrize("sliced", [False, True])

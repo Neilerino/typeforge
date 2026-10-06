@@ -19,7 +19,7 @@ from typeforge.utils.error_handling import safe_result
 
 @safe_result(errors=(SchemaIssue,))
 def emit_output(
-    value: RuntimeType | s.RecordShape[RuntimeType],
+    value: RuntimeType | s.RecordShape[RuntimeType] | s.RecordUnion[RuntimeType],
     handler: Callable[[object], CoreSchema],
     expression: object,
 ) -> CoreSchema:
@@ -31,10 +31,15 @@ def emit_output(
             "Selected output Never has no values",
         )
 
-    annotation = (
-        value.annotation if isinstance(value, RuntimeType) else _RecordAnnotation(value)
-    )
-    if isinstance(value, s.RecordShape) and value.metadata:
+    match value:
+        case RuntimeType():
+            annotation = value.annotation
+        case s.RecordShape():
+            annotation = _RecordAnnotation(value)
+        case s.RecordUnion():
+            annotation = _RecordUnionAnnotation(value)
+
+    if isinstance(value, s.RecordShape | s.RecordUnion) and value.metadata:
         annotation = Annotated[
             annotation, *(item.annotation for item in value.metadata)
         ]
@@ -47,6 +52,21 @@ def emit_output(
         raise SchemaIssue(
             "expected_type", "emission", expression, str(error)
         ) from error
+
+
+@dataclass(frozen=True, slots=True)
+class _RecordUnionAnnotation:
+    records: s.RecordUnion[RuntimeType]
+
+    def __get_pydantic_core_schema__(
+        self, source: object, handler: GetCoreSchemaHandler
+    ) -> CoreSchema:
+        return core_schema.union_schema(
+            [
+                emit_output(record, handler.generate_schema, source).unwrap()
+                for record in self.records.members
+            ]
+        )
 
 
 @dataclass(frozen=True, slots=True)

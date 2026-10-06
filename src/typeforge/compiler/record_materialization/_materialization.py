@@ -9,6 +9,7 @@ from typeforge.compiler.record_materialization._models import (
     RecordMaterialization,
     RecordMaterializationError,
 )
+from typeforge.compiler.record_materialization._naming import available_record_name
 from typeforge.compiler.semantic_adapter import (
     COMPILER_TYPE_SYSTEM,
     SemanticEnvironment,
@@ -44,6 +45,7 @@ from typeforge.compiler.stub_ir import (
     TypeName,
     TypeRewriteObserver,
     substitute_type,
+    union_types,
 )
 from typeforge.semantics import (
     EvaluationValue,
@@ -53,6 +55,7 @@ from typeforge.semantics import (
     RecordFamily,
     RecordField,
     RecordShape,
+    RecordUnion,
     ResolvedType,
     evaluate,
 )
@@ -73,7 +76,14 @@ def materialize_record_transforms(
     source_shapes = build_record_shapes(
         module.typed_dicts, environment=environment
     ).unwrap()
-    derived = _derive_record_shapes(module.aliases, source_shapes, environment)
+    occupied = {
+        *(item.name for item in module.identifiers),
+        *(declaration.name for declaration in module.classes),
+        *(function.name for function in module.functions),
+    }
+    derived = _derive_record_shapes(
+        module.aliases, source_shapes, environment, occupied=occupied
+    )
     replacements: list[tuple[str, OverloadDeclaration]] = []
     source_functions = {
         function.name: function
@@ -105,16 +115,22 @@ def materialize_record_transforms(
             continue
 
         alias_name, controller = alias_reference
+        outputs: dict[str, list[StubTypeExpression]] = {}
+        for item in derived:
+            if item.alias == alias_name and item.shape.name is not None:
+                outputs.setdefault(item.input_name, []).append(
+                    TypeName(item.shape.name)
+                )
+
         specialized = tuple(
             specialize_record_function(
                 stub_functions[name],
                 controller,
-                item.input_name,
-                item.shape.name,
+                input_name,
+                union_types(tuple(members)),
                 on_rewrite=on_rewrite,
             )
-            for item in derived
-            if item.alias == alias_name and item.shape.name is not None
+            for input_name, members in outputs.items()
         )
         if specialized:
             fallback = replace(
@@ -142,6 +158,7 @@ def materialize_record_transforms(
         replacements=tuple(replacements),
         imports=(Import("typing", "tf_typing"),),
         derived=derived,
+        source_shapes=source_shapes,
     )
 
 
@@ -260,6 +277,31 @@ def _evaluate_record_expression(
 
 
 @safe(exceptions=(RecordMaterializationError,))
+def evaluate_record_application(
+    declaration: str,
+    authored: SourceTypeExpression,
+    expanded: SourceTypeExpression,
+    *,
+    environment: SemanticEnvironment,
+) -> RecordShape[StaticType] | RecordUnion[StaticType]:
+    """Evaluate a concrete application with its original complete argument."""
+    try:
+        expression = lower_semantic_expression(expanded, environment)
+    except SemanticLoweringError as error:
+        raise RecordMaterializationError(
+            declaration, authored.source, error.message
+        ) from error
+
+    value = _evaluate_record_expression(declaration, authored, expression)
+    if not isinstance(value, RecordShape | RecordUnion):
+        raise RecordMaterializationError(
+            declaration, authored.source, "Record must evaluate to complete records"
+        )
+
+    return value
+
+
+@safe(exceptions=(RecordMaterializationError,))
 def derive_record_shapes(
     aliases: tuple[SourceTypeAlias, ...],
     source_shapes: tuple[RecordShape[StaticType], ...],
@@ -273,7 +315,18 @@ def _derive_record_shapes(
     aliases: tuple[SourceTypeAlias, ...],
     source_shapes: tuple[RecordShape[StaticType], ...],
     environment: SemanticEnvironment,
+    *,
+    occupied: set[str] | None = None,
 ) -> tuple[DerivedRecord, ...]:
+    occupied = set() if occupied is None else set(occupied)
+    occupied.update(alias.name for alias in aliases)
+    occupied.update(shape.name for shape in source_shapes if shape.name is not None)
+    occupied.update(
+        f"{alias.name}_{shape.name}"
+        for alias in aliases
+        if is_record_alias(alias)
+        for shape in source_shapes
+    )
     derived: list[DerivedRecord] = []
     for alias in aliases:
         value = schema_inner_expression(alias.value)
@@ -292,7 +345,12 @@ def _derive_record_shapes(
             output_name = f"{alias.name}_{source_shape.name}"
             try:
                 semantic_expression = lower_semantic_expression(
-                    value, (*environment, (parameter, source_shape)), output_name
+                    value,
+                    (
+                        *environment,
+                        *((shape.name or "", shape) for shape in source_shapes),
+                        (parameter, source_shape),
+                    ),
                 )
             except SemanticLoweringError as error:
                 raise RecordMaterializationError(
@@ -309,20 +367,33 @@ def _derive_record_shapes(
             evaluated = _evaluate_record_expression(
                 alias.name, alias.value, semantic_expression
             )
-            if not isinstance(evaluated, RecordShape):
+            if not isinstance(evaluated, RecordShape | RecordUnion):
                 raise RecordMaterializationError(
                     alias.name,
                     alias.value.source,
                     "Record must evaluate to a record shape",
                 )
 
-            derived.append(
-                DerivedRecord(
-                    alias.name,
-                    source_shape.name or "",
-                    evaluated,
-                )
+            members = (
+                evaluated.members
+                if isinstance(evaluated, RecordUnion)
+                else (evaluated,)
             )
+            for member in members:
+                name = (
+                    available_record_name(f"{output_name}_{member.name}", occupied)
+                    if len(members) > 1
+                    else output_name
+                )
+                occupied.add(name)
+                derived.append(
+                    DerivedRecord(
+                        alias.name,
+                        source_shape.name or "",
+                        replace(member, name=name),
+                        member.name,
+                    )
+                )
 
     return tuple(derived)
 
@@ -359,7 +430,7 @@ def specialize_record_function(
     function: FunctionDeclaration,
     controller: str,
     input_name: str,
-    output_name: str | None,
+    output_type: StubTypeExpression,
     on_rewrite: TypeRewriteObserver | None = None,
 ) -> FunctionDeclaration:
     concrete_input = TypeName(input_name)
@@ -377,7 +448,7 @@ def specialize_record_function(
             )
             for parameter in function.parameters
         ),
-        return_type=TypeName(output_name or "object"),
+        return_type=output_type,
         type_parameters=tuple(
             parameter
             for parameter in function.type_parameters

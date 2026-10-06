@@ -3,11 +3,15 @@
 from dataclasses import replace
 
 from typeforge.compiler.adaptation._context import class_type_environment
+from typeforge.compiler.adaptation._record_applications import (
+    materialize_record_applications,
+)
 from typeforge.compiler.adaptation._schema_aliases import expand_schema_aliases
 from typeforge.compiler.record_materialization import (
     RecordAliasRewriter,
     RecordMaterialization,
     materialize_record_transforms,
+    typed_dict_declaration,
 )
 from typeforge.compiler.source import (
     FieldReferenceTypeExpression,
@@ -32,6 +36,7 @@ from typeforge.compiler.stub_ir import (
     StubTypeExpression,
     is_declaration,
     merge_imports,
+    walk_declaration,
     walk_module,
 )
 
@@ -46,24 +51,41 @@ def materialize_records(source: SourceModule, module: StubModule) -> StubModule:
         on_rewrite=origins.record_rewrite,
         environment=class_type_environment(source),
     ).unwrap()
+    applications = materialize_record_applications(source, module, records)
+    application_declarations = tuple(
+        (typed_dict_declaration(shape), span) for shape, span in applications.shapes
+    )
 
     if not records.declarations:
         return module
 
-    rewriter = RecordAliasRewriter(records.derived, on_rewrite=origins.record_rewrite)
+    rewriter = RecordAliasRewriter(
+        records.derived,
+        on_rewrite=origins.record_rewrite,
+        applications=applications.replacements,
+    )
     declarations, declaration_origins = _rewrite_declarations(
         source, module, records, rewriter
     )
     reusable_elements = _rewrite_reusable_elements(source, module, rewriter)
     materialized = replace(
         module,
-        declarations=(*records.declarations, *declarations),
+        declarations=(
+            *records.declarations,
+            *(declaration for declaration, _ in application_declarations),
+            *declarations,
+        ),
         reusable_elements=reusable_elements,
         imports=merge_imports((*module.imports, *records.imports)),
     )
     additional_origins = (
         *declaration_origins,
         *_record_origins(source, records),
+        *(
+            GeneratedElementOrigin(span, element)
+            for declaration, span in application_declarations
+            for element in walk_declaration(declaration)
+        ),
     )
     current_origins = origins.for_module(materialized, additional_origins)
     return replace(materialized, origins=current_origins)
