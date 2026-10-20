@@ -187,12 +187,14 @@ whereas `Schema[Map[...]]` uses evaluated selection. Projection preserves author
 files and diagnostic locations. Raw slices require Typeforge processing before
 ordinary type checking.
 
-Published stubs support slice-authored callable relationships and existing finite
-`Each`/`Collect` captures. Consumers use ordinary mypy, Pyright, or Pyrefly without
+Published stubs support slice-authored callable relationships and finite
+`Each`/`Collect` specialization. Consumers use ordinary mypy, Pyright, or Pyrefly without
 running Typeforge. For example, `Map[T, int: str | None, ...: bytes]` gives an
 integer call `str | None`; calls outside that overload retain `str | None | bytes`.
-Relationship aliases themselves publish as `object`. Capture precision is limited
-by the configured maximum arity; calls beyond it use the existing aggregate bound.
+Relationship aliases themselves publish as `object`. Named captures resolve through
+type-function and Schema templates and retain existing finite Each/Collect
+specialization with one capture per structural branch. Broader callable capture
+precision is a later slice.
 
 Callable overloads follow checker subtype matching, so exact selectors cannot
 exclude subtypes such as `bool` from `int`. Callable union selectors and selection
@@ -251,33 +253,27 @@ data = fetch("/users", parse_json=True)   # dict[str, object]
 raw = fetch("/users", parse_json=False)   # dict[str, object] | bytes
 ```
 
-Capture and reuse the inner type of a generic wrapper over a finite argument list:
+Capture and reuse the inner type of a generic wrapper:
 
 ```python
-from typeforge import Collect, Each, Map, Value
+from typeforge import Capture, Map, type_function
 
 
 class Option[T]:
     value: T
 
 
-type QueryResult[T] = Map[
-    T,
-    Option[Value] : Value | None,
-    ... : T,
-]
+@type_function
+def QueryResult[T]():
+    Item = Capture("Item")
+    return Map[T, Option[Item]: Item | None, ...: T]
 
 
-def unwrap[T](*values: Each[T]) -> Collect[QueryResult[T]]:
-    ...
-
-
-option: Option[int]
-result = unwrap(option, "text")  # tuple[int | None, str]
+type Result = QueryResult[Option[int]]  # compiler output: int | None
 ```
 
-This relationship specializes up to the configured maximum arity. Unbounded
-structural callable captures are outside the current publication support.
+Concrete template specializations retain their captured arguments. Callable
+structural capture publication remains a later slice.
 
 Map a `TypedDict` and attach Markdown documentation to the resulting type:
 
@@ -338,13 +334,47 @@ The basic compiler scope supports a module-level synchronous function with no
 value parameters or other decorators, unconstrained ordinary type parameters
 without defaults, an optional docstring, and one final return of a type expression.
 Map, Is, unions, ordinary generic types, and subscription of other type functions
-work. Named captures, local aliases, and Record/Fields arrive in later slices.
+work. Capture declarations may precede the return. Local aliases and Record/Fields
+arrive in later slices.
 
 Runtime construction can use additional Python statements when they produce a
 valid template. It rejects invalid returned structures and foreign unbound
 parameters; symbolic parameter and Map truthiness is invalid. Use Map for
 selection that depends on unresolved types. Runtime acceptance of additional
 construction code does not establish compiler support.
+
+### Named captures
+
+Capture tokens give discovered types explicit names. Their labels help diagnostics;
+two declarations with the same label still identify different tokens.
+
+```python
+from typeforge import Capture, Map, type_function
+
+@type_function
+def SamePair[T]():
+    Item = Capture("Item")
+    return Map[T, tuple[Item, Item]: Item, ...: bytes]
+
+type Same = SamePair[tuple[int, int]]  # compiler output: int
+type Mixed = SamePair[tuple[int, str]]  # compiler output: bytes
+```
+
+Repeated positions require exact type agreement, including union set equivalence.
+Failed branches discard tentative bindings. A nested Map reuses an already bound
+token; declaring another token creates an independent binding. Enclosing generic
+parameters retain their original supplied arguments. Reading an unbound capture
+reports an error rather than selecting a fallback.
+
+The compiler supports literal Capture declarations at module scope and in type
+functions. Declaration variables must be unique within each scope. Capture tokens
+are immutable and do not become caller-supplied type parameters. An unconstrained
+generic subject reveals no container arguments, so its unspecialized type-function
+declaration currently projects the safe `object` bound. Concrete applications and
+already known generic shapes remain precise. Interface and alternative capture
+patterns arrive in subsequent slices.
+Structural `Value` authoring has been removed; `Value` remains a MapFields field
+reference until the Record/Fields cutover.
 
 ## Pydantic integration
 
@@ -422,8 +452,9 @@ a bound, then `typing.Any`. Typeforge applies transformations to that fallback
 while preserving Pydantic's validation and serialization behavior for TypeVars.
 It never infers an omitted model type argument from submitted values.
 
-For a static Map, `Any` matches an exact `Any` case but does not match `int` or
-invent structure for `list[Value]`. A known `list[Any]` can capture `Any`.
+For a static Map, `Any` uses gradual compatibility for fixed selectors, including
+`int`, but reveals no arguments for `list[Item]`. A known `list[Any]` can bind
+an Item capture to `Any`.
 Unmatched cases proceed to the authored default. With no default, direct concrete
 schema construction raises `PydanticSchemaGenerationError` with `[map_no_match]`.
 A generic model can still be defined and specialized: validating an unmatched
@@ -469,7 +500,7 @@ construction preserves explicit members beside `typing.Any`. The
 [union support boundary](CONTEXT.md#union-support-and-agreed-future-contracts)
 records the supported cases and remaining cross-consumer restrictions.
 
-Parameterized value-time patterns such as `list[int]` and `list[Value]` fail
+Parameterized value-time patterns such as `list[int]` and `list[Item]` fail
 construction with `[unsupported_runtime_pattern]`, including under unions,
 annotations, and aliases. Runtime dispatch does not capture types from container
 values. Existing static captures and MapFields bindings remain available.

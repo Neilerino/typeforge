@@ -65,6 +65,16 @@ class NameTypeExpression:
 
 
 @dataclass(frozen=True, slots=True)
+class CaptureTypeExpression:
+    """A capture use retains the declaring token's source identity."""
+
+    source: str
+    span: SourceSpan
+    name: str
+    declaration: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
 class AppliedTypeExpression:
     source: str
     span: SourceSpan
@@ -115,6 +125,7 @@ class RawTypeExpression:
 
 type SourceTypeExpression = (
     NameTypeExpression
+    | CaptureTypeExpression
     | AppliedTypeExpression
     | UnionTypeExpression
     | StarredTypeExpression
@@ -232,6 +243,7 @@ class SourceModule:
     return_sites: tuple[ReturnSite, ...] = ()
     identifiers: tuple[IdentifierOccurrence, ...] = ()
     variable_annotations: tuple[SourceTypeExpression, ...] = ()
+    captures: tuple[tuple[str, CaptureTypeExpression], ...] = ()
 
 
 def contains_marker(
@@ -265,7 +277,12 @@ def contains_marker(
         case StarredTypeExpression():
             return contains_marker(expression.item, marker)
 
-        case NameTypeExpression() | RuntimeInputTypeExpression() | RawTypeExpression():
+        case (
+            NameTypeExpression()
+            | CaptureTypeExpression()
+            | RuntimeInputTypeExpression()
+            | RawTypeExpression()
+        ):
             return False
 
 

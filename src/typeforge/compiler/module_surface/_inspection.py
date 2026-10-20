@@ -24,7 +24,9 @@ def inspect_module_surface(
     if isinstance(validation, Failure):
         return validation
 
-    variables = collect_module_variables(parsed.tree)
+    variables = collect_module_variables(
+        parsed.tree, captures=frozenset(name for name, _ in parsed.source.captures)
+    )
     return Success(
         ModuleSurface(
             declarations=variables.declarations,
@@ -214,7 +216,9 @@ def _render_import_name(alias: ast.alias, exported_names: frozenset[str]) -> str
     return alias.name
 
 
-def collect_module_variables(module: ast.Module) -> ModuleSurface:
+def collect_module_variables(
+    module: ast.Module, *, captures: frozenset[str] = frozenset()
+) -> ModuleSurface:
     declarations: list[VariableDeclaration] = []
     requires_any = False
     for statement in module.body:
@@ -261,6 +265,9 @@ def collect_module_variables(module: ast.Module) -> ModuleSurface:
             for name, annotation in bindings:
                 if name.startswith("_"):
                     continue
+
+                if name in captures:
+                    annotation = "object"
 
                 declarations.append(VariableDeclaration(name, TypeName(annotation)))
                 requires_any = requires_any or _annotation_contains_any(annotation)

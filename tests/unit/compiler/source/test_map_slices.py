@@ -220,10 +220,11 @@ def test_unrelated_subscriptions_keep_their_original_slices(imports: str) -> Non
 
 def test_nested_subject_binding_and_union_roles_preserve_authored_spans() -> None:
     source = """from typeforge._markers import Equal
-from typeforge import Map, Value
+from typeforge import Capture, Map
+Item = Capture("Item")
 type Résultat[T] = Map[
     T | int,
-    list[Value]: Map[Value, Equal[int | str]: tuple[Value | None, ...]],
+    list[Item]: Map[Item, Equal[int | str]: tuple[Item | None, ...]],
     ...: bytes,
 ] | None
 """

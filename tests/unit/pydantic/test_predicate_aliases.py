@@ -4,12 +4,14 @@ import pytest
 from returns.result import Failure
 
 from pydantic import PydanticSchemaGenerationError, TypeAdapter, ValidationError
-from typeforge import Field, Key, Map, MapFields, Value
+from typeforge import Capture, Field, Key, Map, MapFields, Value
 from typeforge import semantics as s
 from typeforge._markers import All, Assignable, Equal, Not
 from typeforge._markers import Any as AnyCondition
 from typeforge.pydantic import Input, Schema
 from typeforge.pydantic._frontend import adapt_annotation
+
+Item = Capture("Item")
 
 
 def test_unary_predicate_alias_binds_the_consuming_subject() -> None:
@@ -99,7 +101,7 @@ def test_field_and_capture_subjects_are_independent() -> None:
         Row, Map[Key, Name : Field[Key, Map[Value, Integer:str, ...:bytes]]]
     ]
     assert TypeAdapter(Schema[fields]).validate_python({"value": "x"}) == {"value": "x"}
-    captured = Map[list[int], list[Value] : Map[Value, Integer:str, ...:bytes]]
+    captured = Map[list[int], list[Item] : Map[Item, Integer:str, ...:bytes]]
     assert TypeAdapter(Schema[captured]).validate_python("x") == "x"
 
 

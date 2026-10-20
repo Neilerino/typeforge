@@ -1,6 +1,8 @@
 from pathlib import Path
 from textwrap import dedent
 
+from returns.result import Failure
+
 from typeforge.compiler.pipeline import (
     AuthoredCallable,
     AuthoredParameter,
@@ -76,30 +78,16 @@ def test_descriptions_retain_authored_parameters_and_nested_names() -> None:
     assert descriptions[0].display_name == "World.Nested.query"
 
 
-def test_identity_overlay_keeps_descriptions_even_without_generated_edits() -> None:
+def test_unbound_field_value_cannot_publish_an_identity_overlay() -> None:
     source = dedent("""\
         from typeforge import Value
 
         def read_context(value: Value): ...
         """)
 
-    document = transform_source(source, maximum_arity=1).unwrap()
-
-    assert document.generated_text == source
-    assert document.authored_callables == (
-        AuthoredCallable(
-            qualified_name=("read_context",),
-            parameters=(
-                AuthoredParameter(
-                    name="value",
-                    kind=AuthoredParameterKind.POSITIONAL_OR_KEYWORD,
-                    annotation="Value",
-                    has_default=False,
-                ),
-            ),
-            return_annotation=None,
-        ),
-    )
+    result = transform_source(source, maximum_arity=1)
+    assert isinstance(result, Failure)
+    assert "declare Capture" in result.failure().message
 
 
 def test_alias_generated_overloads_do_not_broaden_diagnostic_selection() -> None:

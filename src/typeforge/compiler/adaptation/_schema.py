@@ -45,6 +45,7 @@ from typeforge.semantics import (
     ResolvedType,
     SemanticIssue,
     TypeSymbol,
+    UnresolvedCaptureSemanticError,
     UnresolvedType,
     evaluate,
 )
@@ -122,6 +123,11 @@ def _schema_adaptation_error(
             expression.source,
             "Map cannot determine an output type: "
             "no case matched and no default was provided",
+        )
+
+    if isinstance(error, UnresolvedCaptureSemanticError):
+        return AdaptationError(
+            declaration, expression.source, error.message, unresolved_capture=error
         )
 
     return AdaptationError(declaration, expression.source, error.message)

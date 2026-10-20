@@ -136,7 +136,12 @@ def adapt_source_module(
         parameters = tuple(parameter.name for parameter in alias.type_parameters)
         if alias.is_type_function:
             value = resolve_type_function_application(
-                alias.value, alias.name, parameters, type_context, origins
+                alias.value,
+                alias.name,
+                parameters,
+                type_context,
+                origins,
+                unresolved_capture_bound=bool(parameters),
             )
         else:
             value = _adapt_alias_fallback(

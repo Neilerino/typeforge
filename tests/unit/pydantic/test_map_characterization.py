@@ -9,8 +9,10 @@ from pydantic import (
     TypeAdapter,
     ValidationError,
 )
-from typeforge import Map, Value
+from typeforge import Capture, Map
 from typeforge.pydantic import Schema
+
+Item = Capture("Item")
 
 
 @pytest.mark.parametrize(
@@ -23,13 +25,13 @@ from typeforge.pydantic import Schema
             id="any-compatible-first-case",
         ),
         pytest.param(
-            Map[TypingAny, list[Value] : set[Value], ...:TypingAny],
+            Map[TypingAny, list[Item] : set[Item], ...:TypingAny],
             ["3"],
             ["3"],
             id="any-has-no-list-structure",
         ),
         pytest.param(
-            Map[list[TypingAny], list[Value] : set[Value]],
+            Map[list[TypingAny], list[Item] : set[Item]],
             ["3", 4],
             {"3", 4},
             id="list-any-captures-any",
@@ -64,7 +66,7 @@ def test_schema_any_cases_preserve_compatible_and_structural_roles(
     [
         pytest.param(Map[object, int:str], id="known-no-match"),
         pytest.param(
-            Map[TypingAny, list[Value] : set[Value]],
+            Map[TypingAny, list[Item] : set[Item]],
             id="structural-no-match",
         ),
         pytest.param(
@@ -81,8 +83,8 @@ def test_schema_rejects_empty_output_at_construction(expression: object) -> None
 
 
 def test_structural_map_reconciles_repeated_captures() -> None:
-    type Matched = Map[tuple[int, int], tuple[Value, Value] : list[Value], ...:bytes]
-    type Mismatched = Map[tuple[int, str], tuple[Value, Value] : list[Value], ...:bytes]
+    type Matched = Map[tuple[int, int], tuple[Item, Item] : list[Item], ...:bytes]
+    type Mismatched = Map[tuple[int, str], tuple[Item, Item] : list[Item], ...:bytes]
 
     assert TypeAdapter[object](Schema[Matched]).validate_python(["3"]) == [3]
     assert TypeAdapter[object](Schema[Mismatched]).validate_python("3") == b"3"
@@ -91,8 +93,8 @@ def test_structural_map_reconciles_repeated_captures() -> None:
 def test_failed_structural_case_does_not_leak_capture_to_next_case() -> None:
     type Selected = Map[
         tuple[int, str],
-        tuple[Value, bytes] : bytes,
-        tuple[int, Value] : list[Value],
+        tuple[Item, bytes] : bytes,
+        tuple[int, Item] : list[Item],
     ]
     adapter = TypeAdapter[object](Schema[Selected])
 
@@ -104,7 +106,7 @@ def test_failed_structural_case_does_not_leak_capture_to_next_case() -> None:
 def test_nested_capture_templates_preserve_union_and_literal_types() -> None:
     type Selected = Map[
         list[int],
-        list[Value] : tuple[Value | None, Literal["accepted"]],
+        list[Item] : tuple[Item | None, Literal["accepted"]],
     ]
     adapter = TypeAdapter[object](Schema[Selected])
 
@@ -115,9 +117,7 @@ def test_nested_capture_templates_preserve_union_and_literal_types() -> None:
 
 
 def test_variadic_alias_binds_each_argument_before_structural_capture() -> None:
-    type Packed[*Items] = Map[
-        tuple[*Items], tuple[Value, Value] : list[Value], ...:bytes
-    ]
+    type Packed[*Items] = Map[tuple[*Items], tuple[Item, Item] : list[Item], ...:bytes]
 
     assert TypeAdapter[object](Schema[Packed[int, int]]).validate_python(["3"]) == [3]
     assert TypeAdapter[object](Schema[Packed[int, str]]).validate_python("3") == b"3"

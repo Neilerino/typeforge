@@ -28,6 +28,7 @@ from typeforge.compiler.source._model import (
 from typeforge.compiler.source._syntax import (
     AnnotationSyntaxError,
     ImportBindings,
+    capture_bindings,
     collect_import_bindings,
     expression_name,
     resolve_ast_name,
@@ -84,7 +85,9 @@ def parse_source(
 
 def _parse_source(source: str, path: Path) -> ParsedSource:
     tree = ast.parse(source, filename=str(path), type_comments=True)
-    bindings = collect_import_bindings(tree)
+    bindings = capture_bindings(
+        path, tree.body, collect_import_bindings(tree), strict=False
+    )
     scoped_statements = _scoped_statements(tree)
     functions = tuple(
         _parse_function(path, source, node, scope, bindings)
@@ -134,6 +137,7 @@ def _parse_source(source: str, path: Path) -> ParsedSource:
         typed_dicts=typed_dicts,
         classes=classes,
         variable_annotations=tuple(variable_annotations),
+        captures=bindings.captures,
         text=source,
         docstring_span=_docstring_span(path, tree),
         future_import_spans=_future_import_spans(path, tree),

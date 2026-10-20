@@ -13,11 +13,12 @@ from typeforge.compiler.source import MarkerKind, MarkerTypeExpression, parse_so
 from typeforge.overlay import transform_source
 
 IMPORTS = """from typing import Literal, Never, TypedDict, Annotated
-from typeforge import Map
+from typeforge import Capture, Map
 from typeforge._markers import Equal, Assignable, All, Not
 from typeforge import MapFields, Field, OptionalField, Drop, Key, Value
 from typeforge._markers import Case, Default, Map as CanonicalMap
 from typeforge.pydantic import Schema
+Item = Capture("Item")
 """
 
 
@@ -83,10 +84,10 @@ def test_slice_callables_emit_the_same_stubs_as_canonical_data(
             'CanonicalMap[Literal["text"], Case[Literal["text"], str], Default[bytes]]',
         ),
         (
-            "Map[list[int], list[Value]: Map[Value, Equal[int]: str, ...: bytes]]",
+            "Map[list[int], list[Item]: Map[Item, Equal[int]: str, ...: bytes]]",
             (
-                "CanonicalMap[list[int], Case[list[Value], "
-                "CanonicalMap[Value, Case[Equal[Value, int], str], "
+                "CanonicalMap[list[int], Case[list[Item], "
+                "CanonicalMap[Item, Case[Equal[Item, int], str], "
                 "Default[bytes]]]]"
             ),
         ),
@@ -247,13 +248,13 @@ def test_unbounded_structural_callable_has_the_same_existing_emission_limit(
 ) -> None:
     path = tmp_path / "example.py"
     for expression in (
-        "Map[T, list[Value]: tuple[Value, ...], ...: bytes]",
-        "CanonicalMap[T, Case[list[Value], tuple[Value, ...]], Default[bytes]]",
+        "Map[T, list[Item]: tuple[Item, ...], ...: bytes]",
+        "CanonicalMap[T, Case[list[Item], tuple[Item, ...]], Default[bytes]]",
     ):
         path.write_text(IMPORTS + f"def f[T](x: T) -> {expression}: ...\n")
         result = generate_module(path, maximum_arity=2)
         assert isinstance(result, Failure)
-        assert "unlowered type expression: MapValueType" in str(result.failure())
+        assert "unlowered type expression: CaptureType" in result.failure().message
 
 
 def test_unary_predicate_alias_normalizes_after_alias_expansion() -> None:

@@ -10,6 +10,8 @@ from tests.unit.semantics.test_migration_spec import (
 )
 from typeforge import semantics as s
 
+ITEM = s.CaptureReference(s.TypeSymbol((__name__,), "Item"))
+
 
 def test_equal_preserves_symbol_identity_and_uncertainty() -> None:
     symbol = s.TypeSymbol(scope=("models", "Payload"), name="T")
@@ -353,10 +355,8 @@ def test_repeated_capture_narrows_to_its_known_argument(reverse: bool) -> None:
         s.TypeValueReference(structure("tuple", *arguments)),
         (
             s.CaseExpression(
-                s.ParameterizedTypePattern(
-                    "tuple", (s.CaptureValuePattern(), s.CaptureValuePattern())
-                ),
-                s.ValueReference(),
+                s.ParameterizedTypePattern("tuple", (ITEM, ITEM)),
+                ITEM,
             ),
         ),
         s.TypeReference("bytes"),
@@ -374,10 +374,8 @@ def test_same_symbol_repeated_capture_remains_definite() -> None:
         s.TypeValueReference(structure("tuple", unknown().value, unknown().value)),
         (
             s.CaseExpression(
-                s.ParameterizedTypePattern(
-                    "tuple", (s.CaptureValuePattern(), s.CaptureValuePattern())
-                ),
-                s.ValueReference(),
+                s.ParameterizedTypePattern("tuple", (ITEM, ITEM)),
+                ITEM,
             ),
         ),
         s.KeyReference(),
@@ -394,7 +392,7 @@ def test_known_capture_mismatch_survives_a_later_unknown() -> None:
         ),
         (
             s.CaseExpression(
-                s.ParameterizedTypePattern("tuple", (s.CaptureValuePattern(),) * 3),
+                s.ParameterizedTypePattern("tuple", (ITEM,) * 3),
                 s.KeyReference(),
             ),
         ),
@@ -410,10 +408,8 @@ def test_nested_capture_reconciliation_combines_known_positions() -> None:
         s.TypeValueReference(structure("tuple", left, right)),
         (
             s.CaseExpression(
-                s.ParameterizedTypePattern(
-                    "tuple", (s.CaptureValuePattern(), s.CaptureValuePattern())
-                ),
-                s.ValueReference(),
+                s.ParameterizedTypePattern("tuple", (ITEM, ITEM)),
+                ITEM,
             ),
         ),
         s.TypeReference("bytes"),
@@ -428,10 +424,10 @@ def test_captured_union_templates_keep_static_provenance() -> None:
         s.TypeValueReference(structure("list", unknown().value)),
         (
             s.CaseExpression(
-                s.ParameterizedTypePattern("list", (s.CaptureValuePattern(),)),
+                s.ParameterizedTypePattern("list", (ITEM,)),
                 s.ParameterizedTypeTemplate(
                     "tuple",
-                    (s.UnionExpression((s.ValueReference(), s.TypeReference("None"))),),
+                    (s.UnionExpression((ITEM, s.TypeReference("None"))),),
                 ),
             ),
         ),
@@ -592,8 +588,8 @@ def test_opaque_parameter_cannot_capture_unknown_type_arguments() -> None:
         unknown(),
         (
             s.CaseExpression(
-                s.ParameterizedTypePattern("list", (s.CaptureValuePattern(),)),
-                s.ValueReference(),
+                s.ParameterizedTypePattern("list", (ITEM,)),
+                ITEM,
             ),
         ),
         s.TypeReference("bytes"),
@@ -603,7 +599,7 @@ def test_opaque_parameter_cannot_capture_unknown_type_arguments() -> None:
         NameTypeSystem(),
         s.EvaluationContext(value=s.ResolvedType("unrelated")),
     ) == Failure(
-        s.UnsupportedExpressionSemanticError(
+        s.UnresolvedCaptureSemanticError(
             "cannot capture type arguments from an unresolved type parameter"
         )
     )

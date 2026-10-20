@@ -7,6 +7,7 @@ from typeforge.compiler.stub_ir._model import (
     AllPredicate,
     AnyPredicate,
     AssignablePredicate,
+    CaptureType,
     ClassDeclaration,
     CollectType,
     Declaration,
@@ -21,7 +22,6 @@ from typeforge.compiler.stub_ir._model import (
     MapCase,
     MapFieldsType,
     MapType,
-    MapValueType,
     NotPredicate,
     OverloadDeclaration,
     Predicate,
@@ -147,7 +147,7 @@ def _rewrite_type_children(
             TypeName()
             | TypeVariable()
             | LiteralType()
-            | MapValueType()
+            | CaptureType()
             | RuntimeInputType()
         ):
             return expression
@@ -223,7 +223,7 @@ def walk_type(expression: StubTypeExpression) -> Iterator[StubTypeExpression]:
             TypeName()
             | TypeVariable()
             | LiteralType()
-            | MapValueType()
+            | CaptureType()
             | RuntimeInputType()
         ):
             return

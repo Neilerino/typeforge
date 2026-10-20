@@ -5,6 +5,7 @@ from enum import StrEnum
 from typing import TypeIs
 
 from typeforge.compiler.source import SourceSpan
+from typeforge.semantics import TypeSymbol
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,8 +116,8 @@ class MapType:
 
 
 @dataclass(frozen=True, slots=True)
-class MapValueType:
-    pass
+class CaptureType:
+    symbol: TypeSymbol
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,7 +151,7 @@ type StubTypeExpression = (
     | LiteralType
     | UnionExpression
     | MapType
-    | MapValueType
+    | CaptureType
     | FieldType
     | MapFieldsType
     | RuntimeInputType

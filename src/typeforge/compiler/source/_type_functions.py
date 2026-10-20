@@ -9,6 +9,7 @@ from typeforge.compiler.source._model import RawTypeExpression, TypeAliasDeclara
 from typeforge.compiler.source._syntax import (
     AnnotationSyntaxError,
     ImportBindings,
+    capture_bindings,
     resolve_ast_name,
     source_span,
 )
@@ -62,9 +63,9 @@ def _validate_type_function_signature(
         )
 
 
-def _type_function_return(
-    path: Path, node: ast.FunctionDef | ast.AsyncFunctionDef
-) -> ast.expr:
+def _type_function_body(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> list[ast.stmt]:
     body = node.body
     if (
         isinstance(body[0], ast.Expr)
@@ -73,13 +74,20 @@ def _type_function_return(
     ):
         body = body[1:]
 
-    if len(body) != 1 or not isinstance(body[0], ast.Return) or body[0].value is None:
+    return body
+
+
+def _type_function_return(
+    path: Path, node: ast.FunctionDef | ast.AsyncFunctionDef
+) -> ast.expr:
+    body = _type_function_body(node)
+    if not body or not isinstance(body[-1], ast.Return) or body[-1].value is None:
         raise AnnotationSyntaxError(
             "type_function currently requires one final return of a type expression",
             source_span(path, body[0] if body else node),
         )
 
-    returned = body[0].value
+    returned = body[-1].value
     for item in ast.walk(returned):
         if isinstance(
             item,
@@ -118,7 +126,13 @@ def parse_type_function(
     )
     parameter_names = {parameter.name for parameter in parameters}
     local_bindings = ImportBindings(
-        names=tuple(item for item in bindings.names if item[0] not in parameter_names)
+        names=tuple(item for item in bindings.names if item[0] not in parameter_names),
+        captures=tuple(
+            item for item in bindings.captures if item[0] not in parameter_names
+        ),
+    )
+    local_bindings = capture_bindings(
+        path, _type_function_body(node)[:-1], local_bindings, strict=True
     )
     value = parse_annotation(path, source, returned, local_bindings)
     if isinstance(value, RawTypeExpression) and not (
