@@ -231,15 +231,40 @@ with ordinary non-returning semantics, distinct from omitting the fallback.
 
 Coverage that cannot be expressed soundly produces an authored diagnostic asking
 for a covered bound, explicit specialization, or fallback. This includes exact-only
-class matching, structural TypedDict/Protocol ranges, and currently no-default
-Each/Collect maps. Portable overloads cannot exclude subtypes such as `bool` from
+class matching and structural TypedDict/Protocol ranges. Portable overloads
+cannot exclude subtypes such as `bool` from
 `int`; overlapping bool/int literal overloads use their complete output union.
 Captured container ranges without a fallback also need coverage proof: a native
 parameter cannot exclude subclasses lacking structural facts. Generated overloads
 respect authored bounds. Repeated captures still require exact semantic agreement;
 native repeated type variables can infer a join, so their returns include possible
 fallbacks. Gradual Any inference follows the underlying checker and can differ
-between checkers. Each/Collect retain their finite specialization frontier.
+between checkers.
+
+`Each`/`Collect` reuses callable Map coverage and output projection independently
+at each position. For a configured maximum arity of two:
+
+```python
+from typeforge import Collect, Each, Map
+
+def many[T](*values: Each[T]) -> Collect[Map[T, int: str, bytes: bytes]]: ...
+
+# Published consumer results:
+many(1, b"x")     # tuple[str, bytes]
+many(1, b"x", 2)  # tuple[str | bytes, ...]
+many("text")      # checker error at every arity
+```
+
+Finite positions preserve authored bounds, constraints, independent captures, and
+complete alternative outputs. Closed branch combinations can stay precise;
+crossing generic fallbacks use one complete aggregate tuple because portable
+overloads cannot express their exclusions. When a generic argument might match a
+transform, its output includes that transform's bound as well as the fallback:
+an unknown `Option[Item]: Item | None` mapping cannot promise identity alone.
+Beyond the frontier, mapped results use a homogeneous possible-output tuple.
+Untransformed `Each[*Ts]` identity remains a native TypeVarTuple and can retain
+per-position types at any arity. Overlays project both the input annotations and
+the output bound so existing checkers can validate function bodies.
 See the [callable support limits](CONTEXT.md#callable-support)
 before relying on these forms to reproduce `Schema` selection.
 

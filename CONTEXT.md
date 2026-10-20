@@ -185,16 +185,16 @@ rules. Explicit Never defaults retain normal non-returning semantics.
 For input-domain, alias-bound, literal-identity, subclass, correlation, runtime
 no-match, or overlay changes, run the [callable input contracts](tests/unit/test_callable_input_contract.py).
 Structural TypedDict/Protocol coverage and exact-only class domains require an
-authored diagnostic until they can be represented soundly. No-default Each/Collect
-is currently diagnosed; its later slice must preserve the accepted domain.
+authored diagnostic until they can be represented soundly. Each/Collect preserves
+the same accepted domain in its finite and variadic signatures.
 
 For capture reuse, nested opaque arguments, authored bounds, or generated generic
 names, read [Callable output projection](DESIGN.md#callable-output-projection) and
 run the [output contracts](tests/unit/test_callable_output_contract.py). They cover
 publication and body checking in all three checkers, including missing bindings,
 partial shapes, native subclass fallbacks, and original generic identity.
-Each/Collect retain their finite specialization frontier. Original-whole-subject
-guard verification remains separate work; native Any inference stays checker-owned.
+Original-whole-subject guard verification remains separate work; native Any
+inference stays checker-owned.
 
 The [agreed projection policy](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#d6--callable-precision)
 uses a conservative possible-output union when standard typing cannot express
@@ -206,7 +206,12 @@ for guard checking and the existing bound-only verification limits.
 For Each/Collect, an aggregate possible-output tuple is acceptable when individual
 argument types are unavailable. Preserve per-position mapping when enough type
 information and a faithful representation are available; the configured arity
-limit alone does not make argument types unknowable.
+limit alone does not make argument types unknowable. For position captures,
+constraint coercion, no-default inputs, body annotations, or fallback soundness,
+read [Each and Collect projection](DESIGN.md#each-and-collect-projection) and run
+the [Each/Collect contracts](tests/unit/test_each_collect_contract.py). They cover
+finite closed combinations, complete generic bounds, independent alternatives,
+native TypeVarTuple identity beyond the frontier, and runtime no-match failures.
 
 For specialization changes, use [publication regressions](tests/unit/compiler/pipeline/test_slice_publication.py)
 to check finite arities, deterministic stubs, and all three checkers. Changes to

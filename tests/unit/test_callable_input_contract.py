@@ -205,11 +205,10 @@ def test_each_does_not_publish_an_unrestricted_no_default_fallback(
         "def choose[T](*values: Each[T]) -> Collect[Map[T, int: str]]: ...\n"
     )
 
-    result = generate_module(source, maximum_arity=1)
+    published = generate_module(source, maximum_arity=1).unwrap().content
 
-    assert isinstance(result, Failure)
-    assert isinstance(result.failure(), LoweringError)
-    assert result.failure().code is LoweringErrorCode.UNREPRESENTABLE_COVERAGE
+    assert "def choose(*values: int) -> tuple[str, ...]: ..." in published
+    assert "*values: T" not in published
 
 
 def test_an_explicit_never_fallback_keeps_ordinary_call_acceptance(
