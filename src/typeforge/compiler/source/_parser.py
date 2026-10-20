@@ -254,7 +254,7 @@ def _parse_function(
         parameters=_parse_parameters(path, source, node.args, bindings),
         returns=parse_annotation(path, source, node.returns, bindings),
         type_parameters=tuple(
-            parse_type_parameter(source, parameter)
+            parse_type_parameter(path, source, parameter, bindings)
             for parameter in node.type_params
             if isinstance(parameter, ast.TypeVar | ast.TypeVarTuple | ast.ParamSpec)
         ),
@@ -313,7 +313,7 @@ def _parse_class(
         name=node.name,
         qualified_name=(node.name,),
         type_parameters=tuple(
-            parse_type_parameter(source, parameter)
+            parse_type_parameter(path, source, parameter, bindings)
             for parameter in node.type_params
             if isinstance(parameter, ast.TypeVar | ast.TypeVarTuple | ast.ParamSpec)
         ),

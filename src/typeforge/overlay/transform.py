@@ -18,6 +18,7 @@ from typeforge.compiler.emission import (
     EmissionError,
     emit_stub_module,
     emit_type_expression,
+    emit_type_parameter,
 )
 from typeforge.compiler.pipeline import (
     AdaptationError,
@@ -31,6 +32,7 @@ from typeforge.compiler.pipeline import (
     VerificationPlan,
     compile_source,
     describe_authored_callables,
+    describe_type_parameter_projections,
 )
 from typeforge.compiler.pipeline import SourceSpan as AuthoredSourceSpan
 from typeforge.compiler.stub_ir import (
@@ -146,6 +148,7 @@ def _project_overlay(plan: CompilationPlan, *, version: int) -> VirtualDocument:
     blocks = tuple(_overload_insertion(source, item) for item in generated)
     alias_edits = _alias_edits(source, plan)
     annotation_edits = _annotation_edits(source, plan)
+    parameter_edits = _type_parameter_edits(source, plan)
     verification_edits = _verification_edits(
         source=source,
         plan=plan.verification,
@@ -159,6 +162,7 @@ def _project_overlay(plan: CompilationPlan, *, version: int) -> VirtualDocument:
             for item in (
                 *alias_edits,
                 *annotation_edits,
+                *parameter_edits,
                 *verification_edits,
             )
         )
@@ -193,6 +197,7 @@ def _project_overlay(plan: CompilationPlan, *, version: int) -> VirtualDocument:
         *record_edit,
         *alias_edits,
         *annotation_edits,
+        *parameter_edits,
         *blocks,
         *verification_edits,
     )
@@ -364,16 +369,12 @@ def _bound_signature_type_parameters(
         _collect_structural_bounds(parameter.annotation, classes, bounds)
 
     _collect_structural_bounds(signature.return_type, classes, bounds)
-    return FunctionDeclaration(
-        name=signature.name,
-        parameters=signature.parameters,
-        return_type=signature.return_type,
+    return replace(
+        signature,
         type_parameters=tuple(
             bounds.get(_type_parameter_name(parameter), parameter)
             for parameter in signature.type_parameters
         ),
-        is_async=signature.is_async,
-        decorators=signature.decorators,
     )
 
 
@@ -425,8 +426,8 @@ def _positional_variadic_overloads(
 ) -> OverloadDeclaration:
     return OverloadDeclaration(
         signatures=tuple(
-            FunctionDeclaration(
-                name=signature.name,
+            replace(
+                signature,
                 parameters=tuple(
                     Parameter(
                         name=parameter.name,
@@ -440,10 +441,6 @@ def _positional_variadic_overloads(
                     )
                     for parameter in signature.parameters
                 ),
-                return_type=signature.return_type,
-                type_parameters=signature.type_parameters,
-                is_async=signature.is_async,
-                decorators=signature.decorators,
             )
             for signature in declaration.signatures
         ),
@@ -538,6 +535,16 @@ def _annotation_edits(source: str, plan: CompilationPlan) -> tuple[_Edit, ...]:
     return tuple(edits)
 
 
+def _type_parameter_edits(source: str, plan: CompilationPlan) -> tuple[_Edit, ...]:
+    edits: list[_Edit] = []
+    for projection in describe_type_parameter_projections(plan):
+        declaration = emit_type_parameter(projection.name, projection.domain).unwrap()
+        span = _source_span(source, projection.span)
+        edits.append(_Edit(span.start.offset, span.end.offset, declaration, span))
+
+    return tuple(edits)
+
+
 def _render_derived_records(
     plan: CompilationPlan,
 ) -> tuple[str, ...]:
@@ -572,10 +579,13 @@ def _render_derived_records(
 
 
 def _relationship_fallback(expression: MapType) -> StubTypeExpression:
+    defaults = (
+        () if expression.default is None else (_checker_type(expression.default),)
+    )
     return union_types(
         (
             *(_checker_type(case.output_type) for case in expression.cases),
-            _checker_type(expression.default),
+            *defaults,
         )
     )
 

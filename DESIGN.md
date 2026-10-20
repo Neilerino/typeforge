@@ -295,6 +295,39 @@ Published library stubs must be deterministic from library source and configurat
 
 Project integrations may use local context to improve precision. These transformations remain in memory, never rewrite authored files, and are not publishable by default.
 
+### Callable input coverage
+
+Relationship IR preserves an omitted Map default as None, separately from an
+explicit Never output. Source type parameters retain bounds or constraint domains,
+default presence, and authored spans. Adaptation expands selectors and bounds
+through the existing alias owner, respecting visible type parameters.
+
+Specialization projects no-default Maps into closed covered input signatures or
+bounded generics. Coverage uses the compiler's existing type adapter and local
+class ancestry; it does not execute application code. Its containment proof treats
+an Any parameter as admitting all known input types, independently of matching a
+known Any subject. Possible outputs retain complete alternatives, including
+reachable subclass branches. Redundant broad overloads are removed. Bool/int
+literal collisions use an aggregate output signature where precise overloads
+would fail a supported checker; shared Map literal identity stays unchanged.
+Adaptation retains resolved Protocol identity independently of its emitted import
+spelling, including parameterized and aliased Protocol bases.
+
+Exact-only class selectors cannot establish a subtype-closed native parameter
+domain. Structural TypedDict/Protocol parameters also require matching structural
+facts before their coverage can be promised. Unsupported coverage returns
+UNREPRESENTABLE_COVERAGE on the authored callable with bound, specialization, or
+fallback guidance. No-default Each/Collect currently returns that diagnostic until
+its input-contract projection is implemented. Explicit defaults retain the
+existing output-projection path.
+
+Pipeline exposes type-parameter projections using retained contracts, generated
+signatures, and authored spans. Overlay consumes those facts and the public binder
+emitter to restrict inputs while preserving original type parameters in the body.
+Verification continues to consume the authored relationship. Native mypy, Pyright,
+and Pyrefly enforce parameter bounds and check expressions; Typeforge does not
+infer ordinary Python values itself.
+
 ## Implementation verification
 
 Implementation verification produces checker-neutral obligations from Typeforge relationships and authored control flow. Existing type checkers validate the expressions; Typeforge does not infer ordinary Python expression types itself.

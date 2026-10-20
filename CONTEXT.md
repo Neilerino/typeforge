@@ -178,21 +178,28 @@ stubs use standard typing; relationship aliases publish as object, while overlay
 use possible-output bounds for aliases and inline Maps. Callable relationships
 require a generic controller; relationship aliases require one type parameter.
 
-Each/Collect precision stops at the configured arity. Calls outside specialized
-overloads retain aggregate bounds even when the authored Map has no fallback.
-Unbounded structural outputs can fail emission. Overload subtype matching cannot
-exclude bool from int; predicate candidate discovery and Assignable/isinstance
-verification also have precision limits.
+No-default callable Maps publish covered input signatures or bounded generics.
+Overlays restrict the same domain and keep the authored binder available in the
+body. Uncovered known inputs are checker errors; Any follows ordinary checker
+rules. Explicit Never defaults retain normal non-returning semantics.
+For input-domain, alias-bound, literal-identity, subclass, correlation, runtime
+no-match, or overlay changes, run the [callable input contracts](tests/unit/test_callable_input_contract.py).
+Structural TypedDict/Protocol coverage and exact-only class domains require an
+authored diagnostic until they can be represented soundly. No-default Each/Collect
+is currently diagnosed; its later slice must preserve the accepted domain.
+
+Each/Collect precision with an explicit fallback stops at the configured arity;
+outside overloads retain aggregate bounds. Unbounded structural outputs can fail
+emission. Overload subtype matching cannot exclude bool from int, and bool/int
+literal collisions use an aggregate bound. Predicate candidate discovery and
+Assignable/isinstance verification also have precision limits.
 
 The [agreed projection policy](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#d6--callable-precision)
 uses a conservative possible-output union when standard typing cannot express
 the precise relationship. Retain or improve precision wherever it is supported;
-projection limits must not redefine Map selection. Implementation is pending.
-For callable Maps without a default, known unsupported inputs fail under the
-agreed future contract. Project the accepted input domain into standard parameter
-types where possible. If coverage cannot be represented soundly, require a bound,
-specialization, or fallback. Possible normal outputs alone do not prove input
-acceptance. See the [final callable decisions](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#final-callable-decision-batch--agreed-2026-09-30)
+projection limits must not redefine Map selection. Broader output precision is
+pending. Possible normal outputs alone do not prove input acceptance.
+See the [final callable decisions](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#final-callable-decision-batch--agreed-2026-09-30)
 for guard checking and the existing bound-only verification limits.
 For Each/Collect, an aggregate possible-output tuple is acceptable when individual
 argument types are unavailable. Preserve per-position mapping when enough type
@@ -245,7 +252,8 @@ surface retains bare compatibility matching and exact Is, removes Assignable,
 and defers compound predicates and binary comparisons. Scalar matching and
 public removal of Equal/Assignable/All/Any/Not are implemented. Known union
 selection and whole-subject Is agree in compiler Schema and runtime evaluation.
-Callable input and output projection remain separate pending slices.
+Callable publication details and remaining precision limits are under
+[Callable support](#callable-support).
 
 The latest [bare-selector decision](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#revisited-assignable-example--bare-subclass-matching-requested)
 requires Animal to match a Dog subclass. This revises the earlier exact-only
@@ -254,7 +262,7 @@ user chose to follow checker compatibility for bool/int: bool matches bare int,
 and the proposed primitive exception is withdrawn. All three installed checkers
 also accept a custom int subclass. Any and generic compatibility rules are agreed;
 resolved generic compatibility and list/tuple-to-Sequence captures are implemented.
-Callable projection still needs its owning slices.
+Broader callable output precision remains pending.
 
 Fixed resolved selectors support list/set/dict invariance, Sequence/frozenset/tuple
 covariance, and Mapping with invariant keys and covariant values. Lists and tuples
@@ -352,5 +360,4 @@ fails a Map when a known subject member has no matching branch. Ordinary Never
 union semantics remain those of Python. This decision supersedes earlier
 Never-only outcomes for known unmatched inputs. Compiler Schema, record
 materialization, and runtime evaluation now share this failure rule. Callable
-input-contract projection remains pending; an output bound alone is not an
-accepted-input contract.
+publication projects covered inputs as described under [Callable support](#callable-support).
