@@ -1,6 +1,6 @@
 """Python typing operations behind the shared TypeSystem interface."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import partial
 from operator import getitem
@@ -187,25 +187,66 @@ def _assignable(source: object, target: object) -> bool:
 
 
 class RuntimeTypeSystem:
-    def equal(
-        self, left: RuntimeType, right: RuntimeType
-    ) -> Result[bool, SemanticIssue]:
-        return Success(left.value == right.value)
+    def __init__(
+        self,
+        *,
+        selection_type: Callable[[RuntimeType], Result[RuntimeType, SemanticIssue]]
+        | None = None,
+    ) -> None:
+        self._selection_type = selection_type
+
+    def _resolved_selection_type(self, value: RuntimeType) -> RuntimeType:
+        if self._selection_type is None:
+            return value
+
+        return self._selection_type(value).unwrap()
+
+    @safe_result(errors=(SemanticIssue,))
+    def equal(self, left: RuntimeType, right: RuntimeType) -> bool:
+        return (
+            self._resolved_selection_type(left).value
+            == self._resolved_selection_type(right).value
+        )
 
     @safe_result(errors=(SemanticIssue,))
     def assignable(self, source: RuntimeType, target: RuntimeType) -> bool:
-        return _assignable(source.value, target.value)
+        return _assignable(
+            self._resolved_selection_type(source).value,
+            self._resolved_selection_type(target).value,
+        )
 
-    def union_members(
-        self, value: RuntimeType
-    ) -> Result[tuple[RuntimeType, ...], SemanticIssue]:
+    @safe_result(errors=(SemanticIssue,))
+    def union_members(self, value: RuntimeType) -> tuple[RuntimeType, ...]:
+        return self._union_members(self._resolved_selection_type(value))
+
+    def _union_members(self, value: RuntimeType) -> tuple[RuntimeType, ...]:
         if value.value is Never:
-            return Success(())
+            return ()
+
+        if get_origin(value.value) is Annotated:
+            annotated, *metadata = _arguments(value)
+            members = self._union_members(annotated)
+            if len(members) == 1 and members[0] is annotated:
+                return (value,)
+
+            return tuple(
+                replace(
+                    member,
+                    annotation=self.build(
+                        ParameterizedTypeShape(
+                            concrete_type(Annotated), (member, *metadata)
+                        )
+                    )
+                    .unwrap()
+                    .annotation,
+                )
+                for member in members
+            )
 
         if get_origin(value.value) is not Union:
-            return Success((value,))
+            return (value,)
 
-        return Success(_arguments(value))
+        return _arguments(value)
 
     def union(
         self, members: tuple[RuntimeType, ...]
@@ -246,18 +287,16 @@ class RuntimeTypeSystem:
             ),
         )
 
-    def inspect(
-        self, value: RuntimeType
-    ) -> Result[ParameterizedTypeShape[RuntimeType] | None, SemanticIssue]:
+    @safe_result(errors=(SemanticIssue,))
+    def inspect(self, value: RuntimeType) -> ParameterizedTypeShape[RuntimeType] | None:
+        value = self._resolved_selection_type(value)
         origin = get_origin(value.value)
         if origin is None:
-            return Success(None)
+            return None
 
-        return Success(
-            ParameterizedTypeShape(
-                concrete_type(origin),
-                _arguments(value),
-            )
+        return ParameterizedTypeShape(
+            concrete_type(origin),
+            _arguments(value),
         )
 
     @safe_result(errors=(SemanticIssue,))

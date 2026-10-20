@@ -25,11 +25,10 @@ from pydantic import GetCoreSchemaHandler
 from typeforge import semantics as s
 from typeforge.pydantic._emission import emit_output
 from typeforge.pydantic._evaluation import evaluation_issue, schema_output
-from typeforge.pydantic._frontend import AdaptedAnnotation
+from typeforge.pydantic._frontend import ANNOTATION_TYPE_SYSTEM, AdaptedAnnotation
 from typeforge.pydantic._observation import RawInput, input_test_kinds, matches_type
 from typeforge.pydantic._policy import input_test_issue
 from typeforge.pydantic._type_system import (
-    RUNTIME_TYPE_SYSTEM,
     RuntimeType,
     concrete_type,
 )
@@ -59,7 +58,7 @@ class DeferredAnnotations:
     @safe_result(errors=_DEFER_ERRORS)
     def defer(self, plan: s.DeferredMap[RuntimeType]) -> RuntimeType:
         evaluator = s.Evaluator(
-            RUNTIME_TYPE_SYSTEM,
+            ANNOTATION_TYPE_SYSTEM,
             deferred_types=self,
             context=plan.context,
         )
@@ -132,7 +131,7 @@ def _output_type_matches(target: object, value: object) -> bool:
 def _dispatch_schema(
     annotation: _InputAnnotation, choices: dict[int, CoreSchema]
 ) -> CoreSchema:
-    evaluator = s.Evaluator(RUNTIME_TYPE_SYSTEM)
+    evaluator = s.Evaluator(ANNOTATION_TYPE_SYSTEM)
 
     def select(value: object) -> int:
         selected = evaluator.select_deferred_map(

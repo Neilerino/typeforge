@@ -17,6 +17,7 @@ from typeforge.semantics.domain.assertions import (
 )
 from typeforge.semantics.domain.exceptions import (
     DuplicateFieldSemanticError,
+    ExpectedTypeSemanticError,
     SemanticIssue,
     UnboundCaptureSemanticError,
     UnboundFieldSemanticError,
@@ -50,6 +51,7 @@ from typeforge.semantics.domain.models import (
     InputReference,
     MapExpression,
     MapNoMatch,
+    MapOutputRole,
     MapSelection,
     NoMatchDecision,
     NotExpression,
@@ -370,7 +372,12 @@ class Evaluator[T]:
         value = (
             ResolvedType(field.value)
             if expression.value is None
-            else self._evaluate(expression.value)
+            else self.with_context(
+                replace(
+                    self.context,
+                    map_output_role=MapOutputRole.FIELD_REPLACEMENT,
+                )
+            )._evaluate(expression.value)
         )
         if isinstance(value, DroppedField):
             return value
@@ -476,11 +483,26 @@ class Evaluator[T]:
         if len(outputs) == 1:
             return outputs[0]
 
-        return union_type(
+        return self._combine_map_outputs(
             outputs,
-            self.type_system,
             "Map outputs for a union subject must evaluate to types",
         )
+
+    def _combine_map_outputs(
+        self, outputs: tuple[EvaluationValue[T], ...], message: str
+    ) -> EvaluationValue[T]:
+        if self.context.map_output_role is MapOutputRole.FIELD_REPLACEMENT and any(
+            isinstance(output, DroppedField) for output in outputs
+        ):
+            # Evaluate and validate every member before consuming the effect.
+            # Drop cannot hide an uncovered path or another invalid output.
+            for output in outputs:
+                if not isinstance(output, DroppedField):
+                    expect_possible_type(output, message)
+
+            return DroppedField()
+
+        return union_type(outputs, self.type_system, message)
 
     def _defer_map(
         self,
@@ -556,12 +578,21 @@ class Evaluator[T]:
             self.with_context(context)._evaluate(selection.output)
             for context in contexts
         )
+        for context, output in zip(contexts, outputs, strict=True):
+            if (
+                context.mode is EvaluationMode.SPECULATIVE
+                and context.map_output_role is MapOutputRole.FIELD_REPLACEMENT
+                and isinstance(output, DroppedField)
+            ):
+                raise ExpectedTypeSemanticError(
+                    "speculative Drop cannot determine a definite field layout"
+                )
+
         if len(outputs) == 1:
             return outputs[0]
 
-        return union_type(
+        return self._combine_map_outputs(
             outputs,
-            self.type_system,
             "alternative Map outputs must evaluate to types",
         )
 

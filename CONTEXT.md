@@ -52,6 +52,8 @@ read [explicit record semantics](DESIGN.md#explicit-record-semantics) and
 For local generic scope, alias cycles, or composed record operands, read
 [the local alias contracts](tests/unit/test_local_alias_contract.py) and
 [Reusable type functions](DESIGN.md#reusable-type-functions).
+For union-valued field selection, Drop effects, or speculative field presence,
+read [the field union contracts](tests/unit/test_field_union_contract.py).
 
 ## Language
 
@@ -204,8 +206,8 @@ passing checker tests alone does not establish Schema-equivalent selection.
 
 ### Field support
 
-TypedDict transforms support dropping, renaming, scalar field.type mapping, union
-outputs, and unchanged union fields. Compiler materialization uses named generic
+TypedDict transforms support dropping, renaming, memberwise field.type mapping,
+union outputs, and unchanged union fields. Compiler materialization uses named generic
 record aliases; runtime Schema also supports the exercised inline form.
 
 Whole-field passthrough preserves source flags and backend-owned metadata.
@@ -307,13 +309,15 @@ spelling; callable input/output precision remains a separate pending contract.
 
 ### G5 — Field distribution
 
-Compiler record discovery stores field annotations as opaque NamedType values.
-The nested field.type Map witness emits float for an int-or-str field, while Pydantic
-distributes to bytes-or-float. The
-[agreed correction](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#d5--union-valued-fields)
-requires bytes-or-float in both consumers, preserving ordinary memberwise Map
-selection inside fields. Field discovery and downstream matching still need
-implementation changes.
+Compiler and runtime distribute bare selectors over known field unions. Is tests
+the complete field type. A concrete Drop in a replacement result removes the
+whole field; every member and capture alternative must still evaluate successfully.
+Ordinary aliases and local inheritance facts participate in selection. Recursive
+aliases can pass through unchanged when matching does not need their structure.
+Speculative Drop remains an explicit unsupported-layout diagnostic, including
+when a capture alternative is uncertain. Use the
+[field union contracts](tests/unit/test_field_union_contract.py) for these paths;
+G6 retains the separate record-union scope.
 
 ### G6 — Unsupported structures
 
@@ -338,9 +342,9 @@ The [agreed field syntax](https://github.com/Neilerino/typeforge/blob/neil/typef
 uses Record/Fields comprehensions inside a type_function, with a locally bound
 field exposing its name and type. Record/Fields construction, scoped references,
 whole-field preservation, and Drop are implemented. The public cutover removes
-MapFields and ambient Key/Value without compatibility shims. Field construction
-and immutable replacement arrive next; union-valued transforms and correlated
-record unions retain their own slices. Initial output is TypedDict; explicit
+MapFields and ambient Key/Value without compatibility shims. Field construction,
+immutable replacement, and union-valued transforms are implemented; correlated
+record unions retain their own slice. Initial output is TypedDict; explicit
 record-family adapters preserve room for future generated Protocols.
 
 The [agreed no-match rule](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#agreed-partial-static-no-match-failure)

@@ -2,13 +2,25 @@
 
 from dataclasses import replace
 
+from typeforge.compiler.adaptation._context import class_type_environment
 from typeforge.compiler.adaptation._schema_aliases import expand_schema_aliases
 from typeforge.compiler.record_materialization import (
     RecordAliasRewriter,
     RecordMaterialization,
     materialize_record_transforms,
 )
-from typeforge.compiler.source import SourceModule, SourceSpan
+from typeforge.compiler.source import (
+    FieldReferenceTypeExpression,
+    MarkerKind,
+    MarkerTypeExpression,
+    SourceModule,
+    SourceSpan,
+    SourceTypeExpression,
+    TypedDictDeclaration,
+    TypedDictField,
+    opaque_enriched_annotations,
+    walk_type_expression,
+)
 from typeforge.compiler.source import TypeAliasDeclaration as SourceTypeAlias
 from typeforge.compiler.stub_ir import (
     ClassDeclaration,
@@ -25,11 +37,14 @@ from typeforge.compiler.stub_ir import (
 
 
 def materialize_records(source: SourceModule, module: StubModule) -> StubModule:
-    source = _expand_predicate_aliases(source)
+    source = _expand_record_aliases(source)
     origins = _RecordOrigins(module.origins)
 
     records = materialize_record_transforms(
-        source, module, on_rewrite=origins.record_rewrite
+        source,
+        module,
+        on_rewrite=origins.record_rewrite,
+        environment=class_type_environment(source),
     ).unwrap()
 
     if not records.declarations:
@@ -54,7 +69,7 @@ def materialize_records(source: SourceModule, module: StubModule) -> StubModule:
     return replace(materialized, origins=current_origins)
 
 
-def _expand_predicate_aliases(source: SourceModule) -> SourceModule:
+def _expand_record_aliases(source: SourceModule) -> SourceModule:
     aliases: list[SourceTypeAlias] = []
     for alias in source.aliases:
         value = expand_schema_aliases(
@@ -65,7 +80,52 @@ def _expand_predicate_aliases(source: SourceModule) -> SourceModule:
         ).unwrap()
         aliases.append(replace(alias, value=value))
 
-    return replace(source, aliases=tuple(aliases))
+    if not any(_selects_field_type(alias.value) for alias in aliases):
+        return replace(source, aliases=tuple(aliases))
+
+    records: list[TypedDictDeclaration] = []
+    for declaration in source.typed_dicts:
+        fields: list[TypedDictField] = []
+        for field in declaration.fields:
+            annotation = expand_schema_aliases(
+                opaque_enriched_annotations(field.annotation),
+                source.aliases,
+                declaration=declaration.name,
+            ).unwrap()
+            fields.append(replace(field, annotation=annotation))
+
+        records.append(replace(declaration, fields=tuple(fields)))
+
+    return replace(source, aliases=tuple(aliases), typed_dicts=tuple(records))
+
+
+def _selects_field_type(expression: SourceTypeExpression) -> bool:
+    """Ordinary passthrough needs no recursive alias-selection capability."""
+    for item in walk_type_expression(expression):
+        if not (
+            isinstance(item, MarkerTypeExpression)
+            and item.marker is MarkerKind.MAP
+            and item.arguments
+        ):
+            continue
+
+        subject, *entries = item.arguments
+        selectors = (
+            entry.arguments[0]
+            for entry in entries
+            if isinstance(entry, MarkerTypeExpression)
+            and entry.marker is MarkerKind.CASE
+            and entry.arguments
+        )
+        for operand in (subject, *selectors):
+            if any(
+                isinstance(child, FieldReferenceTypeExpression)
+                and child.attribute == "type"
+                for child in walk_type_expression(operand)
+            ):
+                return True
+
+    return False
 
 
 def _rewrite_declarations(

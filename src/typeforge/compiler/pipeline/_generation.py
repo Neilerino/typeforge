@@ -14,7 +14,11 @@ from typeforge.compiler.pipeline._models import (
     GeneratedModule,
     GenerationError,
 )
-from typeforge.compiler.source import RawTypeExpression, SourceModule, parse_module
+from typeforge.compiler.source import (
+    SourceModule,
+    opaque_enriched_annotations,
+    parse_module,
+)
 from typeforge.compiler.stub_ir import (
     ClassDeclaration,
     Declaration,
@@ -68,17 +72,15 @@ def _published_source_scope(source: SourceModule) -> SourceModule:
             for function in source.functions
             if len(function.qualified_name) == 1 or function.span in class_method_spans
         ),
-        # Published record fields retain authored annotations; schema replacements
-        # belong to overlays and must not introduce additional publication failures.
+        # Keep native typing structure for record transforms. Schema replacements
+        # remain opaque and retain their separate publication policy.
         typed_dicts=tuple(
             replace(
                 record,
                 fields=tuple(
                     replace(
                         field,
-                        annotation=RawTypeExpression(
-                            field.annotation.source, field.annotation.span
-                        ),
+                        annotation=opaque_enriched_annotations(field.annotation),
                     )
                     for field in record.fields
                 ),
