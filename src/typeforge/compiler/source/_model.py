@@ -201,6 +201,9 @@ class TypeParameter:
     name: str
     kind: TypeParameterKind
     declaration: str
+    domain: SourceTypeExpression | None = None
+    span: SourceSpan | None = None
+    has_default: bool = False
 
 
 @dataclass(frozen=True, slots=True)

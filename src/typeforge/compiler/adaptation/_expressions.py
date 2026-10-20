@@ -178,7 +178,11 @@ def _(
         )
 
     expanded = expand_schema_aliases(
-        expression, type_context.aliases, declaration=declaration, predicates_only=True
+        expression,
+        type_context.aliases,
+        declaration=declaration,
+        predicates_only=True,
+        type_parameters=type_parameters,
     ).unwrap()
     if isinstance(expanded, MarkerTypeExpression):
         return adapt_type_expression(
@@ -363,7 +367,7 @@ def _(
                 None,
             )
             default = (
-                TypeName("Never")
+                None
                 if default_entry is None
                 else adapt_type_expression(
                     default_entry.output,
@@ -420,6 +424,12 @@ def _adapt_map_test(
     *,
     type_context: SourceTypeContext,
 ) -> StubTypeExpression | Predicate:
+    expression = expand_schema_aliases(
+        expression,
+        type_context.aliases,
+        declaration=declaration,
+        type_parameters=type_parameters,
+    ).unwrap()
     if isinstance(expression, MarkerTypeExpression):
         marker = normalize_adaptation_marker(declaration, expression)
         if isinstance(

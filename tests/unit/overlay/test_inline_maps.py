@@ -50,9 +50,9 @@ class Example[T]:
     with patch("ast.parse", side_effect=AssertionError("must reuse compiled facts")):
         document = project_overlay(plan).unwrap()
 
-    assert "field: tuple[str | bytes, int | Never]" in document.generated_text
+    assert "field: tuple[str | bytes, int]" in document.generated_text
     assert (
-        "value: list[str | bytes]) -> list[tuple[str | Never] | bytes]"
+        "value: list[str | bytes]) -> list[tuple[str] | bytes]"
         in document.generated_text
     )
     assert "Schema[" not in document.generated_text
@@ -81,7 +81,7 @@ class Example[T]:
     [
         ("Map[int | str, int: str | None, ...: bytes]", "str | None | bytes"),
         ("Map[int, int: Never, ...: bytes]", "Never | bytes"),
-        ("Map[int, bytes: str]", "str | Never"),
+        ("Map[int, bytes: str]", "str"),
         ("Schema[Map[int, bytes: str]]", None),
         ("Schema[Map[int, int: str | None, ...: bytes]]", "str | None"),
         ("Map[int, ...: Never]", "Never"),

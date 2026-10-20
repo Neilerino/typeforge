@@ -63,6 +63,6 @@ def test_unrenderable_verification_type_still_skips_only_the_obligation() -> Non
     ):
         document = project_overlay(plan).unwrap()
 
-    assert "def convert(value: int) -> str: ..." in document.generated_text
+    assert "def convert[T: int](value: T) -> Encoded[T]:" in document.generated_text
     assert "__typeforge_return_" not in document.generated_text
     assert all(mapping.provenance is None for mapping in document.mappings)

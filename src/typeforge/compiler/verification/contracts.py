@@ -10,6 +10,7 @@ from typeforge.compiler.stub_ir import (
     FunctionDeclaration,
     MapType,
     StubTypeExpression,
+    TypeName,
     TypeVariable,
     is_predicate,
     substitute_type,
@@ -68,7 +69,9 @@ def build_return_contract(signature: FunctionDeclaration) -> ReturnContract | No
         Alternative(
             index=len(mapping.cases),
             input_type=None,
-            output_type=mapping.default,
+            output_type=TypeName("Never")
+            if mapping.default is None
+            else mapping.default,
             is_default=True,
         ),
     )

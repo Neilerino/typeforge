@@ -103,7 +103,7 @@ def parse_type_function(
     _validate_type_function_signature(path, node, scope)
     returned = _type_function_return(path, node)
     parameters = tuple(
-        parse_type_parameter(source, parameter)
+        parse_type_parameter(path, source, parameter, bindings)
         for parameter in node.type_params
         if isinstance(parameter, ast.TypeVar)
     )

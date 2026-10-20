@@ -48,7 +48,7 @@ def parse_type_alias(
         name=node.name.id,
         qualified_name=(*scope, node.name.id),
         type_parameters=tuple(
-            parse_type_parameter(source, parameter)
+            parse_type_parameter(path, source, parameter, bindings)
             for parameter in node.type_params
             if isinstance(parameter, ast.TypeVar | ast.TypeVarTuple | ast.ParamSpec)
         ),
@@ -58,8 +58,10 @@ def parse_type_alias(
 
 
 def parse_type_parameter(
+    path: Path,
     source: str,
     parameter: ast.TypeVar | ast.TypeVarTuple | ast.ParamSpec,
+    bindings: ImportBindings,
 ) -> TypeParameter:
     if isinstance(parameter, ast.TypeVar):
         kind = TypeParameterKind.TYPE_VAR
@@ -68,10 +70,28 @@ def parse_type_parameter(
     else:
         kind = TypeParameterKind.PARAM_SPEC
 
+    domain: SourceTypeExpression | None = None
+    if isinstance(parameter, ast.TypeVar) and parameter.bound is not None:
+        if isinstance(parameter.bound, ast.Tuple):
+            members = tuple(
+                parse_annotation(path, source, item, bindings)
+                for item in parameter.bound.elts
+            )
+            domain = UnionTypeExpression(
+                source=ast.unparse(parameter.bound),
+                span=source_span(path, parameter.bound),
+                members=members,
+            )
+        else:
+            domain = parse_annotation(path, source, parameter.bound, bindings)
+
     return TypeParameter(
         name=parameter.name,
         kind=kind,
         declaration=ast.get_source_segment(source, parameter) or ast.unparse(parameter),
+        domain=domain,
+        span=source_span(path, parameter),
+        has_default=parameter.default_value is not None,
     )
 
 
