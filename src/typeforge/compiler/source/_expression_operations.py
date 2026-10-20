@@ -52,6 +52,7 @@ def annotation_expressions(module: SourceModule) -> tuple[SourceTypeExpression, 
             )
             if annotation is not None
         ),
+        *(variable.annotation for variable in module.variables),
         *module.variable_annotations,
     )
 

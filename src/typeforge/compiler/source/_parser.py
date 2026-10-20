@@ -15,6 +15,7 @@ from typeforge.compiler.source._model import (
     ClassField,
     FunctionDeclaration,
     IdentifierOccurrence,
+    ModuleVariable,
     Parameter,
     ParameterKind,
     ReturnSite,
@@ -112,6 +113,10 @@ def _parse_source(source: str, path: Path) -> ParsedSource:
         field.span for declaration in classes for field in declaration.fields
     )
     variable_annotations: list[SourceTypeExpression] = []
+    variables: list[ModuleVariable] = []
+    module_variable_nodes = {
+        id(node) for node in tree.body if isinstance(node, ast.AnnAssign)
+    }
     for node in ast.walk(tree):
         if (
             not isinstance(node, ast.AnnAssign)
@@ -120,7 +125,16 @@ def _parse_source(source: str, path: Path) -> ParsedSource:
             continue
 
         annotation = parse_annotation(path, source, node.annotation, bindings)
-        variable_annotations.append(annotation)
+        if (
+            id(node) in module_variable_nodes
+            and isinstance(node.target, ast.Name)
+            and not node.target.id.startswith("_")
+        ):
+            variables.append(
+                ModuleVariable(node.target.id, annotation, source_span(path, node))
+            )
+        else:
+            variable_annotations.append(annotation)
 
     located_nodes = sorted(
         (
@@ -137,6 +151,7 @@ def _parse_source(source: str, path: Path) -> ParsedSource:
         typed_dicts=typed_dicts,
         classes=classes,
         variable_annotations=tuple(variable_annotations),
+        variables=tuple(variables),
         captures=bindings.captures,
         text=source,
         docstring_span=_docstring_span(path, tree),

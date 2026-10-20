@@ -459,17 +459,36 @@ facts collected during parsing. Overlay edits choose the outermost retained root
 to avoid overlapping replacements, and convert UTF-8 source columns to character
 offsets. Maps project through the existing conservative output fallback, including
 nested aliases and overload annotations; Schema retains evaluated selection.
-The shared stub-IR traversal handles nested typing constructs. Publication excludes
-assignment annotation roots from its source scope and retains its existing surface
-and record-field policies.
+The shared stub-IR traversal handles nested typing constructs. SourceModule retains
+public annotated module variables as named declarations with authored spans;
+local and private annotation roots remain separate overlay facts. Adaptation
+projects module variables through the same alias, type-function, and record
+owners as other declaration positions. Their complete roots own overlay edits,
+so nested Map boundaries cannot generate duplicate replacements.
 
 For published stubs, `generate_module` reads the file once and passes its parsed
 snapshot to `compiler.module_surface`. Surface inspection reuses the original AST
 to validate and preserve imports and variables. Publication then compiles its
-existing selected source scope and emits a complete interface without verification
+selected source scope and emits a complete interface without verification
 instrumentation. Syntax failures precede surface failures, which precede compiler
 failures. Published relationship aliases retain their conservative `object`
 fallback; overlays retain their union-of-outputs fallback.
+
+Publication replaces annotated surface variables with their adapted native types
+while preserving inferred variables and re-exports. Inline Map annotations use
+the existing checker bound; concrete type-function and record applications retain
+their evaluated outputs. Record application discovery visits module variable
+annotations, preserving complete union operands and failing at the owning variable
+if any alternative is unsupported. Local body annotation roots remain excluded
+from publication.
+
+Published native aliases and overloads compose across modules through ordinary
+checker imports. A consumer sees the published bound for a relationship that
+native typing cannot represent; the compiler does not import application code or
+reconstruct a dependent template from that bound. Libraries expose concrete
+aliases or callable specializations when that precision is needed. Runtime
+imports retain the symbolic templates, and independent Pydantic specializations
+and rebuilds reuse them without replaying construction.
 
 ## Explicit record semantics
 
