@@ -149,18 +149,17 @@ class MapExpression[T]:
 class FieldExpression[T]:
     name: Expression[T]
     value: Expression[T]
+    required: bool = True
+    readonly: bool = False
 
 
 @dataclass(frozen=True, slots=True)
-class OptionalFieldExpression[T]:
-    name: Expression[T]
-    value: Expression[T]
-
-
-@dataclass(frozen=True, slots=True)
-class ReadonlyFieldExpression[T]:
-    name: Expression[T]
-    value: Expression[T]
+class FieldReplacementExpression[T]:
+    field: Expression[T]
+    name: Expression[T] | None = None
+    value: Expression[T] | None = None
+    required: bool | None = None
+    readonly: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -360,8 +359,7 @@ type Expression[T] = (
     | NotExpression[T]
     | MapExpression[T]
     | FieldExpression[T]
-    | OptionalFieldExpression[T]
-    | ReadonlyFieldExpression[T]
+    | FieldReplacementExpression[T]
     | DropExpression
 )
 

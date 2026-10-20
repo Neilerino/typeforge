@@ -401,28 +401,28 @@ def test_schema_relationship_aliases_preserve_type_outputs(
     ("transform", "expected_field"),
     (
         param(
-            'Field[Literal["renamed"], field.type]',
+            'Field(name="renamed", type=field.type)',
             "renamed: int",
             id="literal-field-name",
         ),
         param(
             (
-                'Field[Map[field.name, Literal["original"] : '
-                'Literal["renamed"], ... : field.name], field.type]'
+                'Field(name=Map[field.name, Literal["original"]: Literal["renamed"], '
+                "...: field.name], type=field.type)"
             ),
             "renamed: int",
             id="literal-field-name-case",
         ),
         param(
             (
-                'Field[Map[field.name, Equal[field.name, Literal["original"]] : '
-                'Literal["renamed"], ... : field.name], field.type]'
+                'Field(name=Map[field.name, Equal[field.name, Literal["original"]]: '
+                'Literal["renamed"], ...: field.name], type=field.type)'
             ),
             "renamed: int",
             id="literal-field-name-predicate",
         ),
         param(
-            "Field[field.name, Map[field.type, str : str, ... : Never]]",
+            "Field(name=field.name, type=Map[field.type, str : str, ... : Never])",
             "original: tf_typing.Never",
             id="field-value-never",
         ),

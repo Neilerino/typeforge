@@ -131,20 +131,18 @@ def test_read_failures_are_typed() -> None:
 
 def test_annotated_metadata_is_transparent_to_the_compiler_frontend() -> None:
     sources = (
-        """\
-from typing import Annotated
+        """from typing import Annotated
 from typeforge import Doc, Field, Fields, Record
 type Copy[T] = Annotated[
-    Record((Field[field.name, field.type] for field in Fields[T])),
+    Record(Field(name=field.name, type=field.type) for field in Fields[T]),
     "custom metadata",
     Doc("Copies every field."),
 ]
 """,
-        """\
-import typing_extensions as te
+        """import typing_extensions as te
 from typeforge import Field, Fields, Record
 type Copy[T] = te.Annotated[
-    Record((Field[field.name, field.type] for field in Fields[T])),
+    Record(Field(name=field.name, type=field.type) for field in Fields[T]),
     "custom metadata",
 ]
 """,

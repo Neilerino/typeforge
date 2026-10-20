@@ -151,8 +151,7 @@ def test_schema_alias_cycles_report_authored_paths(
 def test_literal_type_output_in_a_transformed_schema_record(tmp_path: Path) -> None:
     path = tmp_path / "schemas.py"
     path.write_text(
-        """\
-from typing import TypedDict, Literal
+        """from typing import TypedDict, Literal
 from typeforge import Map, Field, Fields, Record
 from typeforge.pydantic import Schema
 
@@ -163,7 +162,9 @@ class Row(TypedDict):
 
 type Transform[T] = Record(
     (
-        Field[field.name, Map[field.type, int : Literal["accepted"], ...:bytes]]
+        Field(
+            name=field.name,
+            type=Map[field.type, int : Literal["accepted"], ...:bytes])
         for field in Fields[T]
     )
 )

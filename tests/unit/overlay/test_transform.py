@@ -285,8 +285,7 @@ assert_type(
 
 
 def test_schema_boundaries_are_erased_from_model_fields_in_overlay() -> None:
-    source = """\
-from pydantic import BaseModel
+    source = """from pydantic import BaseModel
 from typing import TypedDict
 from typeforge._markers import Equal
 from typeforge import Field, Map, Fields, Record
@@ -299,7 +298,7 @@ class User(TypedDict):
     name: str
 
 
-type Public[T] = Record((Field[field.name, field.type] for field in Fields[T]))
+type Public[T] = Record(Field(name=field.name, type=field.type) for field in Fields[T])
 
 
 class Payload(BaseModel):

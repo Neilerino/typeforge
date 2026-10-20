@@ -6,22 +6,16 @@ from dataclasses import dataclass
 from types import GenericAlias
 from typing import Self, get_args
 
+from typeforge._field import FieldValue
+
 
 @dataclass(frozen=True, slots=True, eq=False)
 class FieldSymbol:
     """Identity of one field binding, independent of its authored spelling."""
 
 
-class SymbolicField(GenericAlias):
+class SymbolicField(FieldValue):
     __slots__ = ()
-
-    def __getattribute__(self, name: str) -> object:
-        # GenericAlias forwards attributes to its origin. Field properties need
-        # the binding on this instance rather than the class's property object.
-        if name in {"name", "type"}:
-            return object.__getattribute__(self, name)
-
-        return super().__getattribute__(name)
 
     @property
     def name(self) -> GenericAlias:
@@ -30,9 +24,6 @@ class SymbolicField(GenericAlias):
     @property
     def type(self) -> GenericAlias:
         return GenericAlias(FieldTypeTemplate, get_args(self))
-
-    def __bool__(self) -> bool:
-        raise TypeError("symbolic field truthiness is unsupported; use Map")
 
     @classmethod
     def __class_getitem__(cls, arguments: tuple[object, ...]) -> Self:

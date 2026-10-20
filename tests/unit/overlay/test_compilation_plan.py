@@ -53,7 +53,9 @@ def test_reusable_relationships_preserve_alias_names_and_schema_branches() -> No
         from typeforge.pydantic import Schema
         class Payload(TypedDict):
             value: int
-        type Copy[T] = Record((Field[field.name, field.type] for field in Fields[T]))
+        type Copy[T] = Record(Field(
+            name=field.name,
+            type=field.type) for field in Fields[T])
         type Wire[T] = Map[T, int : bytes, ... : str]
         type Named[T] = Map[T, int : Wire[T], ... : None]
         type Record[T] = Map[T, int : Copy[Payload], ... : None]
@@ -95,7 +97,11 @@ def test_reusable_relationships_preserve_alias_names_and_schema_branches() -> No
     document = transform_source(source, Path("relationships.py")).unwrap()
     expected = source
     for authored, projected in (
-        ("Record((Field[field.name, field.type] for field in Fields[T]))", "object"),
+        (
+            "Record(Field(\n    name=field.name,\n"
+            "    type=field.type) for field in Fields[T])",
+            "object",
+        ),
         ("Schema[Map[T, int : bytes, ... : str]]", "bytes | str"),
         ("Map[T, int : bytes, ... : str]", "bytes | str"),
         ("Map[T, int : Wire[T], ... : None]", "Wire[T] | None"),
@@ -112,7 +118,10 @@ def test_reusable_relationships_preserve_alias_names_and_schema_branches() -> No
     (
         ("Each[T]", "T"),
         ("Collect[T]", "tuple[T, ...]"),
-        ("Record((Field[field.name, field.type] for field in Fields[T]))", "object"),
+        (
+            "Record(Field(name=field.name, type=field.type) for field in Fields[T])",
+            "object",
+        ),
         ("Schema[int]", "int"),
         ("list[Schema[int]]", "list[int]"),
         ("Map[T, int : bytes, ... : str]", "bytes | str"),
@@ -280,14 +289,19 @@ def test_record_overloads_remain_excluded_from_overlay_insertion() -> None:
         class User(TypedDict):
             name: str
 
-        type Copy[T] = Record((Field[field.name, field.type] for field in Fields[T]))
+        type Copy[T] = Record(Field(
+            name=field.name,
+            type=field.type) for field in Fields[T])
 
         def copy[T](value: T) -> Copy[T]: ...
         """)
     document = transform_source(source, Path("records.py"), maximum_arity=1).unwrap()
 
     assert document.generated_text == source.replace(
-        "type Copy[T] = Record((Field[field.name, field.type] for field in Fields[T]))",
+        (
+            "type Copy[T] = Record(Field(\n    name=field.name,\n"
+            "    type=field.type) for field in Fields[T])"
+        ),
         "type Copy[T] = object",
     )
 
@@ -420,7 +434,9 @@ def test_scoped_method_does_not_replace_a_same_named_record_consumer() -> None:
         class User(TypedDict):
             name: str
 
-        type Copy[T] = Record((Field[field.name, field.type] for field in Fields[T]))
+        type Copy[T] = Record(Field(
+            name=field.name,
+            type=field.type) for field in Fields[T])
 
         def copy[T](value: T) -> Copy[T]: ...
 

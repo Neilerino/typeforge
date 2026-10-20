@@ -100,7 +100,7 @@ def test_field_and_capture_subjects_are_independent() -> None:
     fields = Record(
         Map[
             field.name,
-            Name : Field[field.name, Map[field.type, Integer:str, ...:bytes]],
+            Name : Field(name=field.name, type=Map[field.type, Integer:str, ...:bytes]),
         ]
         for field in Fields[Row]
     )

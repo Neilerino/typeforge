@@ -16,7 +16,7 @@ type Public[T] = Annotated[
         Map[
             field.name,
             Equal[field.name, Literal["password"]] : Drop,
-            ... : Field[field.name, field.type],
+            ... : Field(name=field.name, type=field.type),
         ]
         for field in Fields[T]
     ),

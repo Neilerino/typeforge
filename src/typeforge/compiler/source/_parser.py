@@ -517,24 +517,6 @@ def _typed_dict_field_attributes(
     }:
         return _typed_dict_field_attributes(arguments[-1], required, True, bindings)
 
-    if qualified_name in {
-        ("typeforge", "Field"),
-        ("typeforge", "_markers", "Field"),
-    }:
-        return required, readonly, arguments[-1]
-
-    if qualified_name in {
-        ("typeforge", "OptionalField"),
-        ("typeforge", "_markers", "OptionalField"),
-    }:
-        return False, readonly, arguments[-1]
-
-    if qualified_name in {
-        ("typeforge", "ReadonlyField"),
-        ("typeforge", "_markers", "ReadonlyField"),
-    }:
-        return required, True, arguments[-1]
-
     return required, readonly, node
 
 

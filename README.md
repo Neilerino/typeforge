@@ -280,7 +280,7 @@ Map a `TypedDict` and attach Markdown documentation to the resulting type:
 ```python
 from typing import Annotated, TypedDict
 
-from typeforge import Doc, Fields, OptionalField, Record, type_function
+from typeforge import Doc, Fields, Record, type_function
 
 
 class User(TypedDict):
@@ -291,7 +291,7 @@ class User(TypedDict):
 @type_function
 def Patch[T]():
     return Annotated[
-        Record(OptionalField[field.name, field.type] for field in Fields[T]),
+        Record(field.replace(required=False) for field in Fields[T]),
         Doc("Fields that should be updated."),
     ]
 
@@ -465,11 +465,16 @@ before letting the selected Pydantic schema validate it.
 
 Slice Maps compose inside `Record`, using `field.name` for field names and
 `field.type` for field types. Passing through `field` preserves requiredness,
-readonly state, and metadata. `Drop` removes a field. Explicit field operators
-replace the source modifiers:
-`Field` makes a field required and writable, `OptionalField` makes it optional
-and writable, and `ReadonlyField` makes it required and readonly. Pydantic retains
-field constraints and record metadata; generated TypedDicts use the compiler's
+readonly state, and metadata. `Drop` removes a field.
+`Field(name="display_name", type=str, required=False, readonly=True)` constructs
+a new entry. Name and type are required keywords; required defaults to true and
+readonly to false. `field.replace(type=bytes)` changes only the supplied properties,
+preserving the original name and flags. Replacing the type removes its old
+metadata; `field.replace(type=list[field.type])` keeps that metadata on each element.
+`field.replace(type=Drop)` removes the entry.
+Pydantic retains field constraints. A new Record starts without its operand's
+whole-record metadata; use an explicit outer Annotated to attach it.
+Generated TypedDicts use the compiler's
 existing base-type projection for Annotated fields. Nested Maps over union-valued
 fields still differ between compiler materialization and runtime evaluation;
 see the [field support limits](CONTEXT.md#field-support).
@@ -570,9 +575,12 @@ Schema is currently `{}` in both validation and serialization modes.
 Record over Fields supports `TypedDict` records, including inherited and generic
 fields, renaming, Drop, metadata, and readonly information. Construction consumes
 the generator immediately, retains a reusable typing template, and requires no
-saved source or compilation. Field operators explicitly
-set output requiredness and readonly state: `Field` is required, `OptionalField`
-is optional, and `ReadonlyField` is required and readonly. An invalid concrete
+saved source or compilation. Keyword `Field` construction sets explicit output
+data, while `field.replace(...)` preserves properties omitted from the edit.
+Names must be Python identifiers; modifiers must be booleans. Duplicate output
+names fail even when the resulting fields are identical. Drop is accepted as
+a Record item or a replacement type, and rejected in other field positions.
+An invalid concrete
 record operand fails construction; an invalid unparametrized fallback reports
 `typeforge_unsupported_record` at validation while allowing valid specialization.
 The compiler specializes named record aliases with one type parameter over
