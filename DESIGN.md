@@ -164,7 +164,7 @@ This is a finite frontier. Different arguments for an unknown generic origin
 produce a typed diagnostic, including when a fallback exists. Identical types
 can still match without requiring variance facts. Partially known shapes retain
 their structural proofs and provenance; broader variance reasoning for unresolved
-parameters and compatible interface captures belongs to subsequent slices.
+parameters belongs to the callable precision slice.
 
 Pydantic diagnostic display reconstructs slice branches from canonical typing
 arguments without expanding aliases or interpreting Literal/Annotated payloads.
@@ -230,6 +230,18 @@ and discards a failed attempt. Nested Maps reuse existing bindings; generic
 parameters keep their original arguments. Output lookup reports an unbound-capture
 issue when a needed token was not bound. Raw Input may test an already resolved
 binding but does not infer type arguments from values.
+
+Compatible interface captures project list and tuple arguments to Sequence element
+positions. TypeSystem.generic_type supplies backend-owned family facts and
+normalizes native tuple markers; shared sequence_elements owns the supported
+family relation for both fixed compatibility and capture projection. A
+heterogeneous tuple contributes an element union. Projection retains the original
+semantic values and their unresolved provenance before named matching; it does
+not widen bool to int or reconcile repeated captures through a common supertype.
+Known subject-union members evaluate complete outputs with their own bindings.
+Opaque generic origins fail through the typed semantic seam; other known families
+remain ordinary mismatches. This frontier does not promise open generic
+inheritance or callable inference.
 
 An opaque generic parameter cannot reveal structural arguments. Shared evaluation
 reports a distinct unresolved-capture issue. Source adaptation retains that typed
