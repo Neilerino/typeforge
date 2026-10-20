@@ -5,6 +5,7 @@ from typing import Protocol, runtime_checkable
 from returns.result import Result
 
 from typeforge.semantics.domain.exceptions import SemanticIssue
+from typeforge.semantics.domain.generics import GenericType
 from typeforge.semantics.domain.models import (
     DeferredMap,
     EvaluationContext,
@@ -77,4 +78,14 @@ class TypeSystem[T](Protocol):
 
     def build(self, shape: ParameterizedTypeShape[T]) -> Result[T, SemanticIssue]:
         """Build a backend type from a parameterized type shape."""
+        ...
+
+    def generic_type(
+        self, shape: ParameterizedTypeShape[T]
+    ) -> Result[GenericType[T] | None, SemanticIssue]:
+        """Describe a known family, normalizing tuple markers behind the adapter.
+
+        None means the origin has no supported generic family. Shape arguments
+        may be empty when only the selector's family is being queried.
+        """
         ...

@@ -371,10 +371,32 @@ functions. Declaration variables must be unique within each scope. Capture token
 are immutable and do not become caller-supplied type parameters. An unconstrained
 generic subject reveals no container arguments, so its unspecialized type-function
 declaration currently projects the safe `object` bound. Concrete applications and
-already known generic shapes remain precise. Interface and alternative capture
-patterns arrive in subsequent slices.
+already known generic shapes remain precise. Alternative capture patterns arrive
+in a subsequent slice.
 Structural `Value` authoring has been removed; `Value` remains a MapFields field
 reference until the Record/Fields cutover.
+
+`Sequence[Item]` also captures elements from lists and tuples:
+
+```python
+from collections.abc import Sequence
+
+@type_function
+def Element[T]():
+    Item = Capture("Item")
+    return Map[T, Sequence[Item]: Item, ...: bytes]
+
+type Flag = Element[list[bool]]  # bool
+type MixedElements = Element[tuple[int, str]]  # int | str
+type Text = Element[tuple[str, ...]]  # str
+```
+
+These captures preserve the actual element types. A heterogeneous tuple contributes
+the union of its elements; separate subject-union members keep their own bindings
+through complete outputs. Repeated captures still require exact agreement.
+Compatible interface captures currently support list, tuple, and Sequence origins.
+Unknown generic origins produce a diagnostic instead of choosing a fallback;
+other known families, such as set, do not match Sequence.
 
 ## Pydantic integration
 

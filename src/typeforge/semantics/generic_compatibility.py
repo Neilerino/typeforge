@@ -32,20 +32,14 @@ def compatible_generics[T](
 ) -> bool:
     """Compare known families; adapters own native origins and unsupported facts."""
     if target.family is GenericFamily.SEQUENCE:
-        if source.family not in {
-            GenericFamily.LIST,
-            GenericFamily.TUPLE,
-            GenericFamily.SEQUENCE,
-        }:
+        elements = sequence_elements(source)
+        if elements is None:
             return False
 
         _arity(target, 1)
-        if source.family is not GenericFamily.TUPLE:
-            _arity(source, 1)
-
         return all(
             type_system.assignable(item, target.arguments[0]).unwrap()
-            for item in source.arguments
+            for item in elements
         )
 
     if target.family is GenericFamily.MAPPING:
@@ -89,6 +83,21 @@ def compatible_generics[T](
         _invariant(left, right, type_system)
         for left, right in zip(source.arguments, target.arguments, strict=True)
     )
+
+
+def sequence_elements[T](source: GenericType[T]) -> tuple[T, ...] | None:
+    """The supported Sequence projection, shared by matching and compatibility."""
+    if source.family not in {
+        GenericFamily.LIST,
+        GenericFamily.TUPLE,
+        GenericFamily.SEQUENCE,
+    }:
+        return None
+
+    if source.family is not GenericFamily.TUPLE or source.variadic:
+        _arity(source, 1)
+
+    return source.arguments
 
 
 def _invariant[T](left: T, right: T, type_system: TypeSystem[T]) -> bool:

@@ -6,6 +6,7 @@ from returns.result import Result, Success
 
 from typeforge.semantics import (
     EvaluationContext,
+    GenericType,
     ParameterizedTypeShape,
     RecordFamily,
     RecordField,
@@ -47,6 +48,11 @@ class NameTypeSystem:
 
     def build(self, shape: ParameterizedTypeShape[str]) -> Result[str, SemanticIssue]:
         raise NotImplementedError
+
+    def generic_type(
+        self, shape: ParameterizedTypeShape[str]
+    ) -> Result[GenericType[str] | None, SemanticIssue]:
+        return Success(None)
 
 
 def test_record_data_is_family_aware_and_immutable() -> None:

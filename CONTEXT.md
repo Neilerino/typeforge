@@ -41,6 +41,8 @@ When changing construction, compiler body forms, or specialization, read
 When changing capture identity, isolation, or output lookup, read
 [Named type captures](DESIGN.md#named-type-captures) and
 [their compiler/runtime contracts](tests/unit/test_named_capture_contract.py).
+For compatible Sequence captures or heterogeneous tuple elements, also read
+[the interface capture contracts](tests/unit/test_interface_capture_contract.py).
 Local aliases and Record/Fields remain later slices.
 
 ## Language
@@ -235,8 +237,8 @@ default; Is retains exact whole-type comparison. After checker verification, the
 user chose to follow checker compatibility for bool/int: bool matches bare int,
 and the proposed primitive exception is withdrawn. All three installed checkers
 also accept a custom int subclass. Any and generic compatibility rules are agreed;
-resolved generic compatibility is implemented. Compatible interface capture and
-callable projection still need their owning slices.
+resolved generic compatibility and list/tuple-to-Sequence captures are implemented.
+Callable projection still needs its owning slices.
 
 Fixed resolved selectors support list/set/dict invariance, Sequence/frozenset/tuple
 covariance, and Mapping with invariant keys and covariant values. Lists and tuples
