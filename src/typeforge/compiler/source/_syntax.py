@@ -55,11 +55,14 @@ def capture_bindings(
     captures = dict(bindings.captures)
     declared: set[str] = set()
     for statement in statements:
+        if strict and isinstance(statement, ast.TypeAlias):
+            continue
+
         declaration = _capture_declaration(path, statement, bindings)
         if declaration is None:
             if strict:
                 raise AnnotationSyntaxError(
-                    "type_function supports capture declarations "
+                    "type_function supports capture declarations and local aliases "
                     "before its final return",
                     source_span(path, statement),
                 )

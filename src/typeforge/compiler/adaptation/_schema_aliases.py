@@ -64,10 +64,11 @@ def expand_schema_aliases(
                 _rewrite_children(item, lambda child: expand(child, stack))
             )
 
-        alias = next((alias for alias in aliases if alias.qualified_name == name), None)
+        alias = _find_alias(item, aliases)
         if alias is None:
             return _rewrite_children(item, lambda child: expand(child, stack))
 
+        name = alias.qualified_name
         if name in stack:
             cycle = " -> ".join(".".join(part) for part in (*stack, name))
             raise AdaptationError(
@@ -101,7 +102,9 @@ def expand_schema_aliases(
                 strict=True,
             )
         )
-        return expand(_substitute(alias.value, bindings), (*stack, name))
+        return expand(
+            _substitute(alias.value, bindings, alias.qualified_name), (*stack, name)
+        )
 
     try:
         return expand(expression)
@@ -150,30 +153,51 @@ def _is_predicate_reference(
                 MarkerKind.NOT,
             }
         case (
-            NameTypeExpression(name=name)
-            | AppliedTypeExpression(constructor=NameTypeExpression(name=name))
+            NameTypeExpression()
+            | AppliedTypeExpression(constructor=NameTypeExpression())
         ):
-            if name in seen:
+            alias = _find_alias(expression, aliases)
+            if alias is None or alias.qualified_name in seen:
                 return False
 
-            alias = next(
-                (alias for alias in aliases if alias.qualified_name == name), None
-            )
-            return alias is not None and _is_predicate_reference(
-                alias.value, aliases, (*seen, name)
+            return _is_predicate_reference(
+                alias.value, aliases, (*seen, alias.qualified_name)
             )
         case _:
             return False
 
 
+def _find_alias(
+    expression: NameTypeExpression | AppliedTypeExpression,
+    aliases: tuple[TypeAliasDeclaration, ...],
+) -> TypeAliasDeclaration | None:
+    reference = (
+        expression.constructor
+        if isinstance(expression, AppliedTypeExpression)
+        else expression
+    )
+    if not isinstance(reference, NameTypeExpression):
+        return None
+
+    name = reference.qualified_name or reference.name
+    return next((item for item in aliases if item.qualified_name == name), None)
+
+
 def _substitute(
     expression: SourceTypeExpression,
     bindings: dict[str, SourceTypeExpression],
+    scope: tuple[str, ...],
 ) -> SourceTypeExpression:
-    if isinstance(expression, NameTypeExpression) and len(expression.name) == 1:
+    if (
+        isinstance(expression, NameTypeExpression)
+        and len(expression.name) == 1
+        and expression.qualified_name in (None, (*scope, expression.name[0]))
+    ):
         return bindings.get(expression.name[0], expression)
 
-    return _rewrite_children(expression, lambda item: _substitute(item, bindings))
+    return _rewrite_children(
+        expression, lambda item: _substitute(item, bindings, scope)
+    )
 
 
 def _rewrite_children(
