@@ -192,10 +192,17 @@ class ResolvedType[T]:
 
 @dataclass(frozen=True, slots=True)
 class TypeSymbol:
-    """An authored type parameter identified within its declaring scope."""
+    """A declared type parameter or capture identified within its owning scope."""
 
     scope: tuple[str, ...]
     name: str
+
+
+@dataclass(frozen=True, slots=True)
+class CaptureReference:
+    """A declared token bound in patterns and read in type expressions."""
+
+    symbol: TypeSymbol
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,6 +233,8 @@ class IndeterminateType[T]:
 
 
 type TypeValue[T] = ResolvedType[T] | UnresolvedType[T] | IndeterminateType[T]
+
+type CaptureBindings[T] = tuple[tuple[TypeSymbol, TypeValue[T]], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -269,6 +278,7 @@ class EvaluationContext[T]:
     key: str | None = None
     value: TypeValue[T] | None = None
     capture: TypeValue[T] | None = None
+    captures: CaptureBindings[T] = ()
     input_type: TypeValue[T] | None = None
     mode: EvaluationMode = EvaluationMode.DEFINITE
 
@@ -327,6 +337,7 @@ type Expression[T] = (
     | InputReference
     | KeyReference
     | ValueReference
+    | CaptureReference
     | ParameterizedTypeTemplate[T]
     | FieldName
     | EqualExpression[T]
@@ -353,6 +364,7 @@ type BooleanExpression[T] = (
 type TypePattern[T] = (
     ExactTypePattern[T]
     | CaptureValuePattern
+    | CaptureReference
     | ParameterizedTypePattern[T]
     | TypeValueReference[T]
 )
@@ -362,6 +374,7 @@ type TypeTemplate[T] = (
     TypeReference[T]
     | TypeValueReference[T]
     | ValueReference
+    | CaptureReference
     | ParameterizedTypeTemplate[T]
     | UnionExpression[T]
 )
@@ -392,6 +405,7 @@ def is_pattern_expr[T](
         expression,
         ExactTypePattern
         | CaptureValuePattern
+        | CaptureReference
         | ParameterizedTypePattern
         | TypeValueReference,
     )

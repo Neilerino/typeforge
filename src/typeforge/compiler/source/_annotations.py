@@ -1,4 +1,5 @@
 import ast
+from dataclasses import replace
 from pathlib import Path
 from typing import overload
 
@@ -109,6 +110,12 @@ def parse_annotation(
         return StarredTypeExpression(rendered, span, item)
 
     if isinstance(node, ast.Name | ast.Attribute):
+        if (
+            isinstance(node, ast.Name)
+            and (capture := dict(bindings.captures).get(node.id)) is not None
+        ):
+            return replace(capture, source=rendered, span=span)
+
         name = expression_name(node)
         name_expression = NameTypeExpression(
             source=rendered,

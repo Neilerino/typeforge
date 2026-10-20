@@ -21,6 +21,7 @@ def architecture() -> LayeredArchitecture:
         *TYPE_FORGE.mod("pydantic").layers,
         TYPE_FORGE.file("utils.error_handling"),
         TYPE_FORGE.file("_type_function"),
+        TYPE_FORGE.file("_capture"),
     ):
         architecture.layer(layer.name).defined_by(layer.pattern)
 
@@ -63,6 +64,7 @@ def test_runtime_dependencies_keep_policy_and_emission_separate(
             file("_markers"),
             _interface_layer(TYPE_FORGE),
             TYPE_FORGE.file("_type_function").name,
+            TYPE_FORGE.file("_capture").name,
             *shared,
         )
         .where_layer(file("_emission"))

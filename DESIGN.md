@@ -200,12 +200,36 @@ path. Generated interfaces contain standard type aliases and specialized usages.
 
 The basic compiler frontier is a module-level synchronous function with no value
 parameters, no other decorators, unconstrained ordinary type parameters without
-defaults, an optional docstring, and one final return of a typing expression.
+defaults, an optional docstring, capture declarations, and one final return of a
+typing expression.
 Supported expressions include Map, Is, unions, generic types, and subscription of
 other type functions. Unsupported source produces authored diagnostics without an
-execution fallback. Capture declarations, local aliases, and record construction
+execution fallback. Local aliases and record construction
 extend this frontier in their respective slices. Runtime acceptance of extra
 Python construction statements does not imply compiler support.
+
+### Named type captures
+
+Capture constructs an immutable GenericAlias token around a frozen declaration
+symbol. Labels are presentation data; declaration identity distinguishes even
+equally named tokens. The base implementation requires no optional dependencies.
+Runtime lowering gives each token a scoped TypeSymbol. Source capture uses retain
+their declaring SourceSpan independently of their use span, and lower into the
+same CaptureReference data. Alias substitution preserves those identities.
+
+EvaluationContext stores immutable named bindings. Matching extends tentative
+bindings, reconciles repeated positions through the existing exact type operation,
+and discards a failed attempt. Nested Maps reuse existing bindings; generic
+parameters keep their original arguments. Output lookup reports an unbound-capture
+issue when a needed token was not bound. Raw Input may test an already resolved
+binding but does not infer type arguments from values.
+
+An opaque generic parameter cannot reveal structural arguments. Shared evaluation
+reports a distinct unresolved-capture issue. Source adaptation retains that typed
+reason and, only for a generic type-function declaration, recovers to an `object`
+output bound. Concrete applications still evaluate the retained source template;
+other failures propagate. Known parameterized shapes preserve available argument
+types and their provenance. Later callable precision can improve that projection.
 
 ## Library and project output
 

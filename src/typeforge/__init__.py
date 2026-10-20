@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING
 
+from typeforge._capture import Capture
 from typeforge._documentation import Doc
 from typeforge._markers import (
     Collect,
@@ -21,6 +22,7 @@ if not TYPE_CHECKING:
     from typeforge._map import Map
 
 __all__ = [
+    "Capture",
     "Collect",
     "Doc",
     "Drop",

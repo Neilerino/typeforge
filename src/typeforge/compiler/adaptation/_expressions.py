@@ -2,6 +2,8 @@
 
 from functools import singledispatch
 
+from returns.result import Failure
+
 from typeforge.compiler.adaptation._context import (
     SourceTypeContext,
 )
@@ -80,6 +82,8 @@ def resolve_type_function_application(
     type_parameters: tuple[str, ...],
     type_context: SourceTypeContext,
     origins: list[GeneratedElementOrigin[SourceSpan]] | None,
+    *,
+    unresolved_capture_bound: bool = False,
 ) -> StubTypeExpression:
     boundary = SchemaTypeExpression(expression.source, expression.span, (expression,))
     parameter_names = {(name,) for name in type_parameters}
@@ -88,7 +92,7 @@ def resolve_type_function_application(
         for alias in type_context.aliases
         if alias.qualified_name not in parameter_names
     )
-    return adapt_schema_expression(
+    result = adapt_schema_expression(
         boundary,
         aliases,
         declaration=declaration,
@@ -96,7 +100,17 @@ def resolve_type_function_application(
         type_parameters=type_parameters,
         preserve_type_variables=True,
         origins=origins,
-    ).unwrap()
+    )
+    if (
+        unresolved_capture_bound
+        and isinstance(result, Failure)
+        and result.failure().unresolved_capture is not None
+    ):
+        # A declaration may expose a bound without inspecting unknown arguments.
+        # Concrete applications still evaluate the retained source template.
+        return TypeName("object")
+
+    return result.unwrap()
 
 
 @singledispatch

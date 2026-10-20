@@ -9,6 +9,7 @@ from returns.result import safe
 from typeforge.compiler.adaptation._models import AdaptationError
 from typeforge.compiler.source import (
     AppliedTypeExpression,
+    CaptureTypeExpression,
     MarkerKind,
     MarkerNormalizationError,
     MarkerTypeExpression,
@@ -191,7 +192,12 @@ def _rewrite_children(
             | SchemaTypeExpression(arguments=arguments)
         ):
             return replace(expression, arguments=tuple(map(rewrite, arguments)))
-        case NameTypeExpression() | RawTypeExpression() | RuntimeInputTypeExpression():
+        case (
+            NameTypeExpression()
+            | CaptureTypeExpression()
+            | RawTypeExpression()
+            | RuntimeInputTypeExpression()
+        ):
             return expression
         case _ as unreachable:
             assert_never(unreachable)
