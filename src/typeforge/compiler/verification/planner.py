@@ -2,6 +2,11 @@ import ast
 from dataclasses import dataclass
 
 from typeforge.compiler.emission import emit_type_expression
+from typeforge.compiler.semantic_adapter import (
+    NamedType,
+    SemanticEnvironment,
+    stub_type_environment,
+)
 from typeforge.compiler.source import (
     FunctionDeclaration as SourceFunction,
 )
@@ -14,10 +19,14 @@ from typeforge.compiler.stub_ir import (
     FunctionDeclaration,
     StubModule,
     StubTypeExpression,
+    TypeName,
+    UnionExpression,
 )
 from typeforge.compiler.verification.contracts import (
     aggregate_output,
     build_return_contract,
+    guard_fallback_is_reachable,
+    has_whole_subject_selector,
 )
 from typeforge.compiler.verification.guards import recognize_guard, recognize_pattern
 from typeforge.compiler.verification.model import (
@@ -50,6 +59,7 @@ def analyze_implementations(
     parsed: ParsedSource, module: StubModule
 ) -> VerificationPlan:
     source = parsed.source
+    environment = stub_type_environment(module)
     nodes = {
         SourcePosition(node.lineno, node.col_offset): node
         for node in ast.walk(parsed.tree)
@@ -83,7 +93,11 @@ def analyze_implementations(
             continue
 
         signature = signatures.get(function.span)
-        contract = build_return_contract(signature) if signature is not None else None
+        contract = (
+            build_return_contract(signature, environment)
+            if signature is not None
+            else None
+        )
         if contract is None:
             continue
 
@@ -363,7 +377,7 @@ def _partition_guard(
     available = tuple(
         item for item in contract.alternatives if item.index in state.alternatives
     )
-    rendered = {item.index: _normalize_type(_render_input(item)) for item in available}
+    rendered = {item.index: _runtime_input_names(item.input_type) for item in available}
     guard_types = tuple(
         normalized
         for item in guard.type_names
@@ -372,43 +386,71 @@ def _partition_guard(
     explicit_matches = {
         item.index
         for item in available
-        if not item.is_default and rendered[item.index] in guard_types
+        if not item.is_default
+        and any(name in guard_types for name in rendered[item.index])
     }
     unresolved = {
         item.index
         for item in available
-        if not item.is_default and rendered[item.index] is None
+        if not item.is_default and None in rendered[item.index]
     }
     if guard.mode is GuardMode.INSTANCE:
         explicit_matches.update(
             item.index
             for item in available
             if not item.is_default
-            and _known_runtime_subclass(rendered[item.index], guard_types)
+            and any(
+                _known_runtime_subclass(name, guard_types, contract.environment)
+                for name in rendered[item.index]
+            )
         )
         default = next((item for item in available if item.is_default), None)
         positive_indices = explicit_matches | unresolved
-        if default is not None and _render_output(default) != "Never":
+        if (
+            default is not None
+            and _render_output(default) != "Never"
+            and guard_fallback_is_reachable(guard, contract)
+        ):
             positive_indices.add(default.index)
 
-        negative_indices = unresolved | {
-            item.index for item in available if item.index not in explicit_matches
+        fully_matched = {
+            item.index
+            for item in available
+            if not item.is_default
+            and all(
+                name in guard_types
+                or _known_runtime_subclass(name, guard_types, contract.environment)
+                for name in rendered[item.index]
+            )
         }
     else:
         default = next((item for item in available if item.is_default), None)
         positive_indices = explicit_matches | unresolved
-        if not positive_indices and default is not None:
+        if default is not None and (
+            not positive_indices
+            or (
+                has_whole_subject_selector(contract)
+                and guard_fallback_is_reachable(guard, contract)
+            )
+        ):
             positive_indices.add(default.index)
 
-        negative_indices = unresolved | {
-            item.index for item in available if item.index not in explicit_matches
+        fully_matched = {
+            item.index
+            for item in available
+            if not item.is_default
+            and all(name in guard_types for name in rendered[item.index])
         }
 
+    negative_indices = unresolved | {
+        item.index for item in available if item.index not in fully_matched
+    }
     return (
         FlowState(
             tuple(sorted(positive_indices)),
             not unresolved,
             state.controller_valid,
+            narrowed_inputs=tuple(TypeName(name) for name in guard.type_names),
         ),
         FlowState(
             tuple(sorted(negative_indices)),
@@ -432,7 +474,8 @@ def _return_obligation(
         contract=context.contract,
         site=site,
         expected_types=_expected_types(state, context.contract),
-        narrowed_inputs=tuple(
+        narrowed_inputs=state.narrowed_inputs
+        or tuple(
             item.input_type
             for item in context.contract.alternatives
             if item.index in state.alternatives
@@ -518,6 +561,9 @@ def _union_states(states: tuple[FlowState, ...]) -> FlowState:
         ),
         refined=all(state.refined for state in reachable),
         controller_valid=all(state.controller_valid for state in reachable),
+        narrowed_inputs=tuple(
+            dict.fromkeys(item for state in reachable for item in state.narrowed_inputs)
+        ),
     )
 
 
@@ -559,19 +605,35 @@ def _invalidate_symbol(
     )
 
 
-def _render_input(alternative: Alternative) -> str | None:
-    if alternative.input_type is None:
-        return None
-
-    return emit_type_expression(alternative.input_type).value_or(None)
+def _runtime_input_names(
+    expression: StubTypeExpression | None,
+) -> tuple[str | None, ...]:
+    match expression:
+        case None:
+            return ()
+        case UnionExpression(members):
+            return tuple(
+                name for item in members for name in _runtime_input_names(item)
+            )
+        case _:
+            rendered = emit_type_expression(expression).value_or(None)
+            return (_normalize_type(rendered),)
 
 
 def _render_output(alternative: Alternative) -> str | None:
     return emit_type_expression(alternative.output_type).value_or(None)
 
 
-def _known_runtime_subclass(candidate: str | None, parents: tuple[str, ...]) -> bool:
-    return candidate == "bool" and "int" in parents
+def _known_runtime_subclass(
+    candidate: str | None, parents: tuple[str, ...], environment: SemanticEnvironment
+) -> bool:
+    if candidate == "bool" and "int" in parents:
+        return True
+
+    known = dict(environment).get(candidate or "")
+    return isinstance(known, NamedType) and any(
+        parent in known.bases for parent in parents
+    )
 
 
 def _normalize_type(value: str | None) -> str | None:

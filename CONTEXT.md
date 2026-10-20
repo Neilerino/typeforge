@@ -193,8 +193,11 @@ names, read [Callable output projection](DESIGN.md#callable-output-projection) a
 run the [output contracts](tests/unit/test_callable_output_contract.py). They cover
 publication and body checking in all three checkers, including missing bindings,
 partial shapes, native subclass fallbacks, and original generic identity.
-Original-whole-subject guard verification remains separate work; native Any
-inference stays checker-owned.
+For recognized value guards, original subjects, bound clipping, local ancestry,
+or authored return diagnostics, read [Implementation verification](DESIGN.md#implementation-verification)
+and run the [guard subject contracts](tests/unit/test_guard_subject_contract.py)
+plus [flow regressions](tests/unit/verification/test_implementation_verification.py).
+Native Any inference stays checker-owned.
 
 The [agreed projection policy](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#d6--callable-precision)
 uses a conservative possible-output union when standard typing cannot express

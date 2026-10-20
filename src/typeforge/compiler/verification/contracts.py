@@ -1,12 +1,19 @@
+from dataclasses import replace
+
 from returns.result import Failure
 
+from typeforge.compiler.semantic_adapter import SemanticEnvironment
 from typeforge.compiler.specialization import (
+    instantiate_output,
+    map_case_input,
     map_default_output,
+    map_default_reachable,
     map_specializations,
     predicate_controller,
     predicate_is_supported,
 )
 from typeforge.compiler.stub_ir import (
+    EqualPredicate,
     FunctionDeclaration,
     MapType,
     StubTypeExpression,
@@ -16,10 +23,12 @@ from typeforge.compiler.stub_ir import (
     substitute_type,
     union_types,
 )
-from typeforge.compiler.verification.model import Alternative, ReturnContract
+from typeforge.compiler.verification.model import Alternative, Guard, ReturnContract
 
 
-def build_return_contract(signature: FunctionDeclaration) -> ReturnContract | None:
+def build_return_contract(
+    signature: FunctionDeclaration, environment: SemanticEnvironment = ()
+) -> ReturnContract | None:
     relationship = signature.return_type
     if not isinstance(relationship, MapType) or not isinstance(
         relationship.subject, TypeVariable
@@ -52,19 +61,12 @@ def build_return_contract(signature: FunctionDeclaration) -> ReturnContract | No
     if len(controller_parameters) != 1:
         return None
 
-    alternatives = tuple(
-        Alternative(
-            index=index,
-            input_type=case.test,
-            output_type=substitute_type(
-                case.output_type,
-                controller,
-                case.test,
-            ),
-        )
-        for index, case in enumerate(mapping.cases)
-        if not is_predicate(case.test)
+    alternatives = _bounded_alternatives(
+        signature, mapping, relationship, controller, environment
     )
+    if alternatives is None:
+        return None
+
     alternatives += (
         Alternative(
             index=len(mapping.cases),
@@ -78,9 +80,66 @@ def build_return_contract(signature: FunctionDeclaration) -> ReturnContract | No
     return ReturnContract(
         controller_parameter=controller_parameters[0],
         controller_type_parameter=controller,
-        mapping=mapping,
+        mapping=relationship,
         alternatives=alternatives,
+        declaration=signature,
+        environment=environment,
     )
+
+
+def _bounded_alternatives(
+    declaration: FunctionDeclaration,
+    mapping: MapType,
+    original: MapType,
+    controller: str,
+    environment: SemanticEnvironment,
+) -> tuple[Alternative, ...] | None:
+    alternatives: list[Alternative] = []
+    for index, case in enumerate(mapping.cases):
+        if is_predicate(case.test):
+            continue
+
+        projected = map_case_input(declaration, controller, case.test, environment)
+        if isinstance(projected, Failure):
+            return None
+
+        input_type = projected.unwrap()
+        if input_type is None:
+            continue
+
+        output = substitute_type(case.output_type, controller, input_type)
+        if input_type != case.test:
+            evaluated = instantiate_output(
+                declaration,
+                substitute_type(original, controller, input_type),
+                environment,
+            )
+            if isinstance(evaluated, Failure):
+                return None
+
+            output = evaluated.unwrap()
+
+        alternatives.append(Alternative(index, input_type, output))
+
+    return tuple(alternatives)
+
+
+def guard_fallback_is_reachable(guard: Guard, contract: ReturnContract) -> bool:
+    domain = union_types(tuple(TypeName(name) for name in guard.type_names))
+    declaration = replace(
+        contract.declaration,
+        type_parameter_domains=((contract.controller_type_parameter, domain),),
+    )
+    return map_default_reachable(
+        declaration,
+        contract.mapping,
+        contract.controller_type_parameter,
+        contract.environment,
+    ).value_or(True)
+
+
+def has_whole_subject_selector(contract: ReturnContract) -> bool:
+    return any(isinstance(case.test, EqualPredicate) for case in contract.mapping.cases)
 
 
 def aggregate_output(contract: ReturnContract) -> StubTypeExpression:
