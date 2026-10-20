@@ -243,6 +243,17 @@ Opaque generic origins fail through the typed semantic seam; other known familie
 remain ordinary mismatches. This frontier does not promise open generic
 inheritance or callable inference.
 
+AlternativeTypePattern represents a union containing structural capture patterns.
+Ordinary type unions retain their existing expression/type representation. Matching
+retains each successful alternative's condition and immutable bindings; nested
+positions continue each environment independently and discard failed attempts.
+MapSelection.output_contexts carries those environments to Evaluator, which
+instantiates complete outputs before using the existing union builder. Bindings
+are never merged across successful alternatives. Branch order remains unchanged;
+alternatives within one branch have no priority. An unbound output capture or
+adapter failure stops evaluation through the existing typed boundary. Possible
+alternatives preserve speculative reachability and conservative output bounds.
+
 An opaque generic parameter cannot reveal structural arguments. Shared evaluation
 reports a distinct unresolved-capture issue. Source adaptation retains that typed
 reason and, only for a generic type-function declaration, recovers to an `object`

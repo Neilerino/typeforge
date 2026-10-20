@@ -63,7 +63,10 @@ def input_test_kinds(
         case s.AnnotatedExpression(value=inner):
             yield from input_test_kinds(inner, context)
 
-        case s.UnionExpression(members=members):
+        case (
+            s.UnionExpression(members=members)
+            | s.AlternativeTypePattern(members=members)
+        ):
             for member in members:
                 yield from input_test_kinds(member, context)
 

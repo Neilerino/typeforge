@@ -21,6 +21,7 @@ from typeforge.semantics.domain.exceptions import (
 from typeforge.semantics.domain.generics import GenericFamily, GenericType
 from typeforge.semantics.domain.models import (
     AllExpression,
+    AlternativeTypePattern,
     AnnotatedExpression,
     AnyExpression,
     AssignableExpression,
@@ -84,6 +85,7 @@ from typeforge.semantics.protocols import (
 
 __all__ = (
     "AllExpression",
+    "AlternativeTypePattern",
     "AnnotatedExpression",
     "AnyExpression",
     "AssignableExpression",
