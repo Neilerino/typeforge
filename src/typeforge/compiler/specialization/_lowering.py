@@ -9,6 +9,7 @@ from typeforge.compiler.semantic_adapter import (
     named_type_environment,
 )
 from typeforge.compiler.specialization._each_lowering import lower_each_function
+from typeforge.compiler.specialization._expressions import type_parameter_name
 from typeforge.compiler.specialization._map_lowering import lower_map_function
 from typeforge.compiler.specialization._models import (
     ArityFrontier,
@@ -144,6 +145,15 @@ def lower_variadic_module(
         )
     )
     lowered_module = replace(lowered_module, origins=origins)
+    if any(
+        isinstance(item, TypeName) and item.name == "Any"
+        for item in walk_module(lowered_module)
+    ):
+        lowered_module = replace(
+            lowered_module,
+            imports=_add_import(lowered_module.imports, ImportFrom("typing", ("Any",))),
+        )
+
     if _module_contains_literal(lowered_module):
         lowered_module = replace(
             lowered_module,
@@ -194,7 +204,14 @@ def _lower_class(
             continue
 
         lowered = _lower_function(
-            method, frontier, on_rewrite=on_rewrite, environment=environment
+            method,
+            frontier,
+            on_rewrite=on_rewrite,
+            environment=environment,
+            reserved_type_parameters=tuple(
+                type_parameter_name(parameter)
+                for parameter in declaration.type_parameters
+            ),
         )
         if isinstance(lowered, Failure):
             return lowered
@@ -220,6 +237,7 @@ def _lower_function(
     on_rewrite: TypeRewriteObserver | None = None,
     *,
     environment: SemanticEnvironment = (),
+    reserved_type_parameters: tuple[str, ...] = (),
 ) -> Result[FunctionDeclaration | OverloadDeclaration, LoweringError]:
     if isinstance(declaration.return_type, MapType):
         return lower_map_function(
@@ -227,6 +245,7 @@ def _lower_function(
             declaration.return_type,
             on_rewrite=on_rewrite,
             environment=environment,
+            reserved_type_parameters=reserved_type_parameters,
         )
 
     return lower_each_function(declaration, frontier, on_rewrite=on_rewrite)

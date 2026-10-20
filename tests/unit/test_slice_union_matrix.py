@@ -687,7 +687,7 @@ def inspect(value: int | str) -> None:
     assert_type(choose(value), bytes)
     assert_type(choose(1), bytes)
     assert_type(compatible(1), bytes)
-    assert_type(exact(1), bytes)
+    assert_type(exact(1), bytes | float)
 """
     canonical = (
         source.replace(

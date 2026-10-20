@@ -12,9 +12,12 @@ from typeforge.compiler.semantic_adapter import (
     stub_static_type,
     union_of,
 )
+from typeforge.compiler.specialization._bounds import checker_type_bound
+from typeforge.compiler.specialization._captures import capture_tokens
 from typeforge.compiler.specialization._models import LoweringError, LoweringErrorCode
 from typeforge.compiler.stub_ir import (
     AssignablePredicate,
+    CaptureType,
     EqualPredicate,
     FunctionDeclaration,
     LiteralType,
@@ -23,6 +26,7 @@ from typeforge.compiler.stub_ir import (
     StubTypeExpression,
     TypeApplication,
     TypeName,
+    TypeRewriteObserver,
     TypeVariable,
     UnionExpression,
     is_predicate,
@@ -69,9 +73,110 @@ def map_output_bound(
     domain: StubTypeExpression,
     replacement: StubTypeExpression,
     environment: SemanticEnvironment = (),
+    *,
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> Result[StubTypeExpression, LoweringError]:
-    return _output_bound(mapping, controller, domain, replacement, environment).alt(
+    return _output_bound(
+        mapping, controller, domain, replacement, environment, on_rewrite
+    ).alt(lambda error: _coverage_error(declaration, error))
+
+
+def map_case_input(
+    declaration: FunctionDeclaration,
+    controller: str,
+    pattern: StubTypeExpression,
+    environment: SemanticEnvironment,
+) -> Result[StubTypeExpression | None, LoweringError]:
+    return _case_input(declaration, controller, pattern, environment).alt(
         lambda error: _coverage_error(declaration, error)
+    )
+
+
+@safe_result(errors=_COVERAGE_ERRORS)
+def _case_input(
+    declaration: FunctionDeclaration,
+    controller: str,
+    pattern: StubTypeExpression,
+    environment: SemanticEnvironment,
+) -> StubTypeExpression | None:
+    original = dict(declaration.type_parameter_domains).get(controller)
+    if original is None:
+        return pattern
+
+    native_pattern = checker_type_bound(pattern, invariant=True)
+    if _domain_contained(native_pattern, original, environment):
+        return pattern
+
+    if _domain_contained(original, native_pattern, environment):
+        return original
+
+    return None
+
+
+def map_case_covers_domain(
+    declaration: FunctionDeclaration,
+    controller: str,
+    pattern: StubTypeExpression,
+    environment: SemanticEnvironment,
+) -> Result[bool, LoweringError]:
+    return _case_covers_domain(declaration, controller, pattern, environment).alt(
+        lambda error: _coverage_error(declaration, error)
+    )
+
+
+def map_default_reachable(
+    declaration: FunctionDeclaration,
+    mapping: MapType,
+    controller: str,
+    environment: SemanticEnvironment,
+) -> Result[bool, LoweringError]:
+    return _default_reachable(declaration, mapping, controller, environment).alt(
+        lambda error: _coverage_error(declaration, error)
+    )
+
+
+@safe_result(errors=_COVERAGE_ERRORS)
+def _default_reachable(
+    declaration: FunctionDeclaration,
+    mapping: MapType,
+    controller: str,
+    environment: SemanticEnvironment,
+) -> bool:
+    domain = dict(declaration.type_parameter_domains).get(
+        controller, TypeName("object")
+    )
+    covered: list[StubTypeExpression] = []
+    for case in mapping.cases:
+        if isinstance(case.test, CaptureType):
+            return False
+
+        candidate = _case_domain(case, controller)
+        if candidate is None or capture_tokens(candidate):
+            continue
+
+        # Generic parameter shapes cannot establish coverage of native
+        # subclasses whose original identity lacks matching argument facts.
+        if any(isinstance(item, TypeApplication) for item in walk_type(candidate)):
+            continue
+
+        _require_native_coverage(candidate, environment)
+        covered.append(candidate)
+        if _domain_contained(domain, union_types(tuple(covered)), environment):
+            return False
+
+    return True
+
+
+@safe_result(errors=_COVERAGE_ERRORS)
+def _case_covers_domain(
+    declaration: FunctionDeclaration,
+    controller: str,
+    pattern: StubTypeExpression,
+    environment: SemanticEnvironment,
+) -> bool:
+    original = dict(declaration.type_parameter_domains).get(controller)
+    return original is not None and _domain_contained(
+        original, checker_type_bound(pattern, invariant=True), environment
     )
 
 
@@ -312,8 +417,11 @@ def _output_bound(
     domain: StubTypeExpression,
     replacement: StubTypeExpression,
     environment: SemanticEnvironment,
+    on_rewrite: TypeRewriteObserver | None,
 ) -> StubTypeExpression:
-    return _possible_outputs(mapping, controller, domain, replacement, environment)
+    return _possible_outputs(
+        mapping, controller, domain, replacement, environment, on_rewrite
+    )
 
 
 def _possible_outputs(
@@ -322,22 +430,32 @@ def _possible_outputs(
     domain: StubTypeExpression,
     replacement: StubTypeExpression,
     environment: SemanticEnvironment,
+    on_rewrite: TypeRewriteObserver | None = None,
 ) -> StubTypeExpression:
     outputs: list[StubTypeExpression] = []
     covered: list[StubTypeExpression] = []
+    exhausted = False
     for case in mapping.cases:
         candidate = _case_domain(case, controller)
         if candidate is None:
             # Exact and compound conditions can refine a covered range without
             # making that whole range an accepted input domain.
-            outputs.append(substitute_type(case.output_type, controller, replacement))
+            outputs.append(
+                substitute_type(
+                    case.output_type, controller, replacement, on_rewrite=on_rewrite
+                )
+            )
             continue
 
         overlaps = _domain_contained(
             domain, candidate, environment
         ) or _domain_contained(candidate, domain, environment)
         if overlaps or _may_overlap(domain, candidate):
-            outputs.append(substitute_type(case.output_type, controller, replacement))
+            outputs.append(
+                substitute_type(
+                    case.output_type, controller, replacement, on_rewrite=on_rewrite
+                )
+            )
 
         if overlaps:
             covered.append(candidate)
@@ -345,7 +463,15 @@ def _possible_outputs(
         if covered and _domain_contained(
             domain, union_types(tuple(covered)), environment
         ):
+            exhausted = True
             break
+
+    if not exhausted and mapping.default is not None:
+        outputs.append(
+            substitute_type(
+                mapping.default, controller, replacement, on_rewrite=on_rewrite
+            )
+        )
 
     return union_types(tuple(outputs))
 

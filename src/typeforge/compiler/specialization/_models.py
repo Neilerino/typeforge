@@ -19,6 +19,7 @@ class LoweringErrorCode(StrEnum):
     UNSUPPORTED_PREDICATE = "unsupported_predicate"
     DUPLICATE_MAP_CASE = "duplicate_map_case"
     UNREPRESENTABLE_COVERAGE = "unrepresentable_coverage"
+    UNREPRESENTABLE_OUTPUT = "unrepresentable_output"
 
 
 @dataclass(frozen=True, slots=True)

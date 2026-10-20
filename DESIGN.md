@@ -247,10 +247,9 @@ their declaring SourceSpan independently of their use span, and lower into the
 same CaptureReference data. Alias substitution preserves those identities.
 Module capture declarations remain public values with an `object` annotation in
 generated interfaces; they do not leak Typeforge helper annotations. Callable
-relationship IR retains the same symbol in CaptureType. Existing finite
-Each/Collect specialization replaces only the branch's declared capture, preserving
-its output binding. Multiple independent captures in one finite callable branch
-produce a diagnostic until the callable precision slice extends that frontier.
+relationship IR retains the same symbol in CaptureType. Ordinary callable Maps
+support independent captures; finite Each/Collect branches currently retain their
+single-capture frontier.
 
 EvaluationContext stores immutable named bindings. Matching extends tentative
 bindings, reconciles repeated positions through the existing exact type operation,
@@ -287,7 +286,11 @@ reports a distinct unresolved-capture issue. Source adaptation retains that type
 reason and, only for a generic type-function declaration, recovers to an `object`
 output bound. Concrete applications still evaluate the retained source template;
 other failures propagate. Known parameterized shapes preserve available argument
-types and their provenance. Later callable precision can improve that projection.
+types and their provenance. Callable projection can supply
+UnresolvedCaptureBindings when an opaque position needs a possible output bound.
+The shared matcher preserves known positions and each alternative's context, then
+instantiates complete outputs. Other consumers retain the unresolved-capture
+failure; this projection does not infer arguments from runtime values.
 
 ## Library and project output
 
@@ -327,6 +330,38 @@ emitter to restrict inputs while preserving original type parameters in the body
 Verification continues to consume the authored relationship. Native mypy, Pyright,
 and Pyrefly enforce parameter bounds and check expressions; Typeforge does not
 infer ordinary Python values itself.
+
+### Callable output projection
+
+Retained callable IR lowers through the compiler semantic adapter into shared
+Map evaluation. Capture tokens retain declaration identity; whole-subject captures
+preserve original generic parameters and bounds. Generated capture parameters avoid
+authored names, including unused enclosing class parameters. Native overload inputs
+remain within authored bounds; an overload covering the bound replaces an
+unreachable broader signature.
+
+Native parameter domains include compatible subclasses. Exact selectors and
+structural container selectors therefore retain every possible output from those
+domains, including reachable fallbacks. Repeated native type variables may infer a
+join, while semantic repeated captures still require exact agreement. Complete
+alternative outputs remain correlated before union construction.
+
+For opaque structural arguments, compiler-owned capture bindings supply scoped
+existential placeholders. Shared matching retains actual known bindings alongside
+them. Emission erases only the placeholders: covariant positions use object;
+invariant positions use Any. Missing captures remain failures. Callable acceptance
+rejects reached or speculative no-match paths whose input coverage cannot be
+promised. A nested no-default Map can reuse an original generic bound when the
+existing native-domain proof covers that entire bound. An exact selector does not
+cover compatible subclasses. Internal template evaluation retains its existing
+speculative policy.
+
+Pipeline return projections expose the generated output and authored annotation
+span. Body annotations retain original generic names and erase generated parameters
+absent from that scope. Native checkers enforce these ordinary bounds; this does
+not prove an arbitrary dependent implementation. Native inference for gradual Any
+remains checker-owned. Each/Collect precision and original-whole-subject guard
+verification retain their separate frontiers.
 
 ## Implementation verification
 

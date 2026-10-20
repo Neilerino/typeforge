@@ -188,17 +188,19 @@ Structural TypedDict/Protocol coverage and exact-only class domains require an
 authored diagnostic until they can be represented soundly. No-default Each/Collect
 is currently diagnosed; its later slice must preserve the accepted domain.
 
-Each/Collect precision with an explicit fallback stops at the configured arity;
-outside overloads retain aggregate bounds. Unbounded structural outputs can fail
-emission. Overload subtype matching cannot exclude bool from int, and bool/int
-literal collisions use an aggregate bound. Predicate candidate discovery and
-Assignable/isinstance verification also have precision limits.
+For capture reuse, nested opaque arguments, authored bounds, or generated generic
+names, read [Callable output projection](DESIGN.md#callable-output-projection) and
+run the [output contracts](tests/unit/test_callable_output_contract.py). They cover
+publication and body checking in all three checkers, including missing bindings,
+partial shapes, native subclass fallbacks, and original generic identity.
+Each/Collect retain their finite specialization frontier. Original-whole-subject
+guard verification remains separate work; native Any inference stays checker-owned.
 
 The [agreed projection policy](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#d6--callable-precision)
 uses a conservative possible-output union when standard typing cannot express
 the precise relationship. Retain or improve precision wherever it is supported;
-projection limits must not redefine Map selection. Broader output precision is
-pending. Possible normal outputs alone do not prove input acceptance.
+projection limits must not redefine Map selection. Possible normal outputs alone
+do not prove input acceptance.
 See the [final callable decisions](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#final-callable-decision-batch--agreed-2026-09-30)
 for guard checking and the existing bound-only verification limits.
 For Each/Collect, an aggregate possible-output tuple is acceptable when individual
@@ -262,7 +264,7 @@ user chose to follow checker compatibility for bool/int: bool matches bare int,
 and the proposed primitive exception is withdrawn. All three installed checkers
 also accept a custom int subclass. Any and generic compatibility rules are agreed;
 resolved generic compatibility and list/tuple-to-Sequence captures are implemented.
-Broader callable output precision remains pending.
+Callable projection and its remaining frontiers are under [Callable support](#callable-support).
 
 Fixed resolved selectors support list/set/dict invariance, Sequence/frozenset/tuple
 covariance, and Mapping with invariant keys and covariant values. Lists and tuples
@@ -313,7 +315,7 @@ Scalar compatibility, public removal, and explicit union preservation are
 implemented. The public removal was approved in the
 [second decision batch](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#second-decision-batch--agreed).
 This does not require every downstream checker to display the same union
-spelling; callable input/output precision remains a separate pending contract.
+spelling; callable projection follows the limits under [Callable support](#callable-support).
 
 ### G5 — Field distribution
 

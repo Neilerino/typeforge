@@ -6,7 +6,6 @@ from subprocess import run
 from sys import executable
 
 import pytest
-from returns.result import Failure
 
 from typeforge.compiler.pipeline import compile_source, generate_module
 from typeforge.compiler.source import MarkerKind, MarkerTypeExpression, parse_source
@@ -253,18 +252,20 @@ assert_type(encode(1), str)
     assert "str" in result.stdout + result.stderr
 
 
-def test_unbounded_structural_callable_has_the_same_existing_emission_limit(
+def test_structural_callable_projects_equally_from_slices_and_canonical_ir(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "example.py"
+    outputs: list[str] = []
     for expression in (
         "Map[T, list[Item]: tuple[Item, ...], ...: bytes]",
         "CanonicalMap[T, Case[list[Item], tuple[Item, ...]], Default[bytes]]",
     ):
         path.write_text(IMPORTS + f"def f[T](x: T) -> {expression}: ...\n")
-        result = generate_module(path, maximum_arity=2)
-        assert isinstance(result, Failure)
-        assert "unlowered type expression: CaptureType" in result.failure().message
+        outputs.append(generate_module(path, maximum_arity=2).unwrap().content)
+
+    assert outputs[0] == outputs[1]
+    assert "def f[T1](x: list[T1]) -> tuple[T1, ...] | bytes: ..." in outputs[0]
 
 
 def test_unary_predicate_alias_normalizes_after_alias_expansion() -> None:

@@ -3,7 +3,7 @@ from textwrap import dedent
 from unittest.mock import patch
 
 import pytest
-from returns.result import Failure
+from returns.result import Failure, Success
 
 from typeforge.compiler.emission import EmissionError
 from typeforge.compiler.pipeline import compile_source
@@ -59,10 +59,15 @@ def test_unrenderable_verification_type_still_skips_only_the_obligation() -> Non
 
     with patch(
         "typeforge.overlay.transform.emit_type_expression",
-        return_value=Failure(EmissionError("cannot render check type")),
+        # The annotation remains renderable; only the verification obligation
+        # fails. Annotation rendering failures must still stop projection.
+        side_effect=(
+            Success("str"),
+            Failure(EmissionError("cannot render check type")),
+        ),
     ):
         document = project_overlay(plan).unwrap()
 
-    assert "def convert[T: int](value: T) -> Encoded[T]:" in document.generated_text
+    assert "def convert[T: int](value: T) -> str:" in document.generated_text
     assert "__typeforge_return_" not in document.generated_text
     assert all(mapping.provenance is None for mapping in document.mappings)
