@@ -67,6 +67,7 @@ TYPE_FORGE = ArchModule(
                         ArchFile(name="_schema"),
                         ArchFile(name="_schema_aliases"),
                         ArchFile(name="_source_to_ir"),
+                        ArchFile(name="_expressions"),
                     ],
                 ),
                 ArchModule(name="semantic_adapter", files=[ArchFile(name="_emission")]),
@@ -86,5 +87,10 @@ TYPE_FORGE = ArchModule(
         ArchModule(name="proxy"),
         ArchModule(name="utils", files=[ArchFile(name="error_handling")]),
     ],
-    files=[ArchFile(name="cli"), ArchFile(name="_markers"), ArchFile(name="_map")],
+    files=[
+        ArchFile(name="cli"),
+        ArchFile(name="_markers"),
+        ArchFile(name="_map"),
+        ArchFile(name="_type_function"),
+    ],
 )

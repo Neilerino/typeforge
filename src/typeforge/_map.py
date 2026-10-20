@@ -49,6 +49,11 @@ class Map:
         return _apply(CanonicalMap, (subject, *normalized))
 
 
+class _MapAnnotation(GenericAlias):
+    def __bool__(self) -> bool:
+        raise TypeError("symbolic Map truthiness is unsupported; use Map selection")
+
+
 def _bind_selector(selector: object, subject: object) -> object:
     origin = get_origin(selector)
     arguments: tuple[object, ...] = get_args(selector)
@@ -85,4 +90,4 @@ def normalize_selector_literal(value: object) -> object:
 
 def _apply(marker: object, arguments: tuple[object, ...]) -> GenericAlias:
     # Python accepts TypeAliasType origins; typeshed restricts this boundary to type.
-    return GenericAlias(cast(type, marker), arguments)
+    return _MapAnnotation(cast(type, marker), arguments)
