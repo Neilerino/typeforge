@@ -66,7 +66,7 @@ from typeforge.semantics.domain.models import (
     is_bool_expr,
     is_pattern_expr,
 )
-from typeforge.semantics.map_matching import map_values_match, match_type_pattern
+from typeforge.semantics.map_matching import map_values_match, match_map_pattern
 from typeforge.semantics.protocols import (
     DeferredTypes,
     EvaluationPolicy,
@@ -529,7 +529,7 @@ class Evaluator[T]:
                 if isinstance(
                     subject, ResolvedType | UnresolvedType | IndeterminateType
                 ):
-                    matched, value_binding = match_type_pattern(
+                    matched, value_binding = match_map_pattern(
                         case.test,
                         subject,
                         self.type_system,
