@@ -14,6 +14,12 @@ from typing import (
 )
 
 from typeforge._capture import Capture, CaptureSymbol
+from typeforge._record import (
+    FieldNameTemplate,
+    FieldSymbol,
+    FieldTypeTemplate,
+    SymbolicField,
+)
 
 
 class TypeFunctionConstructionError(TypeError):
@@ -132,6 +138,13 @@ def _validate_template(value: object, parameters: tuple[TypeVar, ...]) -> None:
         return
 
     origin = get_origin(value)
+    if origin in (SymbolicField, FieldNameTemplate, FieldTypeTemplate):
+        arguments = get_args(value)
+        if len(arguments) != 1 or not isinstance(arguments[0], FieldSymbol):
+            raise TypeFunctionConstructionError("invalid symbolic field binding")
+
+        return
+
     if origin is Capture:
         arguments = get_args(value)
         if len(arguments) != 1 or not isinstance(arguments[0], CaptureSymbol):

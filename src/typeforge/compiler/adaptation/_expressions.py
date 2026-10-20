@@ -37,7 +37,6 @@ from typeforge.compiler.source import (
     SourceTypeExpression,
     StarredTypeExpression,
     UnionTypeExpression,
-    ValueMarker,
     normalize_marker,
 )
 from typeforge.compiler.stub_ir import (
@@ -319,12 +318,6 @@ def _(
     expression = expanded
     marker = normalize_adaptation_marker(declaration, expression)
     match marker:
-        case ValueMarker():
-            raise AdaptationError(
-                declaration,
-                expression.source,
-                "Value is a field reference; declare Capture for structural matching",
-            )
         case MapMarker(subject=subject, entries=entries):
             cases = tuple(
                 MapCase(

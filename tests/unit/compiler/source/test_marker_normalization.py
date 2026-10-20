@@ -36,7 +36,7 @@ def test_every_marker_has_one_authoritative_valid_arity(kind: MarkerKind) -> Non
 @pytest.mark.parametrize(
     ("kind", "arguments", "requirement"),
     (
-        (MarkerKind.KEY, (ITEM,), "no type arguments"),
+        (MarkerKind.DROP, (ITEM,), "no type arguments"),
         (MarkerKind.EACH, (), "one type argument"),
         (MarkerKind.EQUAL, (ITEM,), "two type arguments"),
         (
@@ -59,7 +59,7 @@ def test_invalid_arities_use_the_shared_signature_table(
 
 def test_map_normalization_validates_entry_roles_and_duplicate_defaults() -> None:
     with pytest.raises(MarkerNormalizationError, match="Map entries must use"):
-        normalize_marker(marker(MarkerKind.MAP, ITEM, marker(MarkerKind.KEY)))
+        normalize_marker(marker(MarkerKind.MAP, ITEM, marker(MarkerKind.DROP)))
 
     with pytest.raises(MarkerNormalizationError, match="at most one fallback"):
         normalize_marker(
@@ -78,14 +78,14 @@ def test_map_normalization_validates_entry_roles_and_duplicate_defaults() -> Non
 
 
 def test_condition_markers_validate_nested_predicate_roles() -> None:
-    with pytest.raises(MarkerNormalizationError, match="Key is not a predicate"):
+    with pytest.raises(MarkerNormalizationError, match="Drop is not a predicate"):
         normalize_marker(
             marker(
                 MarkerKind.MAP,
                 ITEM,
                 marker(
                     MarkerKind.CASE,
-                    marker(MarkerKind.ALL, marker(MarkerKind.KEY)),
+                    marker(MarkerKind.ALL, marker(MarkerKind.DROP)),
                     ITEM,
                 ),
             )

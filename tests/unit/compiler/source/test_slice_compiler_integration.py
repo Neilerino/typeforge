@@ -12,10 +12,11 @@ from typeforge.compiler.pipeline import compile_source, generate_module
 from typeforge.compiler.source import MarkerKind, MarkerTypeExpression, parse_source
 from typeforge.overlay import transform_source
 
-IMPORTS = """from typing import Literal, Never, TypedDict, Annotated
+IMPORTS = """\
+from typing import Literal, Never, TypedDict, Annotated
 from typeforge import Capture, Map
 from typeforge._markers import Equal, Assignable, All, Not
-from typeforge import MapFields, Field, OptionalField, Drop, Key, Value
+from typeforge import Field, OptionalField, Drop, Fields, Record
 from typeforge._markers import Case, Default, Map as CanonicalMap
 from typeforge.pydantic import Schema
 Item = Capture("Item")
@@ -141,11 +142,19 @@ class User(TypedDict):
     password: str
     age: int
 
-type Public[T] = MapFields[T, Map[Key,
-    Literal["password"]: Drop,
-    Literal["name"]: OptionalField[Literal["display_name"], Value],
-    ...: Field[Key, Value],
-]]
+
+type Public[T] = Record(
+    (
+        Map[
+            field.name,
+            Literal["password"] : Drop,
+            Literal["name"] : OptionalField[Literal["display_name"], field.type],
+            ... : Field[field.name, field.type],
+        ]
+        for field in Fields[T]
+    )
+)
+
 
 def publicize[T](value: T) -> Public[T]: ...
 """

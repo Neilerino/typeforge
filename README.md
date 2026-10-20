@@ -280,7 +280,7 @@ Map a `TypedDict` and attach Markdown documentation to the resulting type:
 ```python
 from typing import Annotated, TypedDict
 
-from typeforge import Doc, Key, MapFields, OptionalField, Value
+from typeforge import Doc, Fields, OptionalField, Record, type_function
 
 
 class User(TypedDict):
@@ -288,10 +288,12 @@ class User(TypedDict):
     age: int
 
 
-type Patch[T] = Annotated[
-    MapFields[T, OptionalField[Key, Value]],
-    Doc("Fields that should be updated."),
-]
+@type_function
+def Patch[T]():
+    return Annotated[
+        Record(OptionalField[field.name, field.type] for field in Fields[T]),
+        Doc("Fields that should be updated."),
+    ]
 
 
 def update_user(changes: Patch[User]) -> None:
@@ -334,8 +336,8 @@ The basic compiler scope supports a module-level synchronous function with no
 value parameters or other decorators, unconstrained ordinary type parameters
 without defaults, an optional docstring, and one final return of a type expression.
 Map, Is, unions, ordinary generic types, and subscription of other type functions
-work. Capture declarations may precede the return. Local aliases and Record/Fields
-arrive in later slices.
+work. Capture declarations may precede the return. Record supports one unfiltered
+generator over Fields with a single field binding. Local aliases arrive later.
 
 Runtime construction can use additional Python statements when they produce a
 valid template. It rejects invalid returned structures and foreign unbound
@@ -372,8 +374,8 @@ are immutable and do not become caller-supplied type parameters. An unconstraine
 generic subject reveals no container arguments, so its unspecialized type-function
 declaration currently projects the safe `object` bound. Concrete applications and
 already known generic shapes remain precise.
-Structural `Value` authoring has been removed; `Value` remains a MapFields field
-reference until the Record/Fields cutover.
+Record comprehensions use scoped `field.name` and `field.type` references.
+Structural patterns use explicit Capture tokens.
 
 `Sequence[Item]` also captures elements from lists and tuples:
 
@@ -434,7 +436,7 @@ pip install "typeforge[pydantic]"
 from typing import Literal, TypedDict
 
 from pydantic import BaseModel
-from typeforge import Drop, Field, Key, Map, MapFields, Value
+from typeforge import Drop, Fields, Map, Record, type_function
 from typeforge.pydantic import Schema
 
 
@@ -443,14 +445,12 @@ class User(TypedDict):
     password: str
 
 
-type Public[T] = MapFields[
-    T,
-    Map[
-        Key,
-        Literal["password"] : Drop,
-        ... : Field[Key, Value],
-    ],
-]
+@type_function
+def Public[T]():
+    return Record(
+        Map[field.name, Literal["password"]: Drop, ...: field]
+        for field in Fields[T]
+    )
 
 
 class Response(BaseModel):
@@ -463,8 +463,10 @@ expressions add no Typeforge Python calls during validation. Expressions
 using `typeforge.pydantic.Input` intentionally dispatch on each raw input value
 before letting the selected Pydantic schema validate it.
 
-Slice Maps also compose inside `MapFields`, using `Key` for field names and
-`Value` for field types. Explicit field operators replace the source modifiers:
+Slice Maps compose inside `Record`, using `field.name` for field names and
+`field.type` for field types. Passing through `field` preserves requiredness,
+readonly state, and metadata. `Drop` removes a field. Explicit field operators
+replace the source modifiers:
 `Field` makes a field required and writable, `OptionalField` makes it optional
 and writable, and `ReadonlyField` makes it required and readonly. Pydantic retains
 field constraints and record metadata; generated TypedDicts use the compiler's
@@ -548,11 +550,11 @@ records the supported cases and remaining cross-consumer restrictions.
 Parameterized value-time patterns such as `list[int]` and `list[Item]` fail
 construction with `[unsupported_runtime_pattern]`, including under unions,
 annotations, and aliases. Runtime dispatch does not capture types from container
-values. Existing static captures and MapFields bindings remain available.
+values. Static captures and scoped field bindings remain available.
 
 No matching Input case or default produces `typeforge_map_no_match` during
 validation. A reached predicate failure retains its `typeforge_` diagnostic code,
-such as `typeforge_unbound_key`; it is never treated as a mismatch. Short-circuited
+such as `typeforge_unbound_field`; it is never treated as a mismatch. Short-circuited
 operands remain unvisited. Errors retain authored field/item locations and input
 values. Malformed markers fail during parsing, and unexpected hook or validator
 exceptions propagate.
@@ -565,12 +567,17 @@ Schema is currently `{}` in both validation and serialization modes.
 
 ### Records and supported expressions
 
-MapFields supports `TypedDict` records, including inherited and generic fields,
-renaming, Drop, metadata, and readonly information. Field operators explicitly
+Record over Fields supports `TypedDict` records, including inherited and generic
+fields, renaming, Drop, metadata, and readonly information. Construction consumes
+the generator immediately, retains a reusable typing template, and requires no
+saved source or compilation. Field operators explicitly
 set output requiredness and readonly state: `Field` is required, `OptionalField`
 is optional, and `ReadonlyField` is required and readonly. An invalid concrete
 record operand fails construction; an invalid unparametrized fallback reports
 `typeforge_unsupported_record` at validation while allowing valid specialization.
+The compiler specializes named record aliases with one type parameter over
+visible TypedDict declarations. Runtime Schema also accepts concrete inline
+records. Record-union operands remain a later slice.
 
 Ordinary model output types delegate to Pydantic. Transforming BaseModel records
 or structurally capturing their generic arguments is outside this integration's

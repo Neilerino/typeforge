@@ -1,29 +1,34 @@
 import pytest
 
 from pydantic import PydanticSchemaGenerationError, TypeAdapter
-from typeforge import Each, Field, Key, Map, MapFields, Value
+from typeforge import Each, Field, Fields, Map, Record
 from typeforge._markers import All, Any, Equal
 from typeforge._markers import Map as CanonicalMap
+from typeforge._record import FieldSymbol, SymbolicField
 from typeforge.pydantic import Input, Schema
+
+UNBOUND_FIELD = SymbolicField(SymbolicField, (FieldSymbol(),))
 
 
 def test_unbound_field_placeholders_fail_during_schema_generation() -> None:
     with pytest.raises(
-        PydanticSchemaGenerationError, match=r"unbound_key.*Key requires MapFields"
+        PydanticSchemaGenerationError, match=r"unbound_field.*field 'field' is unbound"
     ):
-        TypeAdapter(Schema[Key])
+        TypeAdapter(Schema[UNBOUND_FIELD.name])
 
-    with pytest.raises(
-        PydanticSchemaGenerationError, match=r"unbound_value.*Value requires"
-    ):
-        TypeAdapter(Schema[Value])
+    with pytest.raises(PydanticSchemaGenerationError, match=r"unbound_field.*field"):
+        TypeAdapter(Schema[UNBOUND_FIELD.type])
 
 
 def test_nested_schema_failure_preserves_the_original_issue() -> None:
     with pytest.raises(
-        PydanticSchemaGenerationError, match=r"unbound_key.*Key requires MapFields"
+        PydanticSchemaGenerationError, match=r"unbound_field.*field 'field' is unbound"
     ):
-        TypeAdapter(Schema[Map[int, Equal[Key, Key] : int, ...:str]])
+        TypeAdapter(
+            Schema[
+                Map[int, Equal[UNBOUND_FIELD.name, UNBOUND_FIELD.name] : int, ...:str]
+            ]
+        )
 
 
 def test_schema_conditions_short_circuit_nested_failures() -> None:
@@ -31,7 +36,9 @@ def test_schema_conditions_short_circuit_nested_failures() -> None:
         Schema[
             Map[
                 int,
-                All[Equal[int, str], Equal[Key, Key]] : bytes,
+                All[
+                    Equal[int, str], Equal[UNBOUND_FIELD.name, UNBOUND_FIELD.name]
+                ] : bytes,
                 ...:int,
             ]
         ]
@@ -40,7 +47,9 @@ def test_schema_conditions_short_circuit_nested_failures() -> None:
         Schema[
             Map[
                 int,
-                Any[Equal[int, int], Equal[Key, Key]] : int,
+                Any[
+                    Equal[int, int], Equal[UNBOUND_FIELD.name, UNBOUND_FIELD.name]
+                ] : int,
                 ...:bytes,
             ]
         ]
@@ -73,9 +82,9 @@ def test_map_fields_transform_must_produce_a_field_or_drop() -> None:
 
     with pytest.raises(
         PydanticSchemaGenerationError,
-        match=r"expected_field.*MapFields transform must evaluate to a field or Drop",
+        match=r"expected_field.*Record items must evaluate to a field or Drop",
     ):
-        TypeAdapter(Schema[MapFields[Payload, Value]])
+        TypeAdapter(Schema[Record(field.type for field in Fields[Payload])])
 
 
 def test_map_fields_rejects_duplicate_renames() -> None:
@@ -86,7 +95,11 @@ def test_map_fields_rejects_duplicate_renames() -> None:
         right: int
 
     with pytest.raises(PydanticSchemaGenerationError, match=r"duplicate_field.*'same'"):
-        TypeAdapter(Schema[MapFields[Payload, Field[Literal["same"], Value]]])
+        TypeAdapter(
+            Schema[
+                Record(Field[Literal["same"], field.type] for field in Fields[Payload])
+            ]
+        )
 
 
 def test_value_time_map_rejects_undefined_generic_patterns() -> None:

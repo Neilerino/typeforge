@@ -114,7 +114,7 @@ def _schema_adaptation_error(
 
     if isinstance(error, ExpectedRecordSemanticError):
         return AdaptationError(
-            declaration, expression.source, "MapFields requires a supported record type"
+            declaration, expression.source, "Record requires a supported record type"
         )
 
     if isinstance(error, MapNoMatch):

@@ -24,8 +24,7 @@ from typeforge.compiler.source import (
     DropMarker,
     EqualMarker,
     FieldMarker,
-    KeyMarker,
-    MapFieldsMarker,
+    FieldReferenceTypeExpression,
     MapMarker,
     MarkerNormalizationError,
     MarkerTypeExpression,
@@ -35,12 +34,12 @@ from typeforge.compiler.source import (
     OptionalFieldMarker,
     RawTypeExpression,
     ReadonlyFieldMarker,
+    RecordTypeExpression,
     RuntimeInputTypeExpression,
     SchemaTypeExpression,
     SourceTypeExpression,
     StarredTypeExpression,
     UnionTypeExpression,
-    ValueMarker,
     normalize_marker,
 )
 from typeforge.semantics import (
@@ -56,22 +55,23 @@ from typeforge.semantics import (
     Expression,
     FieldExpression,
     FieldName,
+    FieldNameReference,
+    FieldReference,
+    FieldTypeReference,
     InputReference,
-    KeyReference,
     MapExpression,
-    MapFieldsExpression,
     NotExpression,
     OptionalFieldExpression,
     ParameterizedTypePattern,
     ParameterizedTypeTemplate,
     ReadonlyFieldExpression,
+    RecordExpression,
     TypePattern,
     TypeReference,
     TypeSymbol,
     TypeValue,
     TypeValueReference,
     UnionExpression,
-    ValueReference,
 )
 
 type SemanticRole = Literal["type", "output", "field-name"]
@@ -135,6 +135,52 @@ def lower_capture_reference(expression: CaptureTypeExpression) -> CaptureReferen
             ),
             expression.name,
         )
+    )
+
+
+def _field_symbol(expression: FieldReferenceTypeExpression) -> TypeSymbol:
+    declaration = expression.declaration
+    return TypeSymbol(
+        (
+            str(declaration.path),
+            str(declaration.start.line),
+            str(declaration.start.column),
+        ),
+        expression.name,
+    )
+
+
+@lower_semantic_expression.register
+def _(
+    expression: FieldReferenceTypeExpression,
+    environment: SemanticEnvironment,
+    output_name: str | None = None,
+    *,
+    role: SemanticRole = "type",
+) -> FieldReference | FieldNameReference | FieldTypeReference:
+    symbol = _field_symbol(expression)
+    match expression.attribute:
+        case "name":
+            return FieldNameReference(symbol)
+        case "type":
+            return FieldTypeReference(symbol)
+        case _:
+            return FieldReference(symbol)
+
+
+@lower_semantic_expression.register
+def _(
+    expression: RecordTypeExpression,
+    environment: SemanticEnvironment,
+    output_name: str | None = None,
+    *,
+    role: SemanticRole = "type",
+) -> RecordExpression[StaticType]:
+    return RecordExpression(
+        lower_semantic_expression(expression.record, environment),
+        _field_symbol(expression.binding),
+        lower_semantic_expression(expression.transform, environment, role="output"),
+        output_name,
     )
 
 
@@ -228,10 +274,6 @@ def _(
         return lower_semantic_expression(item, environment, role=item_role)
 
     match marker:
-        case KeyMarker():
-            return KeyReference()
-        case ValueMarker():
-            return ValueReference()
         case DropMarker():
             return DropExpression()
         case FieldMarker(key=key, value=value):
@@ -244,15 +286,9 @@ def _(
             return ReadonlyFieldExpression(
                 lower(key, "field-name"), lower(value, "output")
             )
-        case MapFieldsMarker(record=record, transform=transform):
-            return MapFieldsExpression(
-                lower(record),
-                lower(transform),
-                output_name,
-            )
         case MapMarker(subject=subject, entries=entries):
             subject_role: SemanticRole = (
-                "field-name" if _is_key_expression(subject) else "type"
+                "field-name" if _is_field_name_expression(subject) else "type"
             )
             output_role: SemanticRole = (
                 "field-name" if role == "field-name" else "output"
@@ -277,7 +313,7 @@ def _(
         case EqualMarker(left=left, right=right):
             operand_role: SemanticRole = (
                 "field-name"
-                if _is_key_expression(left) or _is_key_expression(right)
+                if _is_field_name_expression(left) or _is_field_name_expression(right)
                 else "type"
             )
             return EqualExpression(
@@ -370,14 +406,6 @@ def _lower_case_test(
                 return field_name
 
             return _lower_type_pattern(expression, environment)
-        case MarkerTypeExpression():
-            marker = _normalize_semantic_marker(expression)
-            if isinstance(marker, ValueMarker):
-                raise SemanticLoweringError(
-                    "Value is a field reference; "
-                    "declare Capture for structural matching"
-                )
-
         case _:
             pass
 
@@ -410,12 +438,6 @@ def _lower_type_pattern(
             )
         case MarkerTypeExpression():
             marker = _normalize_semantic_marker(expression)
-            if isinstance(marker, ValueMarker):
-                raise SemanticLoweringError(
-                    "Value is a field reference; "
-                    "declare Capture for structural matching"
-                )
-
             raise SemanticLoweringError(
                 "unsupported type pattern "
                 f"{type(marker).__name__.removesuffix('Marker')}"
@@ -461,6 +483,8 @@ def _requires_evaluation(
         case (
             MarkerTypeExpression()
             | CaptureTypeExpression()
+            | FieldReferenceTypeExpression()
+            | RecordTypeExpression()
             | SchemaTypeExpression()
             | RuntimeInputTypeExpression()
         ):
@@ -499,14 +523,15 @@ def field_name_literal(expression: AppliedTypeExpression) -> FieldName | None:
     return FieldName(value) if isinstance(value, str) else None
 
 
-def _is_key_expression(expression: SourceTypeExpression) -> bool:
+def _is_field_name_expression(expression: SourceTypeExpression) -> bool:
+    if isinstance(expression, FieldReferenceTypeExpression):
+        return expression.attribute == "name"
+
     if not isinstance(expression, MarkerTypeExpression):
         return False
 
     match _normalize_semantic_marker(expression):
-        case KeyMarker():
-            return True
         case MapMarker(subject=subject):
-            return _is_key_expression(subject)
+            return _is_field_name_expression(subject)
         case _:
             return False

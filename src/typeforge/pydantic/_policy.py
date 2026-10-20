@@ -11,7 +11,7 @@ class InputTestKind(StrEnum):
     TYPE = "type"
     PREDICATE = "predicate"
     INPUT = "input"
-    UNBOUND_VALUE = "unbound_value"
+    UNBOUND_FIELD = "unbound_field"
     UNBOUND_CAPTURE = "unbound_capture"
     PARAMETERIZED = "parameterized"
     UNSUPPORTED = "unsupported"
@@ -22,12 +22,12 @@ def input_test_issue(kind: InputTestKind, expression: object) -> SchemaIssue | N
         case InputTestKind.TYPE | InputTestKind.PREDICATE | InputTestKind.INPUT:
             return None
 
-        case InputTestKind.UNBOUND_VALUE:
+        case InputTestKind.UNBOUND_FIELD:
             return SchemaIssue(
-                "unbound_value",
+                "unbound_field",
                 "planning",
                 expression,
-                "Value requires a field binding",
+                "field requires a resolved binding",
             )
 
         case InputTestKind.UNBOUND_CAPTURE:

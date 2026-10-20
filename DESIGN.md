@@ -44,8 +44,8 @@ Scalar bare matching follows Python assignment compatibility, including class
 inheritance, bool/int, numeric widening, and Any. Compiler adaptation carries
 local class ancestry and alias facts from the source snapshot to Schema lowering.
 `Is` lowers to existing exact equality data. Structural patterns bind explicit
-Capture tokens; Value is only a field reference. Field transforms bind `Key` and
-`Value` inside `MapFields` until their replacement slices land.
+Capture tokens. Record comprehensions bind a lexical field whose `.name` and
+`.type` refer to the current field; the field itself preserves the complete entry.
 Equal/Assignable/All/Any/Not remain private semantic
 representations for existing internal consumers; they are not public authoring.
 
@@ -112,7 +112,7 @@ diagnostics once, rather than converting them to a selected Never type.
 Compiler semantic lowering keeps field-name expressions distinct from typing
 types and output templates. A string Literal can name a transformed field while
 remaining an ordinary typing Literal in that field's type. Output-template roles
-compose through unions and parameterized arguments, preserving contextual Value
+compose through unions and parameterized arguments, preserving scoped field
 bindings. Production Schema boundaries evaluate through shared semantics,
 including deferred Input bounds and unresolved static type identity.
 
@@ -205,8 +205,9 @@ defaults, an optional docstring, capture declarations, and one final return of a
 typing expression.
 Supported expressions include Map, Is, unions, generic types, and subscription of
 other type functions. Unsupported source produces authored diagnostics without an
-execution fallback. Local aliases and record construction
-extend this frontier in their respective slices. Runtime acceptance of extra
+execution fallback. Record supports one unfiltered generator over Fields with a
+single name binding. Local aliases extend this frontier in their own slice.
+Runtime acceptance of extra
 Python construction statements does not imply compiler support.
 
 ### Named type captures
@@ -335,6 +336,28 @@ fallback; overlays retain their union-of-outputs fallback.
 ## Explicit record semantics
 
 `TypedDict`, dataclasses, protocols, ordinary classes, attrs classes, and validation models have different construction, inheritance, and mutation semantics. Typeforge must support each family through an explicit adapter rather than treating every annotated object as the same kind of record.
+
+`Record(expression for field in Fields[T])` constructs an immutable template.
+Runtime construction consumes the generator once with a symbolic field. The
+template retains its record operand and declaration identity so Python can
+discover and substitute type parameters even when every output is Drop. A
+construction-scoped context records the operand; it is reset after success or
+failure. Specialization neither stores nor replays the generator. The compiler
+parses the same supported comprehension without executing authored code.
+
+Both frontends lower to RecordExpression with a scoped field symbol. Evaluation
+uses each original RecordField in an immutable child context. Whole-field
+passthrough preserves requiredness, readonly state, and backend-owned metadata;
+Drop removes the entry. Existing field constructors explicitly set flags.
+Duplicate names and outputs other than a field or Drop are typed failures.
+Ambient Key/Value and MapFields authoring are removed.
+
+TypedDict reflection, compiler discovery, and synthesized output remain with the
+existing family adapters. RecordShape retains its family identity rather than
+treating annotated objects uniformly, leaving future Protocol output a separate
+adapter decision. Compiler materialization currently specializes named aliases
+with one type parameter over visible TypedDict declarations; runtime Schema also
+supports concrete inline records and Pydantic generic model specialization.
 
 Shared `AnnotatedExpression` carries backend-owned metadata around a type or a
 synthesized record. Evaluation preserves record metadata in order without

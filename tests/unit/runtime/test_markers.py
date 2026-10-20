@@ -10,12 +10,9 @@ from typeforge import (
     Drop,
     Each,
     Field,
-    Key,
     Map,
-    MapFields,
     OptionalField,
     ReadonlyField,
-    Value,
 )
 from typeforge._markers import All, Any, Assignable, Case, Default, Equal, Not
 
@@ -54,12 +51,9 @@ def test_map_markers_preserve_arguments() -> None:
 
 
 def test_field_markers_preserve_arguments() -> None:
-    assert get_args(MapFields[dict[str, int], Field[Key, Value]]) == (
-        dict[str, int],
-        Field[Key, Value],
-    )
-    assert get_args(OptionalField[Key, Value]) == (Key, Value)
-    assert get_args(ReadonlyField[Key, Value]) == (Key, Value)
+    assert get_args(Field[str, int]) == (str, int)
+    assert get_args(OptionalField[str, int]) == (str, int)
+    assert get_args(ReadonlyField[str, int]) == (str, int)
     assert repr(Drop) == "Drop"
 
 
@@ -73,13 +67,10 @@ def test_every_marker_carries_markdown_documentation() -> None:
         Any,
         Not,
         Map,
-        MapFields,
         Field,
         OptionalField,
         ReadonlyField,
         Drop,
-        Key,
-        Value,
     )
 
     for marker in markers:
