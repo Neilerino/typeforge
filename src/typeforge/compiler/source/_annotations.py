@@ -9,7 +9,9 @@ from typeforge.compiler.source._markers import (
 )
 from typeforge.compiler.source._model import (
     AppliedTypeExpression,
+    FieldConstructionTypeExpression,
     FieldReferenceTypeExpression,
+    FieldReplacementTypeExpression,
     MarkerKind,
     MarkerTypeExpression,
     NameTypeExpression,
@@ -76,9 +78,32 @@ def parse_type_parameter(
 def validate_construction_expression(
     path: Path, node: ast.AST, bindings: ImportBindings
 ) -> None:
+    if isinstance(node, ast.expr):
+        annotated = unwrap_annotated(node, bindings)
+        if annotated is not None:
+            validate_construction_expression(path, annotated, bindings)
+            return
+
     if isinstance(node, ast.Call):
+        if isinstance(node.func, ast.Name | ast.Attribute) and resolve_ast_name(
+            node.func, bindings
+        ) == ("typeforge", "Field"):
+            for keyword in node.keywords:
+                validate_construction_expression(path, keyword.value, bindings)
+
+            return
+
+        if _is_field_replacement(node, bindings):
+            assert isinstance(node.func, ast.Attribute)
+            validate_construction_expression(path, node.func.value, bindings)
+            for keyword in node.keywords:
+                validate_construction_expression(path, keyword.value, bindings)
+
+            return
+
         generator = _record_generator(path, node, bindings)
-        validate_construction_expression(path, generator.elt, bindings)
+        # The element is validated by _parse_record after its lexical field
+        # binding exists; the operand still belongs to the enclosing scope.
         validate_construction_expression(path, generator.generators[0].iter, bindings)
         return
 
@@ -141,6 +166,99 @@ def _record_generator(
         )
 
     return generator
+
+
+def _is_field_replacement(node: ast.Call, bindings: ImportBindings) -> bool:
+    if not isinstance(node.func, ast.Attribute) or node.func.attr != "replace":
+        return False
+
+    target = node.func.value
+    if isinstance(target, ast.Name):
+        return target.id in dict(bindings.fields)
+
+    if isinstance(target, ast.Call):
+        return (
+            isinstance(target.func, ast.Name | ast.Attribute)
+            and resolve_ast_name(target.func, bindings) == ("typeforge", "Field")
+        ) or _is_field_replacement(target, bindings)
+
+    return False
+
+
+def _field_keywords(
+    path: Path, node: ast.Call, *, constructing: bool
+) -> dict[str, ast.expr]:
+    message = "Field requires keyword data: name, type, required, and readonly"
+    if node.args:
+        raise AnnotationSyntaxError(message, source_span(path, node))
+
+    keywords: dict[str, ast.expr] = {}
+    for keyword in node.keywords:
+        if (
+            keyword.arg is None
+            or keyword.arg not in {"name", "type", "required", "readonly"}
+            or keyword.arg in keywords
+        ):
+            raise AnnotationSyntaxError(message, source_span(path, keyword))
+
+        keywords[keyword.arg] = keyword.value
+
+    if constructing and not {"name", "type"}.issubset(keywords):
+        raise AnnotationSyntaxError(
+            "Field requires name and type keywords", source_span(path, node)
+        )
+
+    return keywords
+
+
+def _parse_field_replacement(
+    path: Path, source: str, node: ast.Call, bindings: ImportBindings
+) -> FieldReplacementTypeExpression:
+    assert isinstance(node.func, ast.Attribute)
+    keywords = _field_keywords(path, node, constructing=False)
+    field = parse_annotation(path, source, node.func.value, bindings)
+    return FieldReplacementTypeExpression(
+        ast.get_source_segment(source, node) or ast.unparse(node),
+        source_span(path, node),
+        field,
+        name=parse_annotation(path, source, keywords.get("name"), bindings),
+        value=parse_annotation(path, source, keywords.get("type"), bindings),
+        required=_field_modifier(path, keywords["required"])
+        if "required" in keywords
+        else None,
+        readonly=_field_modifier(path, keywords["readonly"])
+        if "readonly" in keywords
+        else None,
+    )
+
+
+def _parse_field(
+    path: Path, source: str, node: ast.Call, bindings: ImportBindings
+) -> FieldConstructionTypeExpression:
+    keywords = _field_keywords(path, node, constructing=True)
+    name = parse_annotation(path, source, keywords["name"], bindings)
+    value = parse_annotation(path, source, keywords["type"], bindings)
+    return FieldConstructionTypeExpression(
+        ast.get_source_segment(source, node) or ast.unparse(node),
+        source_span(path, node),
+        name,
+        value,
+        required=_field_modifier(path, keywords["required"])
+        if "required" in keywords
+        else True,
+        readonly=_field_modifier(path, keywords["readonly"])
+        if "readonly" in keywords
+        else False,
+    )
+
+
+def _field_modifier(path: Path, node: ast.expr) -> bool:
+    if isinstance(node, ast.Constant) and isinstance(node.value, bool):
+        return node.value
+
+    raise AnnotationSyntaxError(
+        "field modifiers must be booleans", source_span(path, node)
+    )
 
 
 def _parse_record(
@@ -249,6 +367,14 @@ def parse_annotation(
                 "field authoring requires Record and Fields", span
             )
 
+        if name_expression.qualified_name in {
+            ("typeforge", "OptionalField"),
+            ("typeforge", "ReadonlyField"),
+        }:
+            raise AnnotationSyntaxError(
+                "field authoring requires keyword Field construction", span
+            )
+
         if _is_runtime_input(name_expression):
             return RuntimeInputTypeExpression(rendered, span)
 
@@ -264,9 +390,20 @@ def parse_annotation(
         return name_expression
 
     if isinstance(node, ast.Call):
+        if isinstance(node.func, ast.Name | ast.Attribute) and resolve_ast_name(
+            node.func, bindings
+        ) == ("typeforge", "Field"):
+            return _parse_field(path, source, node, bindings)
+
+        if _is_field_replacement(node, bindings):
+            return _parse_field_replacement(path, source, node, bindings)
+
         return _parse_record(path, source, node, bindings)
 
     if isinstance(node, ast.Subscript):
+        if resolve_ast_name(node.value, bindings) == ("typeforge", "Field"):
+            raise AnnotationSyntaxError("Field requires keyword construction", span)
+
         constructor = parse_annotation(path, source, node.value, bindings)
         slice_nodes = (
             node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)

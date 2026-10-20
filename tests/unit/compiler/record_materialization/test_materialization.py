@@ -63,12 +63,11 @@ def test_materialization_preserves_typed_dict_field_order_and_modifiers(
 def test_record_failures_are_owned_by_record_materialization(tmp_path: Path) -> None:
     path = tmp_path / "invalid_record_alias.py"
     path.write_text(
-        """\
-from typing import TypedDict
+        """from typing import TypedDict
 from typeforge import Field, Fields, Record
 class Payload(TypedDict):
     value: int
-type Copy = Record((Field[field.name, field.type] for field in Fields[Payload]))
+type Copy = Record(Field(name=field.name, type=field.type) for field in Fields[Payload])
 """,
         encoding="utf-8",
     )

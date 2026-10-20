@@ -537,13 +537,14 @@ def test_union_field_values_through_existing_materialization(
     sliced: bool,
 ) -> None:
     expression = (
-        """\
-Record(
+        """Record(
     (
         Map[
             field.name,
-            Literal["value"] : Field[field.name, Map[field.type, int:bytes, ...:float]],
-            ... : Field[field.name, field.type],
+            Literal["value"] : Field(
+                name=field.name,
+                type=Map[field.type, int:bytes, ...:float]),
+            ... : Field(name=field.name, type=field.type),
         ]
         for field in Fields[T]
     )
@@ -551,19 +552,17 @@ Record(
 """
         if sliced
         else (
-            """\
-Record(
+            """Record(
     (
         CanonicalMap[
             field.name,
             Case[
                 Literal["value"],
-                Field[
-                    field.name,
-                    CanonicalMap[field.type, Case[int, bytes], Default[float]],
-                ],
+                Field(
+                    name=field.name,
+                    type=CanonicalMap[field.type, Case[int, bytes], Default[float]]),
             ],
-            Default[Field[field.name, field.type]],
+            Default[Field(name=field.name, type=field.type)],
         ]
         for field in Fields[T]
     )
@@ -602,19 +601,17 @@ def test_record_unions_remain_unsupported(
     sliced: bool,
 ) -> None:
     expression = (
-        """\
-Record(
+        """Record(
     (
-        Map[field.name, ... : Field[field.name, field.type]]
+        Map[field.name, ... : Field(name=field.name, type=field.type)]
         for field in Fields[Row | Other]
     )
 )
 """
         if sliced
-        else """\
-Record(
+        else """Record(
     (
-        CanonicalMap[field.name, Default[Field[field.name, field.type]]]
+        CanonicalMap[field.name, Default[Field(name=field.name, type=field.type)]]
         for field in Fields[Row | Other]
     )
 )

@@ -35,7 +35,7 @@ def test_callable_contract_preserves_relationship_before_record_rewriting(
             class Payload(TypedDict):
                 value: int
             type Copy[T] = Record(
-                Field[field.name, field.type] for field in Fields[T]
+                Field(name=field.name, type=field.type) for field in Fields[T]
             )
             type Encoded[T] = Map[T, int : Copy[Payload]]
             def encode[T](value: T) -> {return_annotation}: ...

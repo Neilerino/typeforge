@@ -13,7 +13,6 @@ from typeforge.compiler.stub_ir._model import (
     Declaration,
     EachType,
     EqualPredicate,
-    FieldType,
     FixedTuple,
     FunctionDeclaration,
     GeneratedElement,
@@ -130,13 +129,6 @@ def _rewrite_type_children(
                 ),
                 rewrite(default),
             )
-        case FieldType(name, value, required, readonly):
-            return FieldType(
-                rewrite(name),
-                rewrite(value),
-                required,
-                readonly,
-            )
         case (
             TypeName()
             | TypeVariable()
@@ -207,9 +199,6 @@ def walk_type(expression: StubTypeExpression) -> Iterator[StubTypeExpression]:
                 yield from walk_type(case.output_type)
 
             yield from walk_type(default)
-        case FieldType(name, value):
-            yield from walk_type(name)
-            yield from walk_type(value)
         case (
             TypeName()
             | TypeVariable()

@@ -156,6 +156,7 @@ def source_span(
     node: ast.stmt
     | ast.expr
     | ast.arg
+    | ast.keyword
     | ast.TypeVar
     | ast.TypeVarTuple
     | ast.ParamSpec,

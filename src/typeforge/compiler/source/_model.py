@@ -47,9 +47,6 @@ class MarkerKind(Enum):
     MAP = "Map"
     CASE = "Case"
     DEFAULT = "Default"
-    FIELD = "Field"
-    OPTIONAL_FIELD = "OptionalField"
-    READONLY_FIELD = "ReadonlyField"
     DROP = "Drop"
 
 
@@ -78,6 +75,27 @@ class FieldReferenceTypeExpression:
     name: str
     declaration: SourceSpan
     attribute: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FieldConstructionTypeExpression:
+    source: str
+    span: SourceSpan
+    name: SourceTypeExpression
+    value: SourceTypeExpression
+    required: bool = True
+    readonly: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class FieldReplacementTypeExpression:
+    source: str
+    span: SourceSpan
+    field: SourceTypeExpression
+    name: SourceTypeExpression | None = None
+    value: SourceTypeExpression | None = None
+    required: bool | None = None
+    readonly: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +160,8 @@ type SourceTypeExpression = (
     NameTypeExpression
     | CaptureTypeExpression
     | FieldReferenceTypeExpression
+    | FieldConstructionTypeExpression
+    | FieldReplacementTypeExpression
     | RecordTypeExpression
     | AppliedTypeExpression
     | UnionTypeExpression
@@ -268,6 +288,20 @@ def contains_marker(
 ) -> bool:
 
     match expression:
+        case FieldReplacementTypeExpression(field=field, name=name, value=value):
+            return marker is None or any(
+                contains_marker(item, marker)
+                for item in (field, name, value)
+                if item is not None
+            )
+
+        case FieldConstructionTypeExpression(name=name, value=value):
+            return (
+                marker is None
+                or contains_marker(name, marker)
+                or contains_marker(value, marker)
+            )
+
         case RecordTypeExpression(record=record, transform=transform):
             return (
                 marker is None

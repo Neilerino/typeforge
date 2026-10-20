@@ -207,9 +207,13 @@ outputs, and unchanged union fields. Compiler materialization uses named generic
 record aliases; runtime Schema also supports the exercised inline form.
 
 Whole-field passthrough preserves source flags and backend-owned metadata.
-Field makes outputs required/writable, OptionalField optional/writable, and
-ReadonlyField required/readonly: each replaces source flags. Compiler output uses
-Annotated fields' base types; Pydantic retains constraints and schema metadata.
+`Field(name=..., type=..., required=True, readonly=False)` constructs new field
+data. Name and type are mandatory keywords. `field.replace(...)` changes only
+supplied properties; omission differs from an explicit None type or false flag.
+Replacing the complete type removes its metadata; wrapping field.type keeps that
+metadata at the nested position. A new Record clears whole-record metadata;
+explicit outer Annotated metadata applies to the new result.
+Compiler output uses Annotated fields' base types; Pydantic retains constraints.
 Duplicate names, non-field outputs, and speculative field-versus-Drop layouts
 remain errors.
 
