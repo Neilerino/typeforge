@@ -241,25 +241,30 @@ existing comparison rules. U08/U30 and the
 
 ### G3 — Union aliases
 
-Compiler Schema expands ordinary union aliases; static runtime matching retains
-alias identity. Input unwraps aliases; output validation delegates them to
-Pydantic. The [agreed correction](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#d3--union-aliases)
-makes ordinary aliases transparent for selection; implementation is pending.
-Transparent runtime selection needs identity, metadata, and cycle rules.
-U16/U18/U29 remain divergent.
+Compiler Schema and runtime matching expand ordinary aliases for selection,
+including nested generic arguments and exact Is targets. Runtime expansion uses
+the existing alias binding and cycle boundary, preserving parameter identity.
+Selected output aliases still delegate metadata and schema references to
+Pydantic. Runtime recursive output aliases remain supported by Pydantic; aliases
+requiring recursive Typeforge selection report alias_cycle. The compiler retains
+its authored cycle diagnostic. NewType is not an ordinary alias; its detailed
+compatibility rules remain deferred. U16/U18/U29 and the
+[alias contract](tests/unit/test_alias_selection_contract.py) now agree.
 
 ### G4 — Any unions
 
-Runtime semantic union construction absorbs Any; the compiler retains other
-member paths. U24/U25 show why permissive schemas do not prove selection parity.
+Runtime and compiler union construction retain explicit members beside Any.
+U24/U25 and nested exact-comparison probes prove selection parity independently
+of permissive validation.
 The [agreed rules](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#d4--any-unions)
 preserve explicit members such as Any-or-str for later comparison. Bare selectors
 now follow checker compatibility for Any: Any matches int and int matches Any.
 This supersedes earlier exact-only default matching; Is retains exact comparison.
-Scalar compatibility and public removal are implemented. Explicit union
-preservation remains pending. The public removal was approved in the
+Scalar compatibility, public removal, and explicit union preservation are
+implemented. The public removal was approved in the
 [second decision batch](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#second-decision-batch--agreed).
-Portable selection involving Any-containing unions is not guaranteed.
+This does not require every downstream checker to display the same union
+spelling; callable input/output precision remains a separate pending contract.
 
 ### G5 — Field distribution
 

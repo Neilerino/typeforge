@@ -142,6 +142,15 @@ subject. Alias type parameters retain their existing identity-based bindings.
 Literal normalization is shared with construction. Neither frontend stores
 implicit predicates in shared semantic data or changes union matching policies.
 
+Runtime `_selection_type` expands ordinary aliases in subjects, selectors, and
+outputs consumed by a surrounding Map. It reuses alias argument binding and
+cycle detection, resolving supplied arguments before entering the alias body so
+finite repeated applications are not mistaken for recursion. Child bindings are
+independent; TypeVar annotations retain their generic provenance. Ordinary selected
+output aliases still delegate metadata, references, and recursion to Pydantic.
+The runtime union builder flattens and deduplicates in encounter order without
+absorbing explicit members beside Any, preserving later whole-type comparisons.
+
 Pydantic diagnostic display reconstructs slice branches from canonical typing
 arguments without expanding aliases or interpreting Literal/Annotated payloads.
 Issue data, codes, phases, and validation locations stay unchanged; display does

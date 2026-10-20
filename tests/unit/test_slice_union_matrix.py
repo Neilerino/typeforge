@@ -183,7 +183,7 @@ CASES = (
         "Map[Numbers, int: bytes, ...: float]",
         "CanonicalMap[Numbers, Case[int, bytes], Default[float]]",
         "bytes | float",
-        "float",
+        "bytes | float",
         setup="type Numbers = int | str\n",
     ),
     UnionCase(
@@ -191,7 +191,7 @@ CASES = (
         "Map[int, Numbers: bytes, ...: float]",
         "CanonicalMap[int, Case[Numbers, bytes], Default[float]]",
         "bytes",
-        "float",
+        "bytes",
         setup="type Numbers = int | str\n",
     ),
     UnionCase(
@@ -199,7 +199,7 @@ CASES = (
         "Map[int, Assignable[Numbers]: bytes, ...: float]",
         "CanonicalMap[int, Case[Assignable[int, Numbers], bytes], Default[float]]",
         "bytes",
-        "float",
+        "bytes",
         setup="type Numbers = int | str\n",
     ),
     UnionCase(
@@ -254,7 +254,7 @@ CASES = (
         "Map[int, int: Any | str]",
         "CanonicalMap[int, Case[int, Any | str]]",
         "Any | str",
-        "Any",
+        "Any | str",
     ),
     UnionCase(
         "U26-input-union-bound",
