@@ -1,7 +1,11 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
+from typeforge.compiler.semantic_adapter import SemanticEnvironment
 from typeforge.compiler.source import FunctionDeclaration, ReturnSite, SourceSpan
+from typeforge.compiler.stub_ir import (
+    FunctionDeclaration as CallableDeclaration,
+)
 from typeforge.compiler.stub_ir import MapType, StubTypeExpression
 
 
@@ -31,6 +35,8 @@ class ReturnContract:
     controller_type_parameter: str
     mapping: MapType
     alternatives: tuple[Alternative, ...]
+    declaration: CallableDeclaration
+    environment: SemanticEnvironment
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +44,7 @@ class FlowState:
     alternatives: tuple[int, ...]
     refined: bool = False
     controller_valid: bool = True
+    narrowed_inputs: tuple[StubTypeExpression, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

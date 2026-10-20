@@ -10,6 +10,7 @@ from typeforge.compiler.semantic_adapter._lowering import (
 from typeforge.compiler.semantic_adapter._stub_types import (
     lower_stub_expression,
     stub_static_type,
+    stub_type_environment,
 )
 from typeforge.compiler.semantic_adapter._type_system import (
     COMPILER_TYPE_SYSTEM,
@@ -49,5 +50,6 @@ __all__ = [
     "named_type_environment",
     "static_type_expression",
     "stub_static_type",
+    "stub_type_environment",
     "union_of",
 ]

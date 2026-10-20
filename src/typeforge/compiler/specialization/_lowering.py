@@ -6,7 +6,7 @@ from returns.result import Failure, Result, Success
 
 from typeforge.compiler.semantic_adapter import (
     SemanticEnvironment,
-    named_type_environment,
+    stub_type_environment,
 )
 from typeforge.compiler.specialization._each_lowering import lower_each_function
 from typeforge.compiler.specialization._expressions import type_parameter_name
@@ -29,7 +29,6 @@ from typeforge.compiler.stub_ir import (
     OverloadDeclaration,
     StubModule,
     StubTypeExpression,
-    TypeApplication,
     TypeName,
     TypeRewriteObserver,
     merge_imports,
@@ -65,23 +64,7 @@ def lower_variadic_module(
             )
 
     has_overloads = False
-    environment = named_type_environment(
-        tuple(
-            (
-                item.name,
-                (
-                    *(
-                        name
-                        for base in item.bases
-                        if (name := _base_name(base)) is not None
-                    ),
-                    *(("typing.Protocol",) if item.is_protocol else ()),
-                ),
-            )
-            for item in module.declarations
-            if isinstance(item, ClassDeclaration)
-        )
-    )
+    environment = stub_type_environment(module)
     for declaration in module.declarations:
         if isinstance(declaration, ClassDeclaration):
             class_result = _lower_class(
@@ -221,14 +204,6 @@ def _lower_class(
         has_overloads = has_overloads or isinstance(lowered_method, OverloadDeclaration)
 
     return Success((replace(declaration, methods=tuple(methods)), has_overloads))
-
-
-def _base_name(base: StubTypeExpression) -> str | None:
-    match base:
-        case TypeName(name) | TypeApplication(TypeName(name), _):
-            return name
-        case _:
-            return None
 
 
 def _lower_function(

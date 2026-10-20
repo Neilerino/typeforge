@@ -360,8 +360,8 @@ Pipeline AnnotationProjection facts expose native input and output annotations
 with their authored spans. Body annotations retain original generic names and erase generated parameters
 absent from that scope. Native checkers enforce these ordinary bounds; this does
 not prove an arbitrary dependent implementation. Native inference for gradual Any
-remains checker-owned. Original-whole-subject guard verification remains a
-separate frontier.
+remains checker-owned. Recognized guard verification uses the original
+relationship separately from projected native output bounds.
 
 ### Each and Collect projection
 
@@ -390,6 +390,27 @@ ordinary unmapped roots retain their existing origin and emission behavior.
 Implementation verification produces checker-neutral obligations from Typeforge relationships and authored control flow. Existing type checkers validate the expressions; Typeforge does not infer ordinary Python expression types itself.
 
 Precise obligations are emitted only for recognized flow. Unknown predicates, ambiguous controllers, generators, and declaration-only bodies must degrade to an aggregate check or remain with the underlying checker rather than inventing a narrowing.
+
+ReturnContract retains the original Map, authored callable, and compiler-owned
+type facts. FlowState records narrowed runtime inputs independently. Whole-type
+Is selectors retain reachable fallback obligations after both isinstance and
+exact runtime type guards: narrowing a value does not establish the original
+generic identity. A whole-union alternative can reach both guard paths; a member
+match removes it from the opposite path only when every member matches.
+
+Verification clips alternatives to authored domains through the existing scalar
+coverage owner. When clipping changes the subject, shared semantic evaluation
+selects its output. The same native-domain proof excludes unreachable compatible
+fallbacks, so a valid bare int mapping is accepted while exact int behavior keeps
+the bool and original-union counterexamples. Specialization and verification share
+stub_type_environment for local ancestry and Protocol identity. Runtime inheritance
+facts stay distinct from numeric assignment widening.
+
+The overlay emits these obligations at authored return spans and delegates
+expression inference to the native checker. Rebinding a controller invalidates
+its flow facts; unknown or disconnected predicates retain aggregate checking.
+This finite recognized-flow frontier does not prove arbitrary dependent Python
+implementations.
 
 ## Compiler plans and target projections
 

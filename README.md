@@ -52,6 +52,24 @@ Python source
 
 For local `Map` implementations, Typeforge also verifies return expressions after recognizable `type`, `isinstance`, literal, `None`, boolean, and `match` guards. It emits ordinary typed assignments in memory and lets the configured checker infer the expression type. Unrecognized flow falls back to the safe aggregate return type.
 
+A value guard narrows the value while `Is` still compares the original whole
+type argument. This implementation is rejected:
+
+```python
+from typeforge import Is, Map
+
+def encode[T](value: T) -> Map[T, Is[int]: str, ...: bytes]:
+    if isinstance(value, int):
+        return "integer"
+    return b"other"
+```
+
+An original `bool` or `int | str` subject selects bytes even when the value enters
+the integer branch. A `type(value) is int` guard also cannot establish that the
+original type argument was exactly int. Using the bare `int: str` selector makes
+the shown implementation valid. Verification respects authored bounds and local
+class ancestry and keeps whole-union cases reachable on both value paths.
+
 ### Semantic integration seam
 
 `typeforge.semantics` is the supported interface for integrations that adapt
