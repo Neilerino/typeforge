@@ -336,8 +336,31 @@ The basic compiler scope supports a module-level synchronous function with no
 value parameters or other decorators, unconstrained ordinary type parameters
 without defaults, an optional docstring, and one final return of a type expression.
 Map, Is, unions, ordinary generic types, and subscription of other type functions
-work. Capture declarations may precede the return. Record supports one unfiltered
-generator over Fields with a single field binding. Local aliases arrive later.
+work. Capture declarations and local type aliases may precede the return. Local
+aliases can have unconstrained ordinary type parameters without defaults; the
+compiler requires all arguments when applying them. Their parameters have their
+own lexical scope. Record supports one unfiltered generator over Fields with a
+single field binding.
+
+Local aliases can separate selection from field construction and compose other
+type functions:
+
+```python
+from typeforge import Drop, Fields, Map, Record, type_function
+
+@type_function
+def WithoutIntegers[T]():
+    type DropCondition[A] = Map[A, int: Drop, ...: A]
+
+    return Record(
+        field.replace(type=DropCondition[field.type])
+        for field in Fields[T]
+    )
+```
+
+An int field is removed; a str field retains its name and modifiers. A local
+alias such as `type Visible = Public[T]` can also supply `Fields[Visible]`.
+Local aliases stay private to the template and do not become public stub names.
 
 Runtime construction can use additional Python statements when they produce a
 valid template. It rejects invalid returned structures and foreign unbound

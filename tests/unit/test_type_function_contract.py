@@ -139,7 +139,6 @@ def test_type_function_composition_and_plain_annotations(
         "def Bad[T]():\n    return T if T else str",
         "def Bad[T]():\n    return 42",
         "def Bad[T]():\n    return",
-        "def Bad[T]():\n    type Local = T\n    return Local",
         "def Bad[T](value):\n    return T",
         "async def Bad[T]():\n    return T",
         "def Bad[*Ts]():\n    return tuple[*Ts]",
