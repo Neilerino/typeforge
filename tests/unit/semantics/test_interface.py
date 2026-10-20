@@ -13,6 +13,7 @@ from typeforge.semantics import (
     ResolvedType,
     SemanticIssue,
     TypeReference,
+    TypeSymbol,
     TypeSystem,
     TypeValue,
     evaluate,
@@ -80,13 +81,13 @@ def test_evaluation_context_distinguishes_none_from_an_unbound_type() -> None:
     """Runtime adapters can bind None without using it as the unbound sentinel."""
     context = EvaluationContext[object](
         value=ResolvedType(None),
-        capture=ResolvedType(None),
+        captures=((TypeSymbol((__name__,), "Item"), ResolvedType(None)),),
         input_type=ResolvedType(None),
     )
 
     assert_type(context.value, TypeValue[object] | None)
     assert context.value == ResolvedType(None)
-    assert context.capture == ResolvedType(None)
+    assert context.captures[0][1] == ResolvedType(None)
     assert context.input_type == ResolvedType(None)
 
 

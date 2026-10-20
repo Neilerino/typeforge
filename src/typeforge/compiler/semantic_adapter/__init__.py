@@ -4,6 +4,7 @@ from typeforge.compiler.semantic_adapter._emission import static_type_expression
 from typeforge.compiler.semantic_adapter._lowering import (
     SemanticEnvironment,
     SemanticLoweringError,
+    lower_capture_reference,
     lower_semantic_expression,
 )
 from typeforge.compiler.semantic_adapter._type_system import (
@@ -37,6 +38,7 @@ __all__ = [
     "UnpackedType",
     "VariadicType",
     "is_static",
+    "lower_capture_reference",
     "lower_semantic_expression",
     "static_type_expression",
     "union_of",

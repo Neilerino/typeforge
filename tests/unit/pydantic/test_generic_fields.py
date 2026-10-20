@@ -10,8 +10,10 @@ from pydantic import (
     field_serializer,
     field_validator,
 )
-from typeforge import Is, Map, Value
+from typeforge import Capture, Is, Map
 from typeforge.pydantic import Schema
+
+Item = Capture("Item")
 
 
 def test_generic_alias_fields_rebuild_and_keep_specializations_independent() -> None:
@@ -47,7 +49,7 @@ def test_generic_alias_fields_rebuild_and_keep_specializations_independent() -> 
 
 def test_partial_generic_inheritance_substitutes_nested_structural_fields() -> None:
     class Parent[T, U](BaseModel):
-        value: Schema[Map[list[T], list[Value] : set[Value], ...:bytes]]
+        value: Schema[Map[list[T], list[Item] : set[Item], ...:bytes]]
         other: list[Schema[U]]
 
     class Child[U](Parent[int, U]):

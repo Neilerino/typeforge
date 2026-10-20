@@ -11,6 +11,7 @@ from pydantic import (
 )
 from pydantic import Field as PydanticField
 from typeforge import (
+    Capture,
     Doc,
     Drop,
     Field,
@@ -23,6 +24,8 @@ from typeforge import (
 )
 from typeforge._markers import Equal
 from typeforge.pydantic import Schema
+
+Item = Capture("Item")
 
 
 def test_record_transforms_validate_rename_drop_and_preserve_leaf_constraints() -> None:
@@ -104,7 +107,7 @@ def test_generic_typed_dict_fields_bind_before_structural_transforms() -> None:
         values: list[T]
 
     type Converted[T] = MapFields[
-        Items[T], Field[Key, Map[Value, list[Value] : set[Value]]]
+        Items[T], Field[Key, Map[Value, list[Item] : set[Item]]]
     ]
 
     class Payload[T](BaseModel):
@@ -282,7 +285,7 @@ def test_inherited_generic_typed_dict_arguments_bind_before_field_mapping() -> N
     class Child[U](Base[int]):
         second: list[U]
 
-    type Selected[T] = MapFields[T, Field[Key, Map[Value, list[Value] : set[Value]]]]
+    type Selected[T] = MapFields[T, Field[Key, Map[Value, list[Item] : set[Item]]]]
     result = TypeAdapter[object](Schema[Selected[Child[str]]]).validate_python(
         {"first": ["3"], "second": ["x"]}
     )

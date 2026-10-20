@@ -17,7 +17,7 @@ from typeforge.semantics import (
     AllExpression,
     AnyExpression,
     AssignableExpression,
-    CaptureValuePattern,
+    CaptureReference,
     CaseExpression,
     DeferredMap,
     DropExpression,
@@ -52,6 +52,7 @@ from typeforge.semantics import (
     SemanticIssue,
     SemanticIssueCode,
     TypeReference,
+    TypeSymbol,
     TypeSystem,
     UnboundInputSemanticError,
     UnboundKeySemanticError,
@@ -61,6 +62,8 @@ from typeforge.semantics import (
     evaluate,
     type_ref,
 )
+
+ITEM = CaptureReference(TypeSymbol((__name__,), "Item"))
 
 
 class NameTypeSystem:
@@ -309,9 +312,7 @@ def test_adapter_failures_propagate_unchanged(
         ),
         (
             ValueReference(),
-            UnboundValueSemanticError(
-                "Value requires MapFields or a structural Map case"
-            ),
+            UnboundValueSemanticError("Value requires MapFields"),
         ),
         (
             InputReference(),
@@ -478,7 +479,7 @@ def test_map_without_a_match_reports_the_uncovered_subject() -> None:
 
 
 def test_parameterized_map_semantics_are_shared_by_type_system_adapters() -> None:
-    """`Map[T, list[Value] : set[Value], ... : T]` is shared."""
+    """`Map[T, list[Item] : set[Item], ... : T]` is shared."""
     name_type_system = NameTypeSystem(
         parameterized_types=(
             ("list[int]", ParameterizedTypeShape("list", ("int",))),
@@ -495,8 +496,8 @@ def test_parameterized_map_semantics_are_shared_by_type_system_adapters() -> Non
         TypeReference("list[int]"),
         (
             CaseExpression(
-                ParameterizedTypePattern("list", (CaptureValuePattern(),)),
-                ParameterizedTypeTemplate("set", (ValueReference(),)),
+                ParameterizedTypePattern("list", (ITEM,)),
+                ParameterizedTypeTemplate("set", (ITEM,)),
             ),
         ),
         TypeReference("list[int]"),
@@ -505,8 +506,8 @@ def test_parameterized_map_semantics_are_shared_by_type_system_adapters() -> Non
         type_ref(list[int]),
         (
             CaseExpression(
-                ParameterizedTypePattern(list, (CaptureValuePattern(),)),
-                ParameterizedTypeTemplate(set, (ValueReference(),)),
+                ParameterizedTypePattern(list, (ITEM,)),
+                ParameterizedTypeTemplate(set, (ITEM,)),
             ),
         ),
         type_ref(list[int]),
@@ -521,7 +522,7 @@ def test_parameterized_map_semantics_are_shared_by_type_system_adapters() -> Non
 
 
 def test_parameterized_pattern_matches_nested_exact_and_capture_arguments() -> None:
-    """`Case[dict[str, list[Value]], set[Value]]` captures the nested type."""
+    """`Case[dict[str, list[Item]], set[Item]]` captures the nested type."""
     type_system = NameTypeSystem(
         parameterized_types=(
             (
@@ -542,11 +543,11 @@ def test_parameterized_pattern_matches_nested_exact_and_capture_arguments() -> N
                         ExactTypePattern("str"),
                         ParameterizedTypePattern(
                             "list",
-                            (CaptureValuePattern(),),
+                            (ITEM,),
                         ),
                     ),
                 ),
-                ParameterizedTypeTemplate("set", (ValueReference(),)),
+                ParameterizedTypeTemplate("set", (ITEM,)),
             ),
         ),
     )
@@ -572,7 +573,7 @@ def test_parameterized_pattern_requires_matching_origin_and_arity(
         TypeReference(subject),
         (
             CaseExpression(
-                ParameterizedTypePattern("tuple", (CaptureValuePattern(),)),
+                ParameterizedTypePattern("tuple", (ITEM,)),
                 TypeReference("matched"),
             ),
         ),
@@ -612,7 +613,7 @@ def test_repeated_value_in_a_parameterized_pattern_is_one_capture(
             CaseExpression(
                 ParameterizedTypePattern(
                     "tuple",
-                    (CaptureValuePattern(), CaptureValuePattern()),
+                    (ITEM, ITEM),
                 ),
                 TypeReference("matched"),
             ),
@@ -642,8 +643,8 @@ def test_parameterized_type_adapter_failures_propagate_unchanged(
         TypeReference("list[int]"),
         (
             CaseExpression(
-                ParameterizedTypePattern("list", (CaptureValuePattern(),)),
-                ParameterizedTypeTemplate("set", (ValueReference(),)),
+                ParameterizedTypePattern("list", (ITEM,)),
+                ParameterizedTypeTemplate("set", (ITEM,)),
             ),
         ),
     )

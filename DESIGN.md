@@ -43,9 +43,10 @@ An explicitly selected `Never` retains ordinary Python union simplification.
 Scalar bare matching follows Python assignment compatibility, including class
 inheritance, bool/int, numeric widening, and Any. Compiler adaptation carries
 local class ancestry and alias facts from the source snapshot to Schema lowering.
-`Is` lowers to existing exact equality data. Structural patterns may still capture
-`Value`, and field transforms bind `Key` and `Value` inside `MapFields` until their
-replacement slices land. Equal/Assignable/All/Any/Not remain private semantic
+`Is` lowers to existing exact equality data. Structural patterns bind explicit
+Capture tokens; Value is only a field reference. Field transforms bind `Key` and
+`Value` inside `MapFields` until their replacement slices land.
+Equal/Assignable/All/Any/Not remain private semantic
 representations for existing internal consumers; they are not public authoring.
 
 Known union subjects select each member independently in branch order. Exact
@@ -216,6 +217,12 @@ equally named tokens. The base implementation requires no optional dependencies.
 Runtime lowering gives each token a scoped TypeSymbol. Source capture uses retain
 their declaring SourceSpan independently of their use span, and lower into the
 same CaptureReference data. Alias substitution preserves those identities.
+Module capture declarations remain public values with an `object` annotation in
+generated interfaces; they do not leak Typeforge helper annotations. Callable
+relationship IR retains the same symbol in CaptureType. Existing finite
+Each/Collect specialization replaces only the branch's declared capture, preserving
+its output binding. Multiple independent captures in one finite callable branch
+produce a diagnostic until the callable precision slice extends that frontier.
 
 EvaluationContext stores immutable named bindings. Matching extends tentative
 bindings, reconciles repeated positions through the existing exact type operation,

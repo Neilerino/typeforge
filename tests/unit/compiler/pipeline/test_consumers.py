@@ -216,7 +216,9 @@ STRUCTURAL_MAP_LIBRARY_SOURCE = """
 from dataclasses import dataclass, field
 from typing import Protocol, dataclass_transform
 
-from typeforge import Collect, Each, Map, Value
+from typeforge import Capture, Collect, Each, Map
+
+Item = Capture("Item")
 
 
 class Component(Protocol):
@@ -234,7 +236,7 @@ class Option[T]:
 
 type QueryResult[T] = Map[
     T,
-    Option[Value] : Value | None,
+    Option[Item] : Item | None,
     ... : T,
 ]
 

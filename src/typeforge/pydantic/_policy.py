@@ -27,7 +27,7 @@ def input_test_issue(kind: InputTestKind, expression: object) -> SchemaIssue | N
                 "unbound_value",
                 "planning",
                 expression,
-                "Value requires a field or capture binding",
+                "Value requires a field binding",
             )
 
         case InputTestKind.UNBOUND_CAPTURE:

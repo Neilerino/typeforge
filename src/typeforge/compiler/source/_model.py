@@ -243,6 +243,7 @@ class SourceModule:
     return_sites: tuple[ReturnSite, ...] = ()
     identifiers: tuple[IdentifierOccurrence, ...] = ()
     variable_annotations: tuple[SourceTypeExpression, ...] = ()
+    captures: tuple[tuple[str, CaptureTypeExpression], ...] = ()
 
 
 def contains_marker(

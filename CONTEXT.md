@@ -18,7 +18,7 @@ full Scala-style dependent verification is not promised.
 
 The [initial API decisions](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md) are complete
 as of 2026-09-30. Scalar and union matching, selection aliases, resolved generic
-compatibility, and basic type functions are implemented; later slices remain
+compatibility, basic type functions, and named captures are implemented; later slices remain
 pending. Read the agreed
 batches before changing selector APIs, field construction, type-function scope,
 or callable input contracts. The support descriptions below describe current
@@ -37,8 +37,11 @@ parameter identity in an immutable TypeAliasType. Specialization and Pydantic
 rebuilds use the template; Schema remains the runtime evaluation boundary.
 When changing construction, compiler body forms, or specialization, read
 [Reusable type functions](DESIGN.md#reusable-type-functions) and
-[the production contracts](tests/unit/test_type_function_contract.py). Capture
-declarations, local aliases, and Record/Fields remain their respective later slices.
+[the production contracts](tests/unit/test_type_function_contract.py).
+When changing capture identity, isolation, or output lookup, read
+[Named type captures](DESIGN.md#named-type-captures) and
+[their compiler/runtime contracts](tests/unit/test_named_capture_contract.py).
+Local aliases and Record/Fields remain later slices.
 
 ## Language
 
@@ -96,13 +99,13 @@ type Encoded[T] = Map[T, int: str, Is[bytes]: str, ...: T]
   Public authoring accepts slices; Case/Default are private normalized data.
 - **Selectors:** bare scalar selectors use assignment compatibility, including
   inheritance, bool/int, numeric widening, and Any. `Is[Type]` compares the whole
-  subject exactly. Structural selectors such as `list[Value]` retain their existing
-  capture behavior until the named-capture slice. Callable overloads have the
+  subject exactly. Structural selectors bind declared Capture tokens such as
+  `Item = Capture("Item")`. Structural Value authoring is rejected. Callable overloads have the
   [limits below](#callable-support).
 - **Scope:** Is binds the whole enclosing Map subject, through
   aliases and All/Any/Not. Binary operands remain explicit. Nested Maps establish
   their own subjects; outputs receive no implicit binding. Key/Value retain
-  their field and capture roles.
+  their field roles. Nested Maps reuse an already bound capture token.
 - **Endpoints:** None and empty endpoints denote the None type. `int:` equals
   `int: None`; `:str` equals `None: str`; `:` is a None-to-None branch. An explicit
   None step is inert; other slice steps are invalid.
@@ -303,7 +306,7 @@ The [agreed record-union design](https://github.com/Neilerino/typeforge/blob/nei
 transforms each TypedDict alternative independently and preserves a union of
 complete output shapes, including field correlations. The
 [agreed capture-pattern design](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#agreed-unambiguous-capture-pattern-union)
-supports alternative patterns such as list[Value]-or-set[Value] when captures are
+supports alternative patterns such as list[Item]-or-set[Item] when captures are
 unambiguous. The
 [agreed overlapping-capture rule](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#agreed-conflicting-captures-across-alternatives)
 evaluates each successful alternative with its own bindings and unions complete

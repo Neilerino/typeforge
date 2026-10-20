@@ -12,11 +12,13 @@ from typeforge.compiler.adaptation._models import (
 )
 from typeforge.compiler.adaptation._schema import adapt_schema_expression
 from typeforge.compiler.adaptation._schema_aliases import expand_schema_aliases
+from typeforge.compiler.semantic_adapter import lower_capture_reference
 from typeforge.compiler.source import (
     AllMarker,
     AnyMarker,
     AppliedTypeExpression,
     AssignableMarker,
+    CaptureTypeExpression,
     CaseMarker,
     CollectMarker,
     DefaultMarker,
@@ -42,13 +44,13 @@ from typeforge.compiler.stub_ir import (
     AllPredicate,
     AnyPredicate,
     AssignablePredicate,
+    CaptureType,
     CollectType,
     EachType,
     EqualPredicate,
     GeneratedElementOrigin,
     MapCase,
     MapType,
-    MapValueType,
     NotPredicate,
     Predicate,
     RuntimeInputType,
@@ -195,6 +197,18 @@ def _(
 
 @adapt_type_expression.register
 def _(
+    expression: CaptureTypeExpression,
+    declaration: str,
+    type_parameters: tuple[str, ...],
+    origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
+    *,
+    type_context: SourceTypeContext,
+) -> CaptureType:
+    return CaptureType(lower_capture_reference(expression).symbol)
+
+
+@adapt_type_expression.register
+def _(
     expression: RawTypeExpression,
     declaration: str,
     type_parameters: tuple[str, ...],
@@ -306,7 +320,11 @@ def _(
     marker = normalize_adaptation_marker(declaration, expression)
     match marker:
         case ValueMarker():
-            return MapValueType()
+            raise AdaptationError(
+                declaration,
+                expression.source,
+                "Value is a field reference; declare Capture for structural matching",
+            )
         case MapMarker(subject=subject, entries=entries):
             cases = tuple(
                 MapCase(

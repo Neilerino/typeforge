@@ -39,12 +39,13 @@ from typeforge.pydantic import Schema
 from typeforge.pydantic._frontend import adapt_annotation
 
 IMPORTS = """from typing import Annotated, Any, Literal, Never, TypeVar, TypedDict
-from typeforge import Map, Value
+from typeforge import Capture, Map, Value
 from typeforge._markers import Equal, Assignable, All, Not
 from typeforge._markers import Case, Default, Map as CanonicalMap
 from typeforge import MapFields, Field, Key, Drop
 from typeforge._markers import Any as AnyCondition
 from typeforge.pydantic import Schema, Input
+Item = Capture("Item")
 """
 
 
@@ -204,17 +205,17 @@ CASES = (
     ),
     UnionCase(
         "U19-captured-union-output",
-        "Map[list[int | str], list[Value]: tuple[Value | None, ...]]",
-        "CanonicalMap[list[int | str], Case[list[Value], tuple[Value | None, ...]]]",
+        "Map[list[int | str], list[Item]: tuple[Item | None, ...]]",
+        "CanonicalMap[list[int | str], Case[list[Item], tuple[Item | None, ...]]]",
         "tuple[int | str | None, ...]",
         "tuple[int | str | None, ...]",
     ),
     UnionCase(
         "U20-capture-drives-distribution",
-        "Map[list[int | str], list[Value]: Map[Value, int: bytes, ...: float]]",
+        "Map[list[int | str], list[Item]: Map[Item, int: bytes, ...: float]]",
         (
-            "CanonicalMap[list[int | str], Case[list[Value], "
-            "CanonicalMap[Value, Case[int, bytes], "
+            "CanonicalMap[list[int | str], Case[list[Item], "
+            "CanonicalMap[Item, Case[int, bytes], "
             "Default[float]]]]"
         ),
         "bytes | float",
@@ -578,17 +579,17 @@ def test_record_union_and_union_capture_patterns_remain_unsupported(
         else "MapFields[Row | Other, CanonicalMap[Key, Default[Field[Key, Value]]]]"
     )
     capture_expression = (
-        "Map[list[int], list[Value] | set[Value]: Value, ...: bytes]"
+        "Map[list[int], list[Item] | set[Item]: Item, ...: bytes]"
         if sliced
         else (
-            "CanonicalMap[list[int], Case[list[Value] | set[Value],"
-            " Value], Default[bytes]]"
+            "CanonicalMap[list[int], Case[list[Item] | set[Item],"
+            " Item], Default[bytes]]"
         )
     )
     path = tmp_path / "unsupported.py"
     for expression, runtime_error, static_error in (
         (record_expression, "unsupported_record", "supported compiler record"),
-        (capture_expression, "unbound_value", "Value requires"),
+        (capture_expression, "unbound_capture", "capture 'Item' is unbound"),
     ):
         body = (
             f"type Mapped[T] = {expression}\ndef f[T](x: T) -> Mapped[T]: ...\n"

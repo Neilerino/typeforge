@@ -657,14 +657,15 @@ def test_direct_map_annotations_are_verified_without_an_alias() -> None:
 
 def test_structural_capture_returns_degrade_without_losing_the_overlay() -> None:
     body = """
-    from typeforge import Value
+    from typeforge import Capture
+    Item = Capture("Item")
 
     class Option[T]:
         value: T
 
     type Unwrapped[T] = Map[
         T,
-        Option[Value] : Value,
+        Option[Item] : Item,
         ... : T,
     ]
 
