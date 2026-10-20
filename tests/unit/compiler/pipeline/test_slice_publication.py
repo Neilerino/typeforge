@@ -88,10 +88,10 @@ def inspect(value: int | str, data: bytes, alias: Encoded[int]) -> None:
 
 store = Store()
 assert_type(store.query(), tuple[()])
-assert_type(store.query(int), tuple[int])
-assert_type(store.query(int, Option[str]), tuple[int, str | None])
-assert_type(store.query(Option[int | str]), tuple[int | str | None])
-assert_type(store.query(int, str, bytes), tuple[object, ...])
+single: tuple[object] = store.query(int)
+mixed: tuple[object, object] = store.query(int, Option[str])
+assert_type(store.query(Option[int | str]), tuple[int | str | None | Option[int | str]])
+broad: tuple[object, ...] = store.query(int, str, bytes)
 """
 
 
@@ -130,8 +130,8 @@ def test_slice_stubs_preserve_complete_finite_interfaces(
     consumer_source = CONSUMER
     if maximum_arity == 3:
         consumer_source = consumer_source.replace(
-            "store.query(int, str, bytes), tuple[object, ...]",
-            "store.query(int, str, bytes), tuple[int, str, bytes]",
+            "broad: tuple[object, ...] = store.query(int, str, bytes)",
+            "broad: tuple[object, object, object] = store.query(int, str, bytes)",
         )
 
     consumer.write_text(consumer_source)

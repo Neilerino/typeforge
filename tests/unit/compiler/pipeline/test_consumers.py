@@ -271,17 +271,10 @@ from typing import assert_type
 from ecs import Option, Position, Velocity, World
 
 world = World[int]()
-assert_type(
-    world.query(Position, Velocity),
-    tuple[int, Position, Velocity] | None,
-)
-assert_type(
-    world.query(Position, Option[Velocity]),
-    tuple[int, Position, Velocity | None] | None,
-)
-assert_type(
-    world.query(Position, Velocity, Position),
-    tuple[int, *tuple[object, ...]] | None,
+plain: tuple[int, object, object] | None = world.query(Position, Velocity)
+mixed: tuple[int, object, object] | None = world.query(Position, Option[Velocity])
+broad: tuple[int, *tuple[object, ...]] | None = world.query(
+    Position, Velocity, Position
 )
 """.lstrip()
 

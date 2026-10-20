@@ -1,11 +1,12 @@
 """Finite Each/Collect expansion and its variadic fallback."""
 
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from itertools import product
 
 from returns.result import Failure, Result, Success
 
-from typeforge.compiler.specialization._captures import capture_tokens, replace_captures
+from typeforge.compiler.semantic_adapter import SemanticEnvironment
+from typeforge.compiler.specialization._bounds import checker_type_bound
 from typeforge.compiler.specialization._expressions import (
     collect_variable_names,
     fresh_type_parameter_names,
@@ -13,12 +14,12 @@ from typeforge.compiler.specialization._expressions import (
     type_parameter_name,
     union_types,
 )
+from typeforge.compiler.specialization._map_lowering import lower_map_function
 from typeforge.compiler.specialization._models import (
     ArityFrontier,
     LoweringError,
     LoweringErrorCode,
 )
-from typeforge.compiler.specialization._predicates import map_specializations
 from typeforge.compiler.stub_ir import (
     CollectType,
     EachType,
@@ -37,15 +38,21 @@ from typeforge.compiler.stub_ir import (
     TypeVariable,
     UnionExpression,
     UnpackedType,
-    is_predicate,
+    rewrite_type,
     rewrite_type_children,
+    substitute_type,
+    walk_declaration,
 )
+from typeforge.utils.error_handling import safe_result
 
 
 def lower_each_function(
     declaration: FunctionDeclaration,
     frontier: ArityFrontier,
     on_rewrite: TypeRewriteObserver | None = None,
+    *,
+    environment: SemanticEnvironment = (),
+    reserved_type_parameters: tuple[str, ...] = (),
 ) -> Result[FunctionDeclaration | OverloadDeclaration, LoweringError]:
     each_parameters = tuple(
         (parameter, parameter.annotation)
@@ -86,51 +93,89 @@ def lower_each_function(
         )
 
     captured_name = captured_names[0]
-    structural_map = _find_collected_map(declaration.return_type, captured_name)
-    if structural_map is not None and structural_map.default is None:
-        return Failure(
-            LoweringError(
-                LoweringErrorCode.UNREPRESENTABLE_COVERAGE,
-                declaration.name,
-                "no-default Each/Collect coverage cannot be published portably; "
-                "supply an explicit specialization or fallback",
-            )
-        )
+    return _specialize_each(
+        declaration,
+        frontier,
+        each_parameter,
+        each_annotation.item,
+        captured_name,
+        environment,
+        reserved_type_parameters,
+        on_rewrite,
+    )
 
-    if structural_map is not None and any(
-        not is_predicate(case.test) and len(capture_tokens(case.test)) > 1
-        for case in structural_map.cases
-    ):
-        return Failure(
-            LoweringError(
-                LoweringErrorCode.MULTIPLE_CAPTURES,
-                declaration.name,
-                "finite callable specialization currently supports one capture "
-                "per structural branch",
-            )
-        )
 
+@safe_result(errors=(LoweringError,))
+def _specialize_each(
+    declaration: FunctionDeclaration,
+    frontier: ArityFrontier,
+    each_parameter: Parameter,
+    argument_pattern: StubTypeExpression,
+    captured_name: str,
+    environment: SemanticEnvironment,
+    reserved_type_parameters: tuple[str, ...],
+    on_rewrite: TypeRewriteObserver | None,
+) -> OverloadDeclaration:
     signatures = tuple(
         signature
         for arity in range(frontier.minimum, frontier.maximum + 1)
         for signature in _expand_signatures(
             declaration,
             each_parameter,
-            each_annotation.item,
+            argument_pattern,
             captured_name,
             arity,
+            environment=environment,
+            reserved_type_parameters=reserved_type_parameters,
             on_rewrite=on_rewrite,
         )
     )
+    mapping = _find_collected_map(declaration.return_type, captured_name)
+    if mapping is not None:
+        scalar = _each_map_projection(
+            declaration,
+            mapping,
+            TypeVariable(captured_name),
+            environment,
+            reserved_type_parameters,
+            on_rewrite,
+        ).unwrap()
+        aggregate = (
+            scalar.fallback if isinstance(scalar, OverloadDeclaration) else scalar
+        )
+        domain = aggregate.parameters[0].annotation
+        output = checker_type_bound(
+            aggregate.return_type,
+            type_parameters=frozenset(
+                type_parameter_name(name) for name in declaration.type_parameters
+            ),
+        )
+        declaration = replace(
+            declaration,
+            parameters=tuple(
+                replace(
+                    parameter,
+                    annotation=substitute_type(
+                        parameter.annotation,
+                        captured_name,
+                        domain,
+                        on_rewrite=on_rewrite,
+                    ),
+                )
+                for parameter in declaration.parameters
+            ),
+            return_type=rewrite_type(
+                declaration.return_type,
+                lambda item: output if item == mapping else None,
+                on_rewrite=on_rewrite,
+            ),
+            type_parameters=aggregate.type_parameters,
+            type_parameter_domains=aggregate.type_parameter_domains,
+            type_parameter_defaults=aggregate.type_parameter_defaults,
+        )
+
     fallback = _fallback_signature(declaration, on_rewrite=on_rewrite)
-    return Success(OverloadDeclaration(signatures, fallback))
-
-
-@dataclass(frozen=True, slots=True)
-class _StructuralMapChoice:
-    input_type: StubTypeExpression
-    output_type: StubTypeExpression
-    is_default: bool
+    return OverloadDeclaration(signatures, fallback)
 
 
 def _expand_signatures(
@@ -140,51 +185,127 @@ def _expand_signatures(
     captured_name: str,
     arity: int,
     on_rewrite: TypeRewriteObserver | None = None,
+    *,
+    environment: SemanticEnvironment = (),
+    reserved_type_parameters: tuple[str, ...] = (),
 ) -> tuple[FunctionDeclaration, ...]:
-    generated_names = fresh_type_parameter_names(
-        captured_name, arity, declaration.type_parameters
+    reserved = (
+        *declaration.type_parameters,
+        *reserved_type_parameters,
+        *(
+            item.name
+            for item in walk_declaration(declaration)
+            if isinstance(item, TypeName | TypeVariable)
+        ),
     )
+    generated_names = fresh_type_parameter_names(captured_name, arity, reserved)
     generated_types = tuple(TypeVariable(name) for name in generated_names)
     structural_map = _find_collected_map(declaration.return_type, captured_name)
     if structural_map is None:
+        bound = dict(declaration.type_parameter_domains).get(captured_name)
         return (
             _expand_signature_with_types(
                 declaration,
                 each_parameter,
                 argument_pattern,
                 captured_name,
-                generated_names,
+                tuple(
+                    _position_type_parameter(declaration, captured_name, name)
+                    for name in generated_names
+                ),
                 generated_types,
                 generated_types,
+                generated_domains=(
+                    tuple((name, bound) for name in generated_names)
+                    if bound is not None
+                    else ()
+                ),
                 on_rewrite=on_rewrite,
             ),
         )
 
-    choices = tuple(
-        tuple(
-            _structural_map_choices(
-                structural_map, generated_type, on_rewrite=on_rewrite
-            )
+    choices: list[tuple[FunctionDeclaration, ...]] = []
+    aggregates: list[FunctionDeclaration] = []
+    reserved += generated_names
+    for generated_type in generated_types:
+        scalar = _each_map_projection(
+            declaration,
+            structural_map,
+            generated_type,
+            environment,
+            reserved,
+            on_rewrite,
+        ).unwrap()
+        if isinstance(scalar, OverloadDeclaration):
+            choices.append(scalar.signatures)
+            aggregates.append(scalar.fallback)
+            position = (*scalar.signatures, scalar.fallback)
+        else:
+            choices.append((scalar,))
+            position = (scalar,)
+
+        reserved += tuple(
+            name for signature in position for name in signature.type_parameters
         )
-        for generated_type in generated_types
-    )
-    combinations = tuple(product(*choices)) if choices else ((),)
-    ordered = sorted(
-        combinations,
-        key=lambda combination: sum(choice.is_default for choice in combination),
-    )
+
+    # Mixed generic fallbacks overlap with incompatible tuple returns. Generate
+    # only closed combinations, followed by the complete aggregate when present.
+    combinations = tuple(product(*choices))
+    if aggregates and len(aggregates) == len(choices):
+        combinations += (tuple(aggregates),)
+
     return tuple(
-        _expand_signature_with_types(
+        _expand_mapped_signature(
             declaration,
             each_parameter,
             argument_pattern,
             captured_name,
-            generated_names,
-            tuple(choice.input_type for choice in combination),
-            tuple(choice.output_type for choice in combination),
-            on_rewrite=on_rewrite,
+            combination,
+            on_rewrite,
         )
-        for combination in ordered
+        for combination in combinations
+    )
+
+
+def _expand_mapped_signature(
+    declaration: FunctionDeclaration,
+    each_parameter: Parameter,
+    argument_pattern: StubTypeExpression,
+    captured_name: str,
+    combination: tuple[FunctionDeclaration, ...],
+    on_rewrite: TypeRewriteObserver | None,
+) -> FunctionDeclaration:
+    retained_names = {
+        type_parameter_name(original)
+        for original in declaration.type_parameters
+        if type_parameter_name(original) != captured_name
+    }
+    parameters = tuple(
+        dict.fromkeys(
+            name
+            for choice in combination
+            for name in choice.type_parameters
+            if type_parameter_name(name) not in retained_names
+        )
+    )
+    domains = tuple(
+        dict.fromkeys(
+            domain
+            for choice in combination
+            for domain in choice.type_parameter_domains
+            if domain[0] not in retained_names
+        )
+    )
+    return _expand_signature_with_types(
+        declaration,
+        each_parameter,
+        argument_pattern,
+        captured_name,
+        parameters,
+        tuple(choice.parameters[0].annotation for choice in combination),
+        tuple(choice.return_type for choice in combination),
+        generated_domains=domains,
+        on_rewrite=on_rewrite,
     )
 
 
@@ -197,6 +318,8 @@ def _expand_signature_with_types(
     captured_inputs: tuple[StubTypeExpression, ...],
     collected_outputs: tuple[StubTypeExpression, ...],
     on_rewrite: TypeRewriteObserver | None = None,
+    *,
+    generated_domains: tuple[tuple[str, StubTypeExpression], ...] = (),
 ) -> FunctionDeclaration:
     expanded_parameters: list[Parameter] = []
     for parameter in declaration.parameters:
@@ -231,6 +354,19 @@ def _expand_signature_with_types(
             on_rewrite=on_rewrite,
         ),
         type_parameters=retained + generated_names,
+        type_parameter_domains=(
+            *(
+                (name, bound)
+                for name, bound in declaration.type_parameter_domains
+                if name != captured_name
+            ),
+            *generated_domains,
+        ),
+        type_parameter_defaults=tuple(
+            name
+            for name in declaration.type_parameter_defaults
+            if name != captured_name
+        ),
     )
 
 
@@ -267,49 +403,46 @@ def _find_collected_map(
     return None
 
 
-def _structural_map_choices(
+def _each_map_projection(
+    declaration: FunctionDeclaration,
     mapping: MapType,
     generated_type: TypeVariable,
-    on_rewrite: TypeRewriteObserver | None = None,
-) -> tuple[_StructuralMapChoice, ...]:
-    controller = _map_subject_name(mapping)
-    cases: list[_StructuralMapChoice] = []
-    for case in map_specializations(mapping, controller):
-        if is_predicate(case.test):
-            continue
-
-        bindings = {token: generated_type for token in capture_tokens(case.test)}
-        cases.append(
-            _StructuralMapChoice(
-                replace_captures(case.test, bindings, on_rewrite=on_rewrite),
-                replace_captures(case.output_type, bindings, on_rewrite=on_rewrite),
-                False,
-            )
-        )
-
-    if mapping.default is None:
-        return tuple(cases)
-
-    return (
-        *cases,
-        _StructuralMapChoice(
-            generated_type,
-            substitute_scalar(
-                mapping.default,
-                _map_subject_name(mapping),
-                generated_type,
-                on_rewrite=on_rewrite,
+    environment: SemanticEnvironment,
+    reserved: tuple[str, ...],
+    on_rewrite: TypeRewriteObserver | None,
+) -> Result[FunctionDeclaration | OverloadDeclaration, LoweringError]:
+    assert isinstance(mapping.subject, TypeVariable)
+    controller = mapping.subject.name
+    projected = substitute_type(mapping, controller, generated_type)
+    assert isinstance(projected, MapType)
+    scalar = replace(
+        declaration,
+        parameters=(Parameter("value", generated_type),),
+        return_type=projected,
+        type_parameters=(
+            *(
+                name
+                for name in declaration.type_parameters
+                if type_parameter_name(name) != controller
             ),
-            True,
+            _position_type_parameter(declaration, controller, generated_type.name),
+        ),
+        type_parameter_domains=tuple(
+            (generated_type.name if name == controller else name, bound)
+            for name, bound in declaration.type_parameter_domains
+        ),
+        type_parameter_defaults=tuple(
+            generated_type.name if name == controller else name
+            for name in declaration.type_parameter_defaults
         ),
     )
-
-
-def _map_subject_name(mapping: MapType) -> str:
-    if isinstance(mapping.subject, TypeVariable):
-        return mapping.subject.name
-
-    return ""
+    return lower_map_function(
+        scalar,
+        projected,
+        on_rewrite=on_rewrite,
+        environment=environment,
+        reserved_type_parameters=reserved,
+    )
 
 
 def _fallback_signature(
@@ -363,6 +496,21 @@ def _expanded_parameter_kind(
         return ParameterKind.POSITIONAL_ONLY
 
     return ParameterKind.POSITIONAL_OR_KEYWORD
+
+
+def _position_type_parameter(
+    declaration: FunctionDeclaration, controller: str, generated_name: str
+) -> str:
+    original = next(
+        (
+            parameter.lstrip()
+            for parameter in declaration.type_parameters
+            if type_parameter_name(parameter) == controller
+            and not parameter.lstrip().startswith("*")
+        ),
+        controller,
+    )
+    return generated_name + original[len(controller) :]
 
 
 def _substitute_collect(
@@ -499,7 +647,10 @@ def _erase_markers_expression(
 
         return HomogeneousTuple(item)
 
-    if isinstance(expression, RuntimeInputType | MapType):
+    if isinstance(expression, MapType):
+        return checker_type_bound(expression, on_rewrite=on_rewrite)
+
+    if isinstance(expression, RuntimeInputType):
         return TypeName("object")
 
     if isinstance(expression, TypeApplication | FixedTuple | HomogeneousTuple):

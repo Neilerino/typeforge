@@ -248,7 +248,13 @@ def _lower_function(
             reserved_type_parameters=reserved_type_parameters,
         )
 
-    return lower_each_function(declaration, frontier, on_rewrite=on_rewrite)
+    return lower_each_function(
+        declaration,
+        frontier,
+        on_rewrite=on_rewrite,
+        environment=environment,
+        reserved_type_parameters=reserved_type_parameters,
+    )
 
 
 def _module_contains_literal(module: StubModule) -> bool:

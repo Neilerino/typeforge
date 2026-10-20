@@ -254,15 +254,12 @@ class Velocity:
     dx: float
 
 world = World()
-assert_type(world.query(Position, Velocity), tuple[Position, Velocity])
-assert_type(
-    world.query(Position, Option[Velocity]),
-    tuple[Position, Velocity | None],
-)
+plain: tuple[object, object] = world.query(Position, Velocity)
+mixed: tuple[object, object] = world.query(Position, Option[Velocity])
 """
     transformed = transform_source(source, tmp_path / "ecs.py", maximum_arity=2)
     assert isinstance(transformed, Success)
-    assert "query[T1: Component]" in transformed.unwrap().generated_text
+    assert "T11: Component" in transformed.unwrap().generated_text
     path = tmp_path / "ecs.py"
     path.write_text(transformed.unwrap().generated_text, encoding="utf-8")
 

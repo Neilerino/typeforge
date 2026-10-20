@@ -7,12 +7,13 @@ from typeforge.compiler.emission import EmissionError
 from typeforge.compiler.module_surface import UnsupportedPublicDeclaration
 from typeforge.compiler.pipeline._callables import (
     describe_authored_callables,
-    describe_return_type_projections,
+    describe_callable_annotations,
     describe_type_parameter_projections,
 )
 from typeforge.compiler.pipeline._compilation import compile_source
 from typeforge.compiler.pipeline._generation import generate_module
 from typeforge.compiler.pipeline._models import (
+    AnnotationProjection,
     AuthoredCallable,
     AuthoredParameter,
     AuthoredParameterKind,
@@ -20,7 +21,6 @@ from typeforge.compiler.pipeline._models import (
     CompilationPlan,
     GeneratedModule,
     GenerationError,
-    ReturnTypeProjection,
     TypeParameterProjection,
 )
 from typeforge.compiler.record_materialization import (
@@ -32,6 +32,7 @@ from typeforge.compiler.verification import ImplicitReturnSite, VerificationPlan
 
 __all__ = [
     "AdaptationError",
+    "AnnotationProjection",
     "AuthoredCallable",
     "AuthoredParameter",
     "AuthoredParameterKind",
@@ -43,7 +44,6 @@ __all__ = [
     "ImplicitReturnSite",
     "LoweringError",
     "RecordMaterializationError",
-    "ReturnTypeProjection",
     "SourceSpan",
     "SourceSyntaxError",
     "TypeParameterProjection",
@@ -52,7 +52,7 @@ __all__ = [
     "checker_type_bound",
     "compile_source",
     "describe_authored_callables",
-    "describe_return_type_projections",
+    "describe_callable_annotations",
     "describe_type_parameter_projections",
     "generate_module",
 ]

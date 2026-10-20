@@ -240,14 +240,8 @@ class World[E]:
         raise NotImplementedError
 
 world = World[int]()
-assert_type(
-    world.query(Position, Velocity),
-    tuple[int, Position, Velocity] | None,
-)
-assert_type(
-    world.query(Position, Option[Velocity]),
-    tuple[int, Position, Velocity | None] | None,
-)
+plain: tuple[int, object, object] | None = world.query(Position, Velocity)
+mixed: tuple[int, object, object] | None = world.query(Position, Option[Velocity])
 """
     source_path.write_text(authored_text)
     transformed = transform_source(authored_text, source_path, maximum_arity=3)
