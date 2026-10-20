@@ -7,6 +7,11 @@ from archunitpython import assert_passes, project_files, project_layers
 from archunitpython.layers.fluentapi.layers import LayeredArchitecture
 
 from .definitions import SEMANTICS, TYPE_FORGE
+from .helpers import ArchModule
+
+
+def _interface_layer(module: ArchModule) -> str:
+    return f"{module.name}.{module.interface.name}"
 
 
 @pytest.fixture
@@ -14,11 +19,16 @@ def architecture() -> LayeredArchitecture:
     architecture = project_layers(TYPE_FORGE.path.parent.as_posix())
     for layer in (
         *TYPE_FORGE.mod("pydantic").layers,
-        SEMANTICS.interface,
         TYPE_FORGE.file("utils.error_handling"),
-        TYPE_FORGE.interface,
+        TYPE_FORGE.file("_type_function"),
     ):
         architecture.layer(layer.name).defined_by(layer.pattern)
+
+    # Distinguish the three __init__.py owners instead of overwriting one layer.
+    for module in (TYPE_FORGE.mod("pydantic"), SEMANTICS, TYPE_FORGE):
+        architecture.layer(_interface_layer(module)).defined_by(
+            module.interface.pattern
+        )
 
     return architecture
 
@@ -31,16 +41,16 @@ def test_runtime_dependencies_keep_policy_and_emission_separate(
     def file(name: str) -> str:
         return integration.file(name).name
 
-    shared = (SEMANTICS.interface.name, TYPE_FORGE.file("utils.error_handling").name)
+    shared = (_interface_layer(SEMANTICS), TYPE_FORGE.file("utils.error_handling").name)
     rule = (
-        architecture.where_layer(integration.interface.name)
+        architecture.where_layer(_interface_layer(integration))
         .may_only_depend_on_layers(file("_annotation"), file("_markers"))
         .where_layer(file("_markers"))
         .may_only_depend_on_layers()
         .where_layer(file("_errors"))
         .may_only_depend_on_layers()
         .where_layer(file("_policy"))
-        .may_only_depend_on_layers(file("_errors"), SEMANTICS.interface.name)
+        .may_only_depend_on_layers(file("_errors"), _interface_layer(SEMANTICS))
         .where_layer(file("_type_system"))
         .may_only_depend_on_layers(file("_records"), file("_policy"), *shared)
         .where_layer(file("_records"))
@@ -51,7 +61,8 @@ def test_runtime_dependencies_keep_policy_and_emission_separate(
             file("_policy"),
             file("_type_system"),
             file("_markers"),
-            TYPE_FORGE.interface.name,
+            _interface_layer(TYPE_FORGE),
+            TYPE_FORGE.file("_type_function").name,
             *shared,
         )
         .where_layer(file("_emission"))
@@ -86,7 +97,7 @@ def test_runtime_dependencies_keep_policy_and_emission_separate(
             file("_errors"),
             file("_evaluation"),
             file("_deferred"),
-            TYPE_FORGE.interface.name,
+            _interface_layer(TYPE_FORGE),
             *shared,
         )
         .where_layer(file("_annotation"))

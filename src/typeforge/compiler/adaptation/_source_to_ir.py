@@ -1,11 +1,16 @@
 """Adapt source syntax into lowering IR and expand semantic type relationships."""
 
 from dataclasses import replace
-from functools import singledispatch
 
 from typeforge.compiler.adaptation._context import (
     SourceTypeContext,
     class_type_environment,
+)
+from typeforge.compiler.adaptation._expressions import (
+    adapt_type_expression,
+    adapt_type_expressions,
+    normalize_adaptation_marker,
+    resolve_type_function_application,
 )
 from typeforge.compiler.adaptation._imports import annotation_imports
 from typeforge.compiler.adaptation._models import (
@@ -38,12 +43,9 @@ from typeforge.compiler.source import (
     MarkerNormalizationError,
     MarkerTypeExpression,
     NameTypeExpression,
-    NormalizedMarker,
     NotMarker,
     OptionalFieldMarker,
-    RawTypeExpression,
     ReadonlyFieldMarker,
-    RuntimeInputTypeExpression,
     SchemaTypeExpression,
     SourceModule,
     SourceSpan,
@@ -70,36 +72,22 @@ from typeforge.compiler.source import (
     TypeAliasDeclaration as SourceTypeAlias,
 )
 from typeforge.compiler.stub_ir import (
-    AllPredicate,
-    AnyPredicate,
-    AssignablePredicate,
     ClassDeclaration,
     ClassField,
-    CollectType,
     Declaration,
-    EachType,
-    EqualPredicate,
     FunctionDeclaration,
     GeneratedElement,
     GeneratedElementOrigin,
     HomogeneousTuple,
-    MapCase,
     MapType,
-    MapValueType,
-    NotPredicate,
     Parameter,
     ParameterKind,
-    Predicate,
-    RuntimeInputType,
     StubModule,
     StubTypeExpression,
     TypeAliasDeclaration,
     TypeApplication,
     TypeName,
     TypeRewriteObserver,
-    TypeVariable,
-    UnionExpression,
-    UnpackedType,
     rewrite_type_children,
     substitute_type,
     walk_module,
@@ -145,17 +133,23 @@ def adapt_source_module(
             continue
 
         origin_count_before_alias = len(origins)
-        lowered_alias = TypeAliasDeclaration(
-            name=alias.name,
-            value=_adapt_alias_fallback(
+        parameters = tuple(parameter.name for parameter in alias.type_parameters)
+        if alias.is_type_function:
+            value = resolve_type_function_application(
+                alias.value, alias.name, parameters, type_context, origins
+            )
+        else:
+            value = _adapt_alias_fallback(
                 declaration=alias.name,
                 expression=alias.value,
-                type_parameters=tuple(
-                    parameter.name for parameter in alias.type_parameters
-                ),
+                type_parameters=parameters,
                 origins=origins,
                 type_context=type_context,
-            ),
+            )
+
+        lowered_alias = TypeAliasDeclaration(
+            name=alias.name,
+            value=value,
             type_parameters=tuple(
                 parameter.declaration for parameter in alias.type_parameters
             ),
@@ -284,7 +278,7 @@ def adapt_source_module(
                 type_parameters=parameters,
             ).unwrap()
         else:
-            expression = _adapt_type_expression(
+            expression = adapt_type_expression(
                 boundary,
                 "annotation",
                 parameters,
@@ -332,6 +326,9 @@ def _collect_semantic_relationship_aliases(
 ) -> tuple[SemanticRelationshipAlias, ...]:
     semantic: list[SemanticRelationshipAlias] = []
     for alias in aliases:
+        if alias.is_type_function:
+            continue
+
         value = schema_inner_expression(
             expand_schema_aliases(
                 alias.value,
@@ -359,7 +356,7 @@ def _collect_semantic_relationship_aliases(
             )
 
         parameter = alias.type_parameters[0].name
-        relationship = _adapt_type_expression(
+        relationship = adapt_type_expression(
             value,
             alias.name,
             (parameter,),
@@ -474,7 +471,7 @@ def _adapt_class(
     parameter_names = tuple(
         parameter.name for parameter in source_class.type_parameters
     )
-    bases = _adapt_type_expressions(
+    bases = adapt_type_expressions(
         source_class.bases,
         source_class.name,
         parameter_names,
@@ -484,7 +481,7 @@ def _adapt_class(
     fields = tuple(
         ClassField(
             field.name,
-            _adapt_type_expression(
+            adapt_type_expression(
                 field.annotation,
                 source_class.name,
                 parameter_names,
@@ -546,7 +543,7 @@ def _adapt_alias_fallback(
         expression = normalized
 
     if not isinstance(expression, MarkerTypeExpression):
-        return _adapt_type_expression(
+        return adapt_type_expression(
             expression,
             declaration,
             type_parameters,
@@ -554,7 +551,7 @@ def _adapt_alias_fallback(
             type_context=type_context,
         )
 
-    marker = _normalize_marker(declaration, expression)
+    marker = normalize_adaptation_marker(declaration, expression)
     match marker:
         case EachMarker(item=item):
             return _adapt_alias_fallback(
@@ -577,7 +574,7 @@ def _adapt_alias_fallback(
             )
 
         case MapMarker():
-            return _adapt_type_expression(
+            return adapt_type_expression(
                 expression,
                 declaration,
                 type_parameters,
@@ -634,7 +631,7 @@ def _adapt_function(
     for parameter in function.parameters:
         annotation: StubTypeExpression = TypeName("Any")
         if parameter.annotation is not None:
-            annotation = _adapt_type_expression(
+            annotation = adapt_type_expression(
                 parameter.annotation,
                 function.name,
                 visible_type_parameters,
@@ -653,7 +650,7 @@ def _adapt_function(
 
     return_type: StubTypeExpression = TypeName("Any")
     if function.returns is not None:
-        return_type = _adapt_type_expression(
+        return_type = adapt_type_expression(
             function.returns,
             function.name,
             visible_type_parameters,
@@ -668,425 +665,6 @@ def _adapt_function(
         type_parameters=type_parameters,
         is_async=function.is_async,
         decorators=function.decorators,
-    )
-
-
-@singledispatch
-def _adapt_type_expression(
-    expression: SourceTypeExpression,
-    declaration: str,
-    type_parameters: tuple[str, ...],
-    origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
-    *,
-    type_context: SourceTypeContext,
-) -> StubTypeExpression:
-    raise AdaptationError(
-        declaration,
-        expression.source,
-        f"unsupported type expression {type(expression).__name__}",
-    )
-
-
-@_adapt_type_expression.register
-def _(
-    expression: SchemaTypeExpression,
-    declaration: str,
-    type_parameters: tuple[str, ...],
-    origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
-    *,
-    type_context: SourceTypeContext,
-) -> StubTypeExpression:
-    return adapt_schema_expression(
-        expression,
-        type_context.aliases,
-        environment=type_context.types,
-        declaration=declaration,
-        type_parameters=type_parameters,
-        preserve_type_variables=True,
-        origins=origins,
-    ).unwrap()
-
-
-@_adapt_type_expression.register
-def _(
-    expression: RuntimeInputTypeExpression,
-    declaration: str,
-    type_parameters: tuple[str, ...],
-    origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
-    *,
-    type_context: SourceTypeContext,
-) -> StubTypeExpression:
-    return RuntimeInputType()
-
-
-@_adapt_type_expression.register
-def _(
-    expression: NameTypeExpression,
-    declaration: str,
-    type_parameters: tuple[str, ...],
-    origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
-    *,
-    type_context: SourceTypeContext,
-) -> StubTypeExpression:
-    expanded = expand_schema_aliases(
-        expression, type_context.aliases, declaration=declaration, predicates_only=True
-    ).unwrap()
-    if isinstance(expanded, MarkerTypeExpression):
-        return _adapt_type_expression(
-            expanded,
-            declaration,
-            type_parameters,
-            origins=origins,
-            type_context=type_context,
-        )
-
-    if expression.source in type_parameters:
-        return TypeVariable(expression.source)
-
-    return TypeName(expression.source)
-
-
-@_adapt_type_expression.register
-def _(
-    expression: RawTypeExpression,
-    declaration: str,
-    type_parameters: tuple[str, ...],
-    origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
-    *,
-    type_context: SourceTypeContext,
-) -> StubTypeExpression:
-    return TypeName(expression.source)
-
-
-@_adapt_type_expression.register
-def _(
-    expression: UnionTypeExpression,
-    declaration: str,
-    type_parameters: tuple[str, ...],
-    origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
-    *,
-    type_context: SourceTypeContext,
-) -> StubTypeExpression:
-    return UnionExpression(
-        _adapt_type_expressions(
-            expression.members,
-            declaration,
-            type_parameters,
-            origins=origins,
-            type_context=type_context,
-        )
-    )
-
-
-@_adapt_type_expression.register
-def _(
-    expression: StarredTypeExpression,
-    declaration: str,
-    type_parameters: tuple[str, ...],
-    origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
-    *,
-    type_context: SourceTypeContext,
-) -> StubTypeExpression:
-    return UnpackedType(
-        _adapt_type_expression(
-            expression.item,
-            declaration,
-            type_parameters,
-            origins=origins,
-            type_context=type_context,
-        )
-    )
-
-
-@_adapt_type_expression.register
-def _(
-    expression: AppliedTypeExpression,
-    declaration: str,
-    type_parameters: tuple[str, ...],
-    origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
-    *,
-    type_context: SourceTypeContext,
-) -> StubTypeExpression:
-    expanded = expand_schema_aliases(
-        expression, type_context.aliases, declaration=declaration, predicates_only=True
-    ).unwrap()
-    if isinstance(expanded, MarkerTypeExpression):
-        return _adapt_type_expression(
-            expanded,
-            declaration,
-            type_parameters,
-            origins=origins,
-            type_context=type_context,
-        )
-
-    return TypeApplication(
-        _adapt_type_expression(
-            expression.constructor,
-            declaration,
-            type_parameters,
-            origins=origins,
-            type_context=type_context,
-        ),
-        _adapt_type_expressions(
-            expression.arguments,
-            declaration,
-            type_parameters,
-            origins=origins,
-            type_context=type_context,
-        ),
-    )
-
-
-@_adapt_type_expression.register
-def _(
-    expression: MarkerTypeExpression,
-    declaration: str,
-    type_parameters: tuple[str, ...],
-    origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
-    *,
-    type_context: SourceTypeContext,
-) -> StubTypeExpression:
-    expanded = expand_schema_aliases(
-        expression, type_context.aliases, declaration=declaration, predicates_only=True
-    ).unwrap()
-    assert isinstance(expanded, MarkerTypeExpression)
-    expression = expanded
-    marker = _normalize_marker(declaration, expression)
-    match marker:
-        case ValueMarker():
-            return MapValueType()
-        case MapMarker(subject=subject, entries=entries):
-            cases = tuple(
-                MapCase(
-                    _adapt_map_test(
-                        entry.test,
-                        declaration,
-                        type_parameters,
-                        origins=origins,
-                        type_context=type_context,
-                    ),
-                    _adapt_type_expression(
-                        entry.output,
-                        declaration,
-                        type_parameters,
-                        origins=origins,
-                        type_context=type_context,
-                    ),
-                )
-                for entry in entries
-                if isinstance(entry, CaseMarker)
-            )
-            default_entry = next(
-                (entry for entry in entries if isinstance(entry, DefaultMarker)),
-                None,
-            )
-            default = (
-                TypeName("Never")
-                if default_entry is None
-                else _adapt_type_expression(
-                    default_entry.output,
-                    declaration,
-                    type_parameters,
-                    origins=origins,
-                    type_context=type_context,
-                )
-            )
-            return MapType(
-                _adapt_type_expression(
-                    subject,
-                    declaration,
-                    type_parameters,
-                    origins=origins,
-                    type_context=type_context,
-                ),
-                cases,
-                default,
-            )
-        case EachMarker(item=item):
-            return EachType(
-                _adapt_type_expression(
-                    item,
-                    declaration,
-                    type_parameters,
-                    origins=origins,
-                    type_context=type_context,
-                )
-            )
-        case CollectMarker(item=item):
-            return CollectType(
-                _adapt_type_expression(
-                    item,
-                    declaration,
-                    type_parameters,
-                    origins=origins,
-                    type_context=type_context,
-                )
-            )
-        case _:
-            raise AdaptationError(
-                declaration,
-                expression.source,
-                f"unsupported marker {type(marker).__name__.removesuffix('Marker')}",
-            )
-
-
-def _adapt_map_test(
-    expression: SourceTypeExpression,
-    declaration: str,
-    type_parameters: tuple[str, ...],
-    origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
-    *,
-    type_context: SourceTypeContext,
-) -> StubTypeExpression | Predicate:
-    if isinstance(expression, MarkerTypeExpression):
-        marker = _normalize_marker(declaration, expression)
-        if isinstance(
-            marker,
-            EqualMarker | AssignableMarker | AllMarker | AnyMarker | NotMarker,
-        ):
-            return _adapt_predicate(
-                expression,
-                declaration,
-                type_parameters,
-                origins=origins,
-                type_context=type_context,
-            )
-
-    return _adapt_type_expression(
-        expression,
-        declaration,
-        type_parameters,
-        origins=origins,
-        type_context=type_context,
-    )
-
-
-def _adapt_predicate(
-    expression: SourceTypeExpression,
-    declaration: str,
-    type_parameters: tuple[str, ...],
-    origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
-    *,
-    type_context: SourceTypeContext,
-) -> Predicate:
-    if not isinstance(expression, MarkerTypeExpression):
-        raise AdaptationError(
-            declaration,
-            expression.source,
-            "condition must be a Typeforge predicate",
-        )
-
-    marker = _normalize_marker(declaration, expression)
-    match marker:
-        case EqualMarker(left=left, right=right):
-            return EqualPredicate(
-                _adapt_type_expression(
-                    left,
-                    declaration,
-                    type_parameters,
-                    origins=origins,
-                    type_context=type_context,
-                ),
-                _adapt_type_expression(
-                    right,
-                    declaration,
-                    type_parameters,
-                    origins=origins,
-                    type_context=type_context,
-                ),
-            )
-        case AssignableMarker(left=left, right=right):
-            return AssignablePredicate(
-                _adapt_type_expression(
-                    left,
-                    declaration,
-                    type_parameters,
-                    origins=origins,
-                    type_context=type_context,
-                ),
-                _adapt_type_expression(
-                    right,
-                    declaration,
-                    type_parameters,
-                    origins=origins,
-                    type_context=type_context,
-                ),
-            )
-        case AllMarker(items=items):
-            return AllPredicate(
-                tuple(
-                    _adapt_predicate(
-                        item,
-                        declaration,
-                        type_parameters,
-                        origins=origins,
-                        type_context=type_context,
-                    )
-                    for item in items
-                )
-            )
-        case AnyMarker(items=items):
-            return AnyPredicate(
-                tuple(
-                    _adapt_predicate(
-                        item,
-                        declaration,
-                        type_parameters,
-                        origins=origins,
-                        type_context=type_context,
-                    )
-                    for item in items
-                )
-            )
-        case NotMarker(item=item):
-            return NotPredicate(
-                _adapt_predicate(
-                    item,
-                    declaration,
-                    type_parameters,
-                    origins=origins,
-                    type_context=type_context,
-                )
-            )
-        case _:
-            raise AdaptationError(
-                declaration,
-                expression.source,
-                f"{type(marker).__name__.removesuffix('Marker')} is not a predicate",
-            )
-
-
-def _normalize_marker(
-    declaration: str,
-    expression: MarkerTypeExpression,
-) -> NormalizedMarker:
-    try:
-        return normalize_marker(expression)
-    except MarkerNormalizationError as error:
-        raise AdaptationError(
-            declaration,
-            error.source,
-            error.message,
-        ) from error
-
-
-def _adapt_type_expressions(
-    expressions: tuple[SourceTypeExpression, ...],
-    declaration: str,
-    type_parameters: tuple[str, ...],
-    origins: list[GeneratedElementOrigin[SourceSpan]] | None = None,
-    *,
-    type_context: SourceTypeContext,
-) -> tuple[StubTypeExpression, ...]:
-    return tuple(
-        _adapt_type_expression(
-            expression,
-            declaration,
-            type_parameters,
-            origins=origins,
-            type_context=type_context,
-        )
-        for expression in expressions
     )
 
 

@@ -4,36 +4,38 @@ from pathlib import Path
 
 from returns.result import Failure, Result, Success
 
-from typeforge.compiler.source._markers import (
-    MarkerNormalizationError,
-    bind_map_selector,
+from typeforge.compiler.source._annotations import (
+    parse_annotation,
+    parse_type_alias,
+    parse_type_parameter,
+    unwrap_annotated,
 )
 from typeforge.compiler.source._model import (
-    AppliedTypeExpression,
     ClassDeclaration,
     ClassField,
     FunctionDeclaration,
     IdentifierOccurrence,
-    MarkerKind,
-    MarkerTypeExpression,
-    NameTypeExpression,
     Parameter,
     ParameterKind,
-    RawTypeExpression,
     ReturnSite,
-    RuntimeInputTypeExpression,
-    SchemaTypeExpression,
     SourceModule,
     SourcePosition,
     SourceSpan,
     SourceTypeExpression,
-    StarredTypeExpression,
-    TypeAliasDeclaration,
     TypedDictDeclaration,
     TypedDictField,
-    TypeParameter,
-    TypeParameterKind,
-    UnionTypeExpression,
+)
+from typeforge.compiler.source._syntax import (
+    AnnotationSyntaxError,
+    ImportBindings,
+    collect_import_bindings,
+    expression_name,
+    resolve_ast_name,
+    source_span,
+)
+from typeforge.compiler.source._type_functions import (
+    is_type_function,
+    parse_type_function,
 )
 
 
@@ -61,17 +63,6 @@ class ParsedSource:
 type FrontendError = SourceReadError | SourceSyntaxError
 
 
-@dataclass(frozen=True, slots=True)
-class _ImportBindings:
-    names: tuple[tuple[str, tuple[str, ...]], ...]
-
-
-@dataclass(frozen=True, slots=True)
-class _AnnotationSyntaxError(Exception):
-    message: str
-    span: SourceSpan
-
-
 def parse_module(path: Path) -> Result[ParsedSource, FrontendError]:
     source = _read_source(path)
     if isinstance(source, Failure):
@@ -87,23 +78,29 @@ def parse_source(
         return Success(_parse_source(source, path))
     except SyntaxError as error:
         return Failure(_syntax_error(path, error))
-    except _AnnotationSyntaxError as error:
+    except AnnotationSyntaxError as error:
         return Failure(SourceSyntaxError(path, error.message, error.span))
 
 
 def _parse_source(source: str, path: Path) -> ParsedSource:
     tree = ast.parse(source, filename=str(path), type_comments=True)
-    bindings = _collect_import_bindings(tree)
+    bindings = collect_import_bindings(tree)
     scoped_statements = _scoped_statements(tree)
     functions = tuple(
         _parse_function(path, source, node, scope, bindings)
         for node, scope in scoped_statements
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        and not is_type_function(node, bindings)
     )
     aliases = tuple(
-        _parse_type_alias(path, source, node, scope, bindings)
+        parse_type_alias(path, source, node, scope, bindings)
         for node, scope in scoped_statements
         if isinstance(node, ast.TypeAlias)
+    ) + tuple(
+        parse_type_function(path, source, node, scope, bindings)
+        for node, scope in scoped_statements
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        and is_type_function(node, bindings)
     )
     typed_dicts = _parse_typed_dicts(path, source, scoped_statements, bindings)
     classes = _parse_classes(path, source, tree, bindings, typed_dicts)
@@ -113,12 +110,14 @@ def _parse_source(source: str, path: Path) -> ParsedSource:
     )
     variable_annotations: list[SourceTypeExpression] = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.AnnAssign) or _span(path, node) in field_spans:
+        if (
+            not isinstance(node, ast.AnnAssign)
+            or source_span(path, node) in field_spans
+        ):
             continue
 
-        annotation = _parse_annotation(path, source, node.annotation, bindings)
-        if annotation is not None:
-            variable_annotations.append(annotation)
+        annotation = parse_annotation(path, source, node.annotation, bindings)
+        variable_annotations.append(annotation)
 
     located_nodes = sorted(
         (
@@ -140,8 +139,10 @@ def _parse_source(source: str, path: Path) -> ParsedSource:
         future_import_spans=_future_import_spans(path, tree),
         return_sites=tuple(
             ReturnSite(
-                statement=_span(path, node),
-                expression=_span(path, node.value) if node.value is not None else None,
+                statement=source_span(path, node),
+                expression=source_span(path, node.value)
+                if node.value is not None
+                else None,
             )
             for node in located_nodes
             if isinstance(node, ast.Return)
@@ -149,7 +150,7 @@ def _parse_source(source: str, path: Path) -> ParsedSource:
         identifiers=tuple(
             IdentifierOccurrence(
                 name=node.id if isinstance(node, ast.Name) else node.arg,
-                span=_span(path, node),
+                span=source_span(path, node),
             )
             for node in located_nodes
             if isinstance(node, ast.Name | ast.arg)
@@ -166,7 +167,7 @@ def _docstring_span(path: Path, tree: ast.Module) -> SourceSpan | None:
             and isinstance(first.value, ast.Constant)
             and isinstance(first.value.value, str)
         ):
-            return _span(path, first)
+            return source_span(path, first)
 
     return None
 
@@ -181,7 +182,7 @@ def _future_import_spans(path: Path, tree: ast.Module) -> tuple[SourceSpan, ...]
         ):
             break
 
-        spans.append(_span(path, statement))
+        spans.append(source_span(path, statement))
 
     return tuple(spans)
 
@@ -204,28 +205,6 @@ def _syntax_error(path: Path, error: SyntaxError) -> SourceSyntaxError:
         end=SourcePosition(line=end_line, column=end_column),
     )
     return SourceSyntaxError(path=path, message=error.msg, span=span)
-
-
-def _collect_import_bindings(module: ast.Module) -> _ImportBindings:
-    bindings: list[tuple[str, tuple[str, ...]]] = []
-    for statement in module.body:
-        if isinstance(statement, ast.Import):
-            for alias in statement.names:
-                local_name = alias.asname or alias.name.split(".")[0]
-                qualified_name = tuple(alias.name.split("."))
-                if alias.asname is None:
-                    qualified_name = (qualified_name[0],)
-
-                bindings.append((local_name, qualified_name))
-        elif isinstance(statement, ast.ImportFrom) and statement.module is not None:
-            module_name = tuple(statement.module.split("."))
-            for alias in statement.names:
-                if alias.name != "*":
-                    bindings.append(
-                        (alias.asname or alias.name, (*module_name, alias.name))
-                    )
-
-    return _ImportBindings(names=tuple(bindings))
 
 
 def _scoped_statements(
@@ -263,53 +242,27 @@ def _parse_function(
     source: str,
     node: ast.FunctionDef | ast.AsyncFunctionDef,
     scope: tuple[str, ...],
-    bindings: _ImportBindings,
+    bindings: ImportBindings,
 ) -> FunctionDeclaration:
     return FunctionDeclaration(
         name=node.name,
         qualified_name=(*scope, node.name),
         parameters=_parse_parameters(path, source, node.args, bindings),
-        returns=_parse_annotation(path, source, node.returns, bindings),
+        returns=parse_annotation(path, source, node.returns, bindings),
         type_parameters=tuple(
-            _parse_type_parameter(source, parameter)
+            parse_type_parameter(source, parameter)
             for parameter in node.type_params
             if isinstance(parameter, ast.TypeVar | ast.TypeVarTuple | ast.ParamSpec)
         ),
-        span=_span(path, node),
+        span=source_span(path, node),
         is_async=isinstance(node, ast.AsyncFunctionDef),
         decorators=tuple(ast.unparse(item) for item in node.decorator_list),
-        decorator_spans=tuple(_span(path, item) for item in node.decorator_list),
+        decorator_spans=tuple(source_span(path, item) for item in node.decorator_list),
         body_span=SourceSpan(
             path=path,
-            start=_span(path, node.body[0]).start,
-            end=_span(path, node.body[-1]).end,
+            start=source_span(path, node.body[0]).start,
+            end=source_span(path, node.body[-1]).end,
         ),
-    )
-
-
-def _parse_type_alias(
-    path: Path,
-    source: str,
-    node: ast.TypeAlias,
-    scope: tuple[str, ...],
-    bindings: _ImportBindings,
-) -> TypeAliasDeclaration:
-    value = _parse_annotation(path, source, node.value, bindings)
-    if value is None:
-        value = RawTypeExpression(
-            source=ast.unparse(node.value), span=_span(path, node.value)
-        )
-
-    return TypeAliasDeclaration(
-        name=node.name.id,
-        qualified_name=(*scope, node.name.id),
-        type_parameters=tuple(
-            _parse_type_parameter(source, parameter)
-            for parameter in node.type_params
-            if isinstance(parameter, ast.TypeVar | ast.TypeVarTuple | ast.ParamSpec)
-        ),
-        value=value,
-        span=_span(path, node),
     )
 
 
@@ -317,7 +270,7 @@ def _parse_classes(
     path: Path,
     source: str,
     module: ast.Module,
-    bindings: _ImportBindings,
+    bindings: ImportBindings,
     typed_dicts: tuple[TypedDictDeclaration, ...],
 ) -> tuple[ClassDeclaration, ...]:
     typed_dict_names = {item.name for item in typed_dicts}
@@ -333,7 +286,7 @@ def _parse_class(
     path: Path,
     source: str,
     node: ast.ClassDef,
-    bindings: _ImportBindings,
+    bindings: ImportBindings,
 ) -> ClassDeclaration:
     fields = tuple(
         _parse_class_field(path, source, statement, bindings)
@@ -346,11 +299,7 @@ def _parse_class(
         for statement in node.body
         if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef)
     )
-    bases = tuple(
-        expression
-        for base in node.bases
-        if (expression := _parse_annotation(path, source, base, bindings)) is not None
-    )
+    bases = tuple(parse_annotation(path, source, base, bindings) for base in node.bases)
     keywords = tuple(
         f"{keyword.arg}={ast.unparse(keyword.value)}"
         for keyword in node.keywords
@@ -360,7 +309,7 @@ def _parse_class(
         name=node.name,
         qualified_name=(node.name,),
         type_parameters=tuple(
-            _parse_type_parameter(source, parameter)
+            parse_type_parameter(source, parameter)
             for parameter in node.type_params
             if isinstance(parameter, ast.TypeVar | ast.TypeVarTuple | ast.ParamSpec)
         ),
@@ -369,7 +318,7 @@ def _parse_class(
         decorators=tuple(ast.unparse(item) for item in node.decorator_list),
         fields=fields,
         methods=methods,
-        span=_span(path, node),
+        span=source_span(path, node),
     )
 
 
@@ -377,14 +326,9 @@ def _parse_class_field(
     path: Path,
     source: str,
     node: ast.AnnAssign,
-    bindings: _ImportBindings,
+    bindings: ImportBindings,
 ) -> ClassField:
-    annotation = _parse_annotation(path, source, node.annotation, bindings)
-    if annotation is None:
-        annotation = RawTypeExpression(
-            source=ast.unparse(node.annotation), span=_span(path, node.annotation)
-        )
-
+    annotation = parse_annotation(path, source, node.annotation, bindings)
     target = node.target
     if not isinstance(target, ast.Name):
         raise AssertionError("class fields require named targets")
@@ -392,7 +336,7 @@ def _parse_class_field(
     return ClassField(
         target.id,
         annotation,
-        _span(path, node),
+        source_span(path, node),
         node.value is not None,
     )
 
@@ -401,7 +345,7 @@ def _parse_typed_dicts(
     path: Path,
     source: str,
     scoped_statements: tuple[tuple[ast.stmt, tuple[str, ...]], ...],
-    bindings: _ImportBindings,
+    bindings: ImportBindings,
 ) -> tuple[TypedDictDeclaration, ...]:
     declarations: list[TypedDictDeclaration] = []
     known: set[tuple[str, ...]] = set()
@@ -421,7 +365,7 @@ def _parse_typed_dicts(
 def _is_typed_dict(
     node: ast.ClassDef,
     scope: tuple[str, ...],
-    bindings: _ImportBindings,
+    bindings: ImportBindings,
     known: set[tuple[str, ...]],
 ) -> bool:
     typed_dict_bases = {
@@ -439,7 +383,7 @@ def _parse_typed_dict(
     source: str,
     node: ast.ClassDef,
     scope: tuple[str, ...],
-    bindings: _ImportBindings,
+    bindings: ImportBindings,
     known: set[tuple[str, ...]],
 ) -> TypedDictDeclaration:
     total = _typed_dict_total(node)
@@ -467,24 +411,24 @@ def _parse_typed_dict(
         fields=fields,
         bases=bases,
         total=total,
-        span=_span(path, node),
+        span=source_span(path, node),
     )
 
 
 def _resolve_base_name(
     node: ast.expr,
     scope: tuple[str, ...],
-    bindings: _ImportBindings,
+    bindings: ImportBindings,
     known: set[tuple[str, ...]],
 ) -> tuple[str, ...] | None:
-    resolved = _resolve_ast_name(node, bindings)
+    resolved = resolve_ast_name(node, bindings)
     if resolved is not None:
         return resolved
 
     if not isinstance(node, ast.Name | ast.Attribute):
         return None
 
-    name = _expression_name(node)
+    name = expression_name(node)
     scoped_name = (*scope, *name)
     if scoped_name in known:
         return scoped_name
@@ -512,17 +456,12 @@ def _parse_typed_dict_field(
     source: str,
     node: ast.AnnAssign,
     total: bool,
-    bindings: _ImportBindings,
+    bindings: ImportBindings,
 ) -> TypedDictField:
     required, readonly, value_node = _typed_dict_field_attributes(
         node.annotation, total, False, bindings
     )
-    annotation = _parse_annotation(path, source, value_node, bindings)
-    if annotation is None:
-        annotation = RawTypeExpression(
-            source=ast.unparse(value_node), span=_span(path, value_node)
-        )
-
+    annotation = parse_annotation(path, source, value_node, bindings)
     target = node.target
     if not isinstance(target, ast.Name):
         raise AssertionError("TypedDict fields require named targets")
@@ -532,7 +471,7 @@ def _parse_typed_dict_field(
         annotation=annotation,
         required=required,
         readonly=readonly,
-        span=_span(path, node),
+        span=source_span(path, node),
     )
 
 
@@ -540,9 +479,9 @@ def _typed_dict_field_attributes(
     node: ast.expr,
     required: bool,
     readonly: bool,
-    bindings: _ImportBindings,
+    bindings: ImportBindings,
 ) -> tuple[bool, bool, ast.expr]:
-    annotated_value = _annotated_value(node, bindings)
+    annotated_value = unwrap_annotated(node, bindings)
     if annotated_value is not None:
         return _typed_dict_field_attributes(
             annotated_value,
@@ -554,7 +493,7 @@ def _typed_dict_field_attributes(
     if not isinstance(node, ast.Subscript):
         return required, readonly, node
 
-    qualified_name = _resolve_ast_name(node.value, bindings)
+    qualified_name = resolve_ast_name(node.value, bindings)
     arguments = node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
     if qualified_name in {
         ("typing", "Required"),
@@ -599,7 +538,7 @@ def _parse_parameters(
     path: Path,
     source: str,
     arguments: ast.arguments,
-    bindings: _ImportBindings,
+    bindings: ImportBindings,
 ) -> tuple[Parameter, ...]:
     parameters: list[Parameter] = []
     positional = (*arguments.posonlyargs, *arguments.args)
@@ -675,348 +614,12 @@ def _parse_parameter(
     argument: ast.arg,
     kind: ParameterKind,
     has_default: bool,
-    bindings: _ImportBindings,
+    bindings: ImportBindings,
 ) -> Parameter:
     return Parameter(
         name=argument.arg,
         kind=kind,
-        annotation=_parse_annotation(path, source, argument.annotation, bindings),
-        span=_span(path, argument),
+        annotation=parse_annotation(path, source, argument.annotation, bindings),
+        span=source_span(path, argument),
         has_default=has_default,
-    )
-
-
-def _parse_type_parameter(
-    source: str,
-    parameter: ast.TypeVar | ast.TypeVarTuple | ast.ParamSpec,
-) -> TypeParameter:
-    if isinstance(parameter, ast.TypeVar):
-        kind = TypeParameterKind.TYPE_VAR
-    elif isinstance(parameter, ast.TypeVarTuple):
-        kind = TypeParameterKind.TYPE_VAR_TUPLE
-    else:
-        kind = TypeParameterKind.PARAM_SPEC
-
-    return TypeParameter(
-        name=parameter.name,
-        kind=kind,
-        declaration=ast.get_source_segment(source, parameter) or ast.unparse(parameter),
-    )
-
-
-def _parse_annotation(
-    path: Path,
-    source: str,
-    node: ast.expr | None,
-    bindings: _ImportBindings,
-) -> SourceTypeExpression | None:
-    if node is None:
-        return None
-
-    rendered = ast.get_source_segment(source, node) or ast.unparse(node)
-    span = _span(path, node)
-    annotated_value = _annotated_value(node, bindings)
-    if annotated_value is not None:
-        return _parse_annotation(path, source, annotated_value, bindings)
-
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        members = tuple(
-            expression
-            for member in _flatten_union_nodes(node)
-            if (expression := _parse_annotation(path, source, member, bindings))
-            is not None
-        )
-        return UnionTypeExpression(rendered, span, members)
-
-    if isinstance(node, ast.Starred):
-        item = _parse_annotation(path, source, node.value, bindings)
-        if item is None:
-            return RawTypeExpression(source=rendered, span=span)
-
-        return StarredTypeExpression(rendered, span, item)
-
-    if isinstance(node, ast.Name | ast.Attribute):
-        name = _expression_name(node)
-        name_expression = NameTypeExpression(
-            source=rendered,
-            span=span,
-            name=name,
-            qualified_name=_resolve_name(name, bindings),
-        )
-        if _is_runtime_input(name_expression):
-            return RuntimeInputTypeExpression(rendered, span)
-
-        marker = _marker_kind(name_expression)
-        if marker is not None:
-            return MarkerTypeExpression(
-                source=rendered,
-                span=span,
-                marker=marker,
-                arguments=(),
-            )
-
-        return name_expression
-
-    if isinstance(node, ast.Subscript):
-        constructor = _parse_annotation(path, source, node.value, bindings)
-        if constructor is None:
-            return RawTypeExpression(source=rendered, span=span)
-
-        slice_nodes = (
-            node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
-        )
-        marker = _marker_kind(constructor)
-        public_map = isinstance(node.value, ast.Name | ast.Attribute) and (
-            _resolve_name(_expression_name(node.value), bindings)
-            == ("typeforge", "Map")
-        )
-        argument_values: list[SourceTypeExpression] = []
-        for slice_node in slice_nodes:
-            if public_map:
-                if not argument_values and isinstance(slice_node, ast.Slice):
-                    raise _AnnotationSyntaxError(
-                        "Map requires a subject before its branches",
-                        _span(path, slice_node),
-                    )
-
-                if (
-                    len(argument_values) > 1
-                    and _marker_kind(argument_values[-1]) is MarkerKind.DEFAULT
-                ):
-                    raise _AnnotationSyntaxError(
-                        "Map fallback must be last; no branch may follow it",
-                        _span(path, slice_node),
-                    )
-
-                if argument_values and not isinstance(slice_node, ast.Slice):
-                    raise _AnnotationSyntaxError(
-                        "Map entries must use selector: output or ...: output syntax",
-                        _span(path, slice_node),
-                    )
-
-            argument = (
-                _parse_map_slice(
-                    path,
-                    source,
-                    slice_node,
-                    bindings,
-                    argument_values[0],
-                )
-                if marker is MarkerKind.MAP
-                and isinstance(slice_node, ast.Slice)
-                and argument_values
-                else _parse_annotation(path, source, slice_node, bindings)
-            )
-            if argument is not None:
-                argument_values.append(argument)
-
-        arguments = tuple(argument_values)
-        if (
-            isinstance(node.value, ast.Name | ast.Attribute)
-            and _resolve_name(_expression_name(node.value), bindings)
-            == ("typeforge", "Is")
-            and len(arguments) != 1
-        ):
-            raise _AnnotationSyntaxError("Is requires one type argument", span)
-
-        if _is_schema_boundary(constructor):
-            return SchemaTypeExpression(
-                source=rendered,
-                span=span,
-                arguments=arguments,
-            )
-
-        if marker is not None:
-            return MarkerTypeExpression(
-                source=rendered,
-                span=span,
-                marker=marker,
-                arguments=arguments,
-            )
-
-        return AppliedTypeExpression(
-            source=rendered,
-            span=span,
-            constructor=constructor,
-            arguments=arguments,
-        )
-
-    return RawTypeExpression(source=rendered, span=span)
-
-
-def _parse_map_slice(
-    path: Path,
-    source: str,
-    node: ast.Slice,
-    bindings: _ImportBindings,
-    subject: SourceTypeExpression,
-) -> MarkerTypeExpression:
-    """Normalize branch spelling without changing matching or output semantics."""
-    rendered = ast.get_source_segment(source, node) or ast.unparse(node)
-    span = _span(path, node)
-    if node.step is not None and not (
-        isinstance(node.step, ast.Constant) and node.step.value is None
-    ):
-        raise _AnnotationSyntaxError(
-            "Map branches do not accept a slice step", _span(path, node.step)
-        )
-
-    output = _parse_annotation(path, source, node.upper, bindings)
-    # A missing token denotes None. Anchor synthesized endpoints to the branch
-    # that supplied them, while retaining its exact authored spelling above.
-    if output is None:
-        output = RawTypeExpression("None", span)
-
-    if isinstance(node.lower, ast.Constant) and node.lower.value is Ellipsis:
-        return MarkerTypeExpression(rendered, span, MarkerKind.DEFAULT, (output,))
-
-    selector = _parse_annotation(
-        path, source, node.lower, bindings
-    ) or RawTypeExpression("None", span)
-
-    try:
-        bound_selector = bind_map_selector(selector, subject)
-    except MarkerNormalizationError as error:
-        raise _AnnotationSyntaxError(
-            error.message, error.span or selector.span
-        ) from error
-
-    return MarkerTypeExpression(
-        rendered,
-        span,
-        MarkerKind.CASE,
-        (bound_selector, output),
-    )
-
-
-def _annotated_value(node: ast.expr, bindings: _ImportBindings) -> ast.expr | None:
-    if not isinstance(node, ast.Subscript):
-        return None
-
-    if _resolve_ast_name(node.value, bindings) not in {
-        ("typing", "Annotated"),
-        ("typing_extensions", "Annotated"),
-    }:
-        return None
-
-    arguments = node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
-    if len(arguments) < 2:
-        return None
-
-    return arguments[0]
-
-
-def _flatten_union_nodes(node: ast.expr) -> tuple[ast.expr, ...]:
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        return (*_flatten_union_nodes(node.left), *_flatten_union_nodes(node.right))
-
-    return (node,)
-
-
-def _expression_name(node: ast.Name | ast.Attribute) -> tuple[str, ...]:
-    if isinstance(node, ast.Name):
-        return (node.id,)
-
-    if isinstance(node.value, ast.Name | ast.Attribute):
-        return (*_expression_name(node.value), node.attr)
-
-    return (node.attr,)
-
-
-def _resolve_name(
-    name: tuple[str, ...], bindings: _ImportBindings
-) -> tuple[str, ...] | None:
-    if not name:
-        return None
-
-    imported = dict(bindings.names).get(name[0])
-    if imported is None:
-        return None
-
-    return (*imported, *name[1:])
-
-
-def _resolve_ast_name(
-    node: ast.expr, bindings: _ImportBindings
-) -> tuple[str, ...] | None:
-    if not isinstance(node, ast.Name | ast.Attribute):
-        return None
-
-    return _resolve_name(_expression_name(node), bindings)
-
-
-def _marker_kind(expression: SourceTypeExpression) -> MarkerKind | None:
-    if isinstance(expression, MarkerTypeExpression):
-        return expression.marker
-
-    if not isinstance(expression, NameTypeExpression):
-        return None
-
-    qualified_name = expression.qualified_name
-    marker_names = {marker.value: marker for marker in MarkerKind}
-    if qualified_name is None or len(qualified_name) < 2:
-        return None
-
-    if qualified_name[:-1] not in {
-        ("typeforge",),
-        ("typeforge", "_markers"),
-    }:
-        return None
-
-    if qualified_name[:-1] == ("typeforge",) and qualified_name[-1] in {
-        "Case",
-        "Default",
-    }:
-        return None
-
-    if qualified_name == ("typeforge", "Is"):
-        return MarkerKind.EQUAL
-
-    if qualified_name[:-1] == ("typeforge",) and qualified_name[-1] in {
-        "Equal",
-        "Assignable",
-        "All",
-        "Any",
-        "Not",
-    }:
-        raise _AnnotationSyntaxError(
-            f"{qualified_name[-1]} is no longer a public selector; "
-            "use a bare type or Is[Type]",
-            expression.span,
-        )
-
-    return marker_names.get(qualified_name[-1])
-
-
-def _is_schema_boundary(expression: SourceTypeExpression) -> bool:
-    return isinstance(expression, NameTypeExpression) and expression.qualified_name == (
-        "typeforge",
-        "pydantic",
-        "Schema",
-    )
-
-
-def _is_runtime_input(expression: SourceTypeExpression) -> bool:
-    return isinstance(expression, NameTypeExpression) and expression.qualified_name == (
-        "typeforge",
-        "pydantic",
-        "Input",
-    )
-
-
-def _span(
-    path: Path,
-    node: ast.stmt
-    | ast.expr
-    | ast.arg
-    | ast.TypeVar
-    | ast.TypeVarTuple
-    | ast.ParamSpec,
-) -> SourceSpan:
-    end_line = node.end_lineno or node.lineno
-    end_column = node.end_col_offset or node.col_offset
-    return SourceSpan(
-        path=path,
-        start=SourcePosition(line=node.lineno, column=node.col_offset),
-        end=SourcePosition(line=end_line, column=end_column),
     )

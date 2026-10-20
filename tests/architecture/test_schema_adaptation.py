@@ -90,4 +90,7 @@ def test_production_schema_boundaries_use_the_source_adapter(
         )
     }
 
-    assert callers == {TYPE_FORGE.file("compiler.adaptation._source_to_ir").path}
+    assert callers == {
+        TYPE_FORGE.file("compiler.adaptation._source_to_ir").path,
+        TYPE_FORGE.file("compiler.adaptation._expressions").path,
+    }

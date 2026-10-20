@@ -29,6 +29,7 @@ from typeforge import semantics as s
 from typeforge._map import normalize_selector_literal
 from typeforge._markers import All, Assignable, Case, Default, Equal, Map, Not
 from typeforge._markers import Any as AnyCondition
+from typeforge._type_function import SymbolicTypeParameter
 from typeforge.pydantic._errors import SchemaIssue, UnresolvedAnnotationIssue
 from typeforge.pydantic._markers import Input
 from typeforge.pydantic._type_system import (
@@ -48,6 +49,7 @@ class AdaptedAnnotation:
 
 
 _MARKERS = (
+    SymbolicTypeParameter,
     Map,
     Case,
     Default,
@@ -217,6 +219,12 @@ class _AnnotationAdapter:
     ) -> s.Expression[RuntimeType]:
         origin = get_origin(value) or value
         arguments: tuple[object, ...] = get_args(value)
+        if origin is SymbolicTypeParameter:
+            if len(arguments) != 1 or not isinstance(arguments[0], TypeVar):
+                raise invalid(value, "invalid symbolic type parameter")
+
+            return self._parameter(arguments[0])
+
         if isinstance(value, TypeVar | TypeVarTuple):
             return self._parameter(value)
 

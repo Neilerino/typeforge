@@ -44,10 +44,15 @@ def test_slice_construction_needs_no_optional_dependencies_or_consumers() -> Non
             textwrap.dedent("""
             import sys
             from typing import TypeVar
-            from typeforge import Map
+            from typeforge import Map, type_function
             T = TypeVar("T")
             annotation = Map[int, int: list[T]]
             assert annotation.__parameters__ == (T,)
+            @type_function
+            def Selected[U]():
+                return Map[U, int: str, ...: bytes]
+            assert Selected.__value__.__parameters__ == Selected.__type_params__
+            assert Selected[int].__args__ == (int,)
             assert not any(name.startswith((
                 'pydantic', 'typeforge.pydantic', 'typeforge.compiler',
                 'typeforge.semantics', 'returns',

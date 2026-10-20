@@ -176,6 +176,7 @@ class TypeAliasDeclaration:
     type_parameters: tuple[TypeParameter, ...]
     value: SourceTypeExpression
     span: SourceSpan
+    is_type_function: bool = False
 
 
 @dataclass(frozen=True, slots=True)
