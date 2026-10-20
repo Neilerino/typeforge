@@ -66,7 +66,7 @@ from typeforge.semantics.domain.models import (
     is_bool_expr,
     is_pattern_expr,
 )
-from typeforge.semantics.map_matching import map_values_are_equal, match_type_pattern
+from typeforge.semantics.map_matching import map_values_match, match_type_pattern
 from typeforge.semantics.protocols import (
     DeferredTypes,
     EvaluationPolicy,
@@ -551,7 +551,7 @@ class Evaluator[T]:
 
             else:
                 test = self._evaluate(case.test)
-                matched = map_values_are_equal(subject, test, self.type_system)
+                matched = map_values_match(subject, test, self.type_system)
 
             if matched is True or isinstance(matched, IndeterminateCondition):
                 return MapSelection(case.output, output_context, index, matched)

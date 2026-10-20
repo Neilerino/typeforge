@@ -2,18 +2,14 @@ from typing import TYPE_CHECKING
 
 from typeforge._documentation import Doc
 from typeforge._markers import (
-    All,
-    Any,
-    Assignable,
     Collect,
     Drop,
     Each,
-    Equal,
     Field,
+    Is,
     Key,
     Map,
     MapFields,
-    Not,
     OptionalField,
     ReadonlyField,
     Value,
@@ -24,19 +20,15 @@ if not TYPE_CHECKING:
     from typeforge._map import Map
 
 __all__ = [
-    "All",
-    "Any",
-    "Assignable",
     "Collect",
     "Doc",
     "Drop",
     "Each",
-    "Equal",
     "Field",
+    "Is",
     "Key",
     "Map",
     "MapFields",
-    "Not",
     "OptionalField",
     "ReadonlyField",
     "Value",

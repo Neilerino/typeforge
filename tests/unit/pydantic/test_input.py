@@ -3,7 +3,8 @@ from uuid import UUID
 import pytest
 
 from pydantic import TypeAdapter, ValidationError
-from typeforge import Equal, Map
+from typeforge import Map
+from typeforge._markers import Equal
 from typeforge.pydantic import Input, Schema
 
 

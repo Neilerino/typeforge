@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Literal, TypedDict
 
-from typeforge import Equal, Field, Key, Map, MapFields, Value
+from typeforge import Field, Key, Map, MapFields, Value
+from typeforge._markers import Equal
 
 
 def read[M](

@@ -10,7 +10,7 @@ from pydantic import (
     field_serializer,
     field_validator,
 )
-from typeforge import Map, Value
+from typeforge import Is, Map, Value
 from typeforge.pydantic import Schema
 
 
@@ -154,7 +154,7 @@ def test_generic_field_preserves_model_configuration_and_field_middleware() -> N
 
 def test_generic_no_default_map_specializes_and_rejects_unmatched_any() -> None:
     class Payload[T](BaseModel):
-        value: Schema[Map[T, int:str, bytes:int]]
+        value: Schema[Map[T, Is[int] : str, Is[bytes] : int]]
 
     assert Payload[int].model_validate({"value": "3"}).value == "3"
     assert Payload[bytes].model_validate({"value": "3"}).value == 3

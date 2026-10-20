@@ -87,7 +87,25 @@ def _assignable(source: StaticType, target: StaticType) -> bool:
         case _, UnionType(members):
             return any(_assignable(source, member) for member in members)
         case NamedType(), NamedType():
-            return source.name == target.name or target.name in source.bases
+            if source.name in {"Any", "typing.Any", "typing_extensions.Any"}:
+                return True
+
+            if target.name in {"Any", "typing.Any", "typing_extensions.Any"}:
+                return True
+
+            compatible_builtins = {
+                "bool": {"int", "float", "complex"},
+                "int": {"float", "complex"},
+                "float": {"complex"},
+            }
+            return (
+                source.name == target.name
+                or target.name in source.bases
+                or any(
+                    target.name in compatible_builtins.get(name, set())
+                    for name in (source.name, *source.bases)
+                )
+            )
         case _:
             return source == target
 

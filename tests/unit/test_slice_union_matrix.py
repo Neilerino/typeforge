@@ -21,6 +21,7 @@ from pydantic import (
     TypeAdapter,
     ValidationError,
 )
+from typeforge import Is
 from typeforge import Map as SliceMap
 from typeforge import semantics as s
 from typeforge._markers import Case
@@ -38,10 +39,11 @@ from typeforge.pydantic import Schema
 from typeforge.pydantic._frontend import adapt_annotation
 
 IMPORTS = """from typing import Annotated, Any, Literal, Never, TypeVar, TypedDict
-from typeforge import Map, Equal, Assignable, All, Not, Value
+from typeforge import Map, Value
+from typeforge._markers import Equal, Assignable, All, Not
 from typeforge._markers import Case, Default, Map as CanonicalMap
-from typeforge import Any as AnyCondition
 from typeforge import MapFields, Field, Key, Drop
+from typeforge._markers import Any as AnyCondition
 from typeforge.pydantic import Schema, Input
 """
 
@@ -94,15 +96,15 @@ CASES = (
         "U05-union-selector-single-subject",
         "Map[int, int | str: bytes, ...: float]",
         "CanonicalMap[int, Case[int | str, bytes], Default[float]]",
-        "float",
-        "float",
+        "bytes",
+        "bytes",
     ),
     UnionCase(
         "U06-union-selector-union-subject",
         "Map[int | str, int | str: bytes, ...: float]",
         "CanonicalMap[int | str, Case[int | str, bytes], Default[float]]",
-        "float",
-        "float",
+        "bytes",
+        "bytes",
     ),
     UnionCase(
         "U07-equal-whole-subject",
@@ -188,7 +190,7 @@ CASES = (
         "U17-alias-union-selector",
         "Map[int, Numbers: bytes, ...: float]",
         "CanonicalMap[int, Case[Numbers, bytes], Default[float]]",
-        "float",
+        "bytes",
         "float",
         setup="type Numbers = int | str\n",
     ),
@@ -244,8 +246,8 @@ CASES = (
         "U24-any-union-subject",
         "Map[Any | int, int: str, ...: bytes]",
         "CanonicalMap[Any | int, Case[int, str], Default[bytes]]",
-        "bytes | str",
-        "bytes",
+        "str",
+        "str",
     ),
     UnionCase(
         "U25-any-union-output",
@@ -282,7 +284,7 @@ CASES = (
         "U29-alias-whole-union-match",
         "Map[Numbers, Numbers: bytes, ...: float]",
         "CanonicalMap[Numbers, Case[Numbers, bytes], Default[float]]",
-        "float",
+        "bytes",
         "bytes",
         setup="type Numbers = int | str\n",
     ),
@@ -421,7 +423,7 @@ def test_union_parameters_discover_substitute_and_rebuild() -> None:
 
     class Payload[T](BaseModel):
         value: Schema[Output[T]]
-        target: Schema[SliceMap[int, T | str : bytes, ... : list[T | None]]]
+        target: Schema[SliceMap[int, Is[T | str] : bytes, ... : list[T | None]]]
 
     specialized = Payload[int]
     for _ in range(2):
@@ -603,7 +605,8 @@ def test_real_checkers_observe_union_callable_contracts(
     projection: str,
 ) -> None:
     source = """from typing import assert_type
-from typeforge import Map, Assignable, Equal
+from typeforge import Map
+from typeforge._markers import Assignable, Equal
 from typeforge._markers import Case, Default, Map as CanonicalMap
 type Encoded[T] = Map[T, int: str | None, ...: bytes]
 type Chosen[T] = Map[T, int | str: bytes, ...: float]

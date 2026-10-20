@@ -19,8 +19,8 @@ from typeforge.pydantic import Schema
         pytest.param(
             Map[TypingAny, int:str, ...:bytes],
             "3",
-            b"3",
-            id="any-exact-mismatch-default",
+            "3",
+            id="any-compatible-first-case",
         ),
         pytest.param(
             Map[TypingAny, list[Value] : set[Value], ...:TypingAny],
@@ -43,12 +43,12 @@ from typeforge.pydantic import Schema
         pytest.param(
             Map[TypingAny, int:bytes, TypingAny:str],
             "3",
-            "3",
-            id="mismatch-continues-to-later-case",
+            b"3",
+            id="compatible-first-case-precedes-any",
         ),
     ],
 )
-def test_schema_any_cases_preserve_exact_and_structural_roles(
+def test_schema_any_cases_preserve_compatible_and_structural_roles(
     expression: object, raw: object, expected: object
 ) -> None:
     adapter = TypeAdapter[object](Schema[expression])
@@ -62,13 +62,13 @@ def test_schema_any_cases_preserve_exact_and_structural_roles(
 @pytest.mark.parametrize(
     "expression",
     [
-        pytest.param(Map[TypingAny, int:str], id="exact-no-match"),
+        pytest.param(Map[object, int:str], id="known-no-match"),
         pytest.param(
             Map[TypingAny, list[Value] : set[Value]],
             id="structural-no-match",
         ),
         pytest.param(
-            Map[TypingAny, int:str, ...:Never],
+            Map[object, int:str, ...:Never],
             id="explicit-never-default",
         ),
         pytest.param(Map[TypingAny, TypingAny:Never], id="selected-never"),

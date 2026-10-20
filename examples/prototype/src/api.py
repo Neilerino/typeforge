@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal, TypedDict
 
-from typeforge import Collect, Each, Equal, Field, Key, Map, MapFields, Value
+from typeforge import Collect, Each, Field, Is, Key, Map, MapFields, Value
 
 
 def collect[T](*values: Each[T]) -> Collect[T]:
@@ -12,7 +12,7 @@ def read[M](
     mode: M,
 ) -> Map[
     M,
-    Equal[M, Literal["text"]] : str,
+    Is[Literal["text"]] : str,
     ...:bytes,
 ]:
     raise NotImplementedError

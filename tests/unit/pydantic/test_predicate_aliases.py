@@ -4,9 +4,10 @@ import pytest
 from returns.result import Failure
 
 from pydantic import PydanticSchemaGenerationError, TypeAdapter, ValidationError
-from typeforge import All, Assignable, Equal, Field, Key, Map, MapFields, Not, Value
-from typeforge import Any as AnyCondition
+from typeforge import Field, Key, Map, MapFields, Value
 from typeforge import semantics as s
+from typeforge._markers import All, Assignable, Equal, Not
+from typeforge._markers import Any as AnyCondition
 from typeforge.pydantic import Input, Schema
 from typeforge.pydantic._frontend import adapt_annotation
 

@@ -151,9 +151,8 @@ def test_schema_maps_preserve_type_outputs(
     path = tmp_path / "models.py"
     path.write_text(
         "from typing import Literal, Never\n"
-        "from typeforge import (\n"
-        "    All, Any, Assignable, Equal, Map, Not, Value,\n"
-        ")\n"
+        "from typeforge import Map, Value\n"
+        "from typeforge._markers import All, Any, Assignable, Equal, Not\n"
         "from typeforge.pydantic import Input, Schema\n\n"
         "class Payload:\n"
         f"    value: Schema[{annotation}]\n",
@@ -279,9 +278,8 @@ def test_generic_schema_maps_preserve_reachable_outputs(
     path = tmp_path / "models.py"
     path.write_text(
         "from typing import Literal, Never\n"
-        "from typeforge import (\n"
-        "    All, Any, Assignable, Equal, Map, Not, Value,\n"
-        ")\n"
+        "from typeforge import Map, Value\n"
+        "from typeforge._markers import All, Any, Assignable, Equal, Not\n"
         "from typeforge.pydantic import Input, Schema\n\n"
         "class Payload[T, U]:\n"
         f"    value: Schema[{annotation}]\n",
@@ -364,7 +362,7 @@ def test_schema_relationship_aliases_preserve_type_outputs(
     path = tmp_path / "aliases.py"
     path.write_text(
         "from typing import Never\n"
-        "from typeforge import Equal, Map, Value\n"
+        "from typeforge._markers import Equal\nfrom typeforge import Map, Value\n"
         "from typeforge.pydantic import Schema\n\n"
         f"{aliases}\n\n"
         "class Payload[T]:\n"
@@ -425,9 +423,8 @@ def test_schema_field_transforms_preserve_typing_emission(
     path = tmp_path / "records.py"
     path.write_text(
         "from typing import Literal, TypedDict\n"
-        "from typeforge import (\n"
-        "    Equal, Field, Key, Map, MapFields, Value,\n"
-        ")\n"
+        "from typeforge import Field, Key, Map, MapFields, Value\n"
+        "from typeforge._markers import Equal\n"
         "from typeforge.pydantic import Schema\n\n"
         "class Record(TypedDict):\n"
         "    original: int\n\n"

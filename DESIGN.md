@@ -34,14 +34,17 @@ internal aliases directly to verify representation parity and malformed-data
 failures. They are not a public compatibility path.
 
 `Map` is Typeforge's central input/output type machine. Its ordered `selector: output`
-branches accept either exact or structural type patterns or boolean predicates;
-the first matching pattern or true predicate selects the output. `...: output`
+branches accept compatible types, structural patterns, or exact `Is[Type]`
+selectors; the first matching branch selects the output. `...: output`
 handles the unmatched path and omission means `Never`.
 
-Pattern and predicate cases share one ordering model. Structural patterns may
-capture `Value`, while predicates may compose `Equal`, `Assignable`, `All`,
-`Any`, and `Not` and may inspect contextual `Key` and `Value` bindings inside
-`MapFields`.
+Scalar bare matching follows Python assignment compatibility, including class
+inheritance, bool/int, numeric widening, and Any. Compiler adaptation carries
+local class ancestry and alias facts from the source snapshot to Schema lowering.
+`Is` lowers to existing exact equality data. Structural patterns may still capture
+`Value`, and field transforms bind `Key` and `Value` inside `MapFields` until their
+replacement slices land. Equal/Assignable/All/Any/Not remain private semantic
+representations for existing internal consumers; they are not public authoring.
 
 Shared semantic evaluation distinguishes runtime `Input` from unresolved static
 type identity. A deferred Map preserves selection until input is available;

@@ -14,18 +14,9 @@ from pydantic import (
     TypeAdapter,
     ValidationError,
 )
-from typeforge import (
-    All,
-    Assignable,
-    Equal,
-    Field,
-    Key,
-    Map,
-    MapFields,
-    Not,
-    Value,
-)
-from typeforge import Any as AnyCondition
+from typeforge import Field, Key, Map, MapFields, Value
+from typeforge._markers import All, Assignable, Equal, Not
+from typeforge._markers import Any as AnyCondition
 from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic import Input, Schema
 
@@ -273,12 +264,12 @@ def test_generic_static_fallback_is_independent_of_input() -> None:
     class Payload[T](BaseModel):
         value: Schema[Map[Input, str : Map[T, int:int, ...:bytes]]]
 
-    assert Payload(value="3").value == b"3"
-    assert Payload[Any](value="3").value == b"3"
+    assert Payload(value="3").value == 3
+    assert Payload[Any](value="3").value == 3
     assert Payload[int](value="3").value == 3
     assert Payload[bytes](value="3").value == b"3"
     Payload.model_rebuild(force=True)
-    assert Payload(value="3").value == b"3"
+    assert Payload(value="3").value == 3
 
 
 def test_serialization_uses_output_types_and_never_redispatches_coerced_input() -> None:

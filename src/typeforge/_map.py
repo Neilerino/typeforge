@@ -3,7 +3,7 @@
 from types import GenericAlias, NoneType
 from typing import Literal, cast, get_args, get_origin
 
-from typeforge._markers import All, Assignable, Case, Default, Equal, Not
+from typeforge._markers import All, Assignable, Case, Default, Equal, Is, Not
 from typeforge._markers import Any as AnyCondition
 from typeforge._markers import Map as CanonicalMap
 
@@ -52,6 +52,12 @@ class Map:
 def _bind_selector(selector: object, subject: object) -> object:
     origin = get_origin(selector)
     arguments: tuple[object, ...] = get_args(selector)
+    if origin is Is:
+        if len(arguments) != 1:
+            raise TypeError("Is requires one type argument")
+
+        return _apply(Equal, (subject, normalize_selector_literal(arguments[0])))
+
     if origin in (Equal, Assignable) and len(arguments) == 1:
         return _apply(origin, (subject, normalize_selector_literal(arguments[0])))
 

@@ -87,7 +87,8 @@ def test_runtime_statements_are_accepted_by_compilation_but_rejected_for_publica
 
 def test_public_surface_failure_precedes_compiler_failures(tmp_path: Path) -> None:
     path = tmp_path / "invalid_application.py"
-    source = dedent("""        from typeforge import Equal, Map
+    source = dedent("""        from typeforge._markers import Equal
+        from typeforge import Map
 
         def choose[T](value: T) -> Map[T, Equal[T, int, str] : str]: ...
 
@@ -104,7 +105,7 @@ def test_public_surface_failure_precedes_compiler_failures(tmp_path: Path) -> No
     assert isinstance(published, Failure)
     error = published.failure()
     assert isinstance(error, UnsupportedPublicDeclaration)
-    assert error.line == 5
+    assert error.line == 6
 
 
 def test_specialization_failures_are_preserved_for_publication(tmp_path: Path) -> None:

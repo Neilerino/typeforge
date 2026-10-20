@@ -92,7 +92,8 @@ def test_nested_adaptation_failures_preserve_the_original_error(
 ) -> None:
     source = tmp_path / "invalid_condition.py"
     source.write_text(
-        """from typeforge import Equal, Map
+        """from typeforge._markers import Equal
+from typeforge import Map
 def choose[T](value: T) -> Map[T, Equal[T, int, str] : str, ... : bytes]: ...
 """,
         encoding="utf-8",
@@ -318,7 +319,8 @@ def test_schema_boundaries_resolve_in_model_fields_and_generated_stubs(
         (
             "from pydantic import BaseModel\n"
             "from typing import TypedDict\n"
-            "from typeforge import Equal, Field, Key, Map, "
+            "from typeforge._markers import Equal\n"
+            "from typeforge import Field, Key, Map,"
             "MapFields, Value\n"
             "from typeforge.pydantic import Input, Schema\n"
             "\n"

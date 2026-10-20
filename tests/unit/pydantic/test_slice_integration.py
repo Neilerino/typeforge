@@ -6,8 +6,8 @@ from typing import Annotated, Literal
 import pytest
 
 from pydantic import Field, TypeAdapter, ValidationError
-from typeforge import Assignable, Equal, Map
-from typeforge._markers import Case, Default
+from typeforge import Map
+from typeforge._markers import Assignable, Case, Default, Equal
 from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic import Input, Schema
 from typeforge.pydantic._frontend import adapt_annotation

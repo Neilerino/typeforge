@@ -1,14 +1,12 @@
 """Failure short-circuiting at the runtime annotation compilation seam."""
 
-from typing import Any
-
 import pytest
 from pydantic_core import CoreSchema
 from returns.result import Failure
 
 from pydantic import GetCoreSchemaHandler
-from typeforge import Equal, Key, Map
-from typeforge._markers import Case, Default
+from typeforge import Key, Map
+from typeforge._markers import Case, Default, Equal
 from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic._compile import compile_annotation
 
@@ -27,7 +25,7 @@ class ForbiddenHandler(GetCoreSchemaHandler):
             "invalid_marker",
         ),
         (Map[int, Equal[Key, Key] : str], "evaluation", "unbound_key"),
-        (Map[Any, int:str], "evaluation", "map_no_match"),
+        (Map[object, int:str], "evaluation", "map_no_match"),
         (Equal[int, int], "evaluation", "expected_type"),
     ],
 )

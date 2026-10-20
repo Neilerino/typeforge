@@ -70,7 +70,11 @@ def test_invalid_slice_syntax_returns_a_located_failure(
     message: str,
 ) -> None:
     path = Path("authored.py")
-    source = f"from typeforge import Map, All, Equal\ntype Selected = {expression}\n"
+    source = (
+        "from typeforge import Map\n"
+        "from typeforge._markers import All, Equal\n"
+        f"type Selected = {expression}\n"
+    )
     for result in (
         parse_source(source, path),
         compile_source(source, path, maximum_arity=2),
@@ -134,7 +138,8 @@ def test_source_spelling_preserves_canonical_interface(
     expected: str,
 ) -> None:
     imports = """from typing import Literal, Never
-from typeforge import Map, Equal
+from typeforge import Map
+from typeforge._markers import Equal
 from typeforge._markers import Case, Default, Map as CanonicalMap
 from typeforge.pydantic import Schema
 """
@@ -151,10 +156,19 @@ from typeforge.pydantic import Schema
 @pytest.mark.parametrize(
     ("imports", "mapping", "predicate"),
     [
-        ("from typeforge import Map, Equal", "Map", "Equal"),
-        ("from typeforge import Map as Select, Equal as Is", "Select", "Is"),
-        ("import typeforge as tf", "tf.Map", "tf.Equal"),
-        ("import typeforge", "typeforge.Map", "typeforge.Equal"),
+        (
+            "from typeforge._markers import Equal\nfrom typeforge import Map",
+            "Map",
+            "Equal",
+        ),
+        (
+            "from typeforge._markers import Equal as Is\n"
+            "from typeforge import Map as Select",
+            "Select",
+            "Is",
+        ),
+        ("import typeforge as tf", "tf.Map", "tf.Is"),
+        ("import typeforge", "typeforge.Map", "typeforge.Is"),
     ],
 )
 def test_imported_map_and_predicates_normalize_to_existing_data(
@@ -198,8 +212,8 @@ def test_unrelated_subscriptions_keep_their_original_slices(imports: str) -> Non
 
 
 def test_nested_subject_binding_and_union_roles_preserve_authored_spans() -> None:
-    source = """\
-from typeforge import Map, Equal, Value
+    source = """from typeforge._markers import Equal
+from typeforge import Map, Value
 type Résultat[T] = Map[
     T | int,
     list[Value]: Map[Value, Equal[int | str]: tuple[Value | None, ...]],
@@ -265,7 +279,11 @@ def test_existing_normalization_owner_reports_arity_and_entry_errors(
     fragment: str,
     message: str,
 ) -> None:
-    source = f"from typeforge import Map, Equal\ntype Bad = {expression}\n"
+    source = (
+        "from typeforge import Map\n"
+        "from typeforge._markers import Equal\n"
+        f"type Bad = {expression}\n"
+    )
     result = compile_source(source, Path("authored.py"), maximum_arity=2)
     assert isinstance(result, Failure)
     error = result.failure()
@@ -278,7 +296,7 @@ def test_compiler_never_executes_authored_slice_expressions(tmp_path: Path) -> N
     sentinel = tmp_path / "executed"
     source = (
         "from pathlib import Path\n"
-        "from typeforge import Map, Assignable\n"
+        "from typeforge._markers import Assignable\nfrom typeforge import Map\n"
         f"Path({str(sentinel)!r}).touch()\n"
         "_tripwire: int = 1 // 0\n"
         "def select[T](value: T) -> Map[T, Assignable[int]:str, ...:None]: ...\n"

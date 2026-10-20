@@ -1,7 +1,8 @@
 import pytest
 
 from pydantic import PydanticSchemaGenerationError, TypeAdapter
-from typeforge import All, Any, Each, Equal, Field, Key, Map, MapFields, Value
+from typeforge import Each, Field, Key, Map, MapFields, Value
+from typeforge._markers import All, Any, Equal
 from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic import Input, Schema
 

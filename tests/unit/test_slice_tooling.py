@@ -13,10 +13,10 @@ import pytest
 from typeforge.compiler.source import parse_source
 from typeforge.overlay import transform_source
 
-SOURCE = """\
-from typing import Literal, assert_type
+SOURCE = """from typing import Literal, assert_type
 
-from typeforge import Assignable, Map
+from typeforge import Map
+from typeforge._markers import Assignable
 
 type Selected[T] = Map[T, Literal["text"]: str | None, Assignable[bytes]: bytes, ...: T]
 type Nested[T] = list[Map[T, int: str, ...: bytes] | None]

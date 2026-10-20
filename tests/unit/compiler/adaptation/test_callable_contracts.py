@@ -147,7 +147,8 @@ def test_schema_origins_reach_retained_predicate_operands() -> None:
     path = Path("predicate.py")
     source = (
         parse_source(
-            dedent("""            from typeforge import Equal, Map
+            dedent("""            from typeforge._markers import Equal
+            from typeforge import Map
             from typeforge.pydantic import Schema
             def convert[T](value: T) -> Map[T, Equal[T, Schema[int]] : str]: ...
             """),
@@ -168,7 +169,7 @@ def test_schema_origins_reach_retained_predicate_operands() -> None:
     assert isinstance(predicate, EqualPredicate)
     assert predicate.right == schema_root == TypeName("int")
     assert predicate.right is not schema_root
-    schema_span = SourceSpan(path, SourcePosition(3, 44), SourcePosition(3, 55))
+    schema_span = SourceSpan(path, SourcePosition(4, 44), SourcePosition(4, 55))
     schema_targets = tuple(
         item.generated for item in specialized.origins if item.origin == schema_span
     )
