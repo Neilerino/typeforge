@@ -8,13 +8,11 @@ from typeforge._markers import (
     Each,
     Field,
     Is,
-    Key,
     Map,
-    MapFields,
     OptionalField,
     ReadonlyField,
-    Value,
 )
+from typeforge._record import Fields, Record
 from typeforge._type_function import TypeFunctionConstructionError, type_function
 
 if not TYPE_CHECKING:
@@ -28,13 +26,12 @@ __all__ = [
     "Drop",
     "Each",
     "Field",
+    "Fields",
     "Is",
-    "Key",
     "Map",
-    "MapFields",
     "OptionalField",
     "ReadonlyField",
+    "Record",
     "TypeFunctionConstructionError",
-    "Value",
     "type_function",
 ]

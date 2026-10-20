@@ -244,10 +244,8 @@ def test_capture_diagnostics_use_public_spelling() -> None:
 def test_structural_value_authoring_is_rejected_in_both_consumers(
     tmp_path: Path,
 ) -> None:
-    from typeforge import Value
-
-    with pytest.raises(PydanticSchemaGenerationError, match="Capture"):
-        TypeAdapter(Schema[Map[list[int], list[Value] : set[Value]]])
+    with pytest.raises(ImportError):
+        exec("from typeforge import Value")
 
     source = tmp_path / "old_capture.py"
     source.write_text(
@@ -258,7 +256,7 @@ def test_structural_value_authoring_is_rejected_in_both_consumers(
     )
     result = generate_module(source, maximum_arity=1)
     assert isinstance(result, Failure)
-    assert "Capture" in result.failure().message
+    assert "Record and Fields" in result.failure().message
 
 
 def test_independent_type_functions_keep_their_capture_scopes(tmp_path: Path) -> None:

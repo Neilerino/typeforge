@@ -4,6 +4,7 @@ from pathlib import Path
 
 from typeforge.compiler.source._model import (
     CaptureTypeExpression,
+    FieldReferenceTypeExpression,
     SourcePosition,
     SourceSpan,
 )
@@ -13,6 +14,7 @@ from typeforge.compiler.source._model import (
 class ImportBindings:
     names: tuple[tuple[str, tuple[str, ...]], ...]
     captures: tuple[tuple[str, CaptureTypeExpression], ...] = ()
+    fields: tuple[tuple[str, FieldReferenceTypeExpression], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

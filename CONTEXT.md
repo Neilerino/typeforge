@@ -18,8 +18,8 @@ full Scala-style dependent verification is not promised.
 
 The [initial API decisions](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md) are complete
 as of 2026-09-30. Scalar and union matching, selection aliases, resolved generic
-compatibility, basic type functions, and named captures are implemented; later slices remain
-pending. Read the agreed
+compatibility, basic type functions, named and alternative captures, and
+Record/Fields construction are implemented. Later slices remain pending. Read the agreed
 batches before changing selector APIs, field construction, type-function scope,
 or callable input contracts. The support descriptions below describe current
 implementation unless explicitly identified as an agreed future contract.
@@ -46,7 +46,10 @@ For compatible Sequence captures or heterogeneous tuple elements, also read
 For overlapping or nested pattern unions, read
 [the alternative capture contracts](tests/unit/test_alternative_capture_contract.py);
 each matching environment instantiates a complete output before unioning.
-Local aliases and Record/Fields remain later slices.
+For record construction, field scope, passthrough metadata, or generic rebuilds,
+read [explicit record semantics](DESIGN.md#explicit-record-semantics) and
+[the compiler/runtime contracts](tests/unit/test_record_fields_contract.py).
+Local aliases remain a later slice.
 
 ## Language
 
@@ -105,12 +108,13 @@ type Encoded[T] = Map[T, int: str, Is[bytes]: str, ...: T]
 - **Selectors:** bare scalar selectors use assignment compatibility, including
   inheritance, bool/int, numeric widening, and Any. `Is[Type]` compares the whole
   subject exactly. Structural selectors bind declared Capture tokens such as
-  `Item = Capture("Item")`. Structural Value authoring is rejected. Callable overloads have the
+  `Item = Capture("Item")`. Callable overloads have the
   [limits below](#callable-support).
 - **Scope:** Is binds the whole enclosing Map subject, through
   aliases and All/Any/Not. Binary operands remain explicit. Nested Maps establish
-  their own subjects; outputs receive no implicit binding. Key/Value retain
-  their field roles. Nested Maps reuse an already bound capture token.
+  their own subjects; outputs receive no implicit binding. Record comprehensions
+  bind `field.name`, `field.type`, and the complete `field`. Nested Maps reuse an
+  already bound capture token.
 - **Endpoints:** None and empty endpoints denote the None type. `int:` equals
   `int: None`; `:str` equals `None: str`; `:` is a None-to-None branch. An explicit
   None step is inert; other slice steps are invalid.
@@ -198,10 +202,11 @@ passing checker tests alone does not establish Schema-equivalent selection.
 
 ### Field support
 
-TypedDict transforms support dropping, renaming, scalar Value mapping, union
+TypedDict transforms support dropping, renaming, scalar field.type mapping, union
 outputs, and unchanged union fields. Compiler materialization uses named generic
 record aliases; runtime Schema also supports the exercised inline form.
 
+Whole-field passthrough preserves source flags and backend-owned metadata.
 Field makes outputs required/writable, OptionalField optional/writable, and
 ReadonlyField required/readonly: each replaces source flags. Compiler output uses
 Annotated fields' base types; Pydantic retains constraints and schema metadata.
@@ -297,7 +302,7 @@ spelling; callable input/output precision remains a separate pending contract.
 ### G5 — Field distribution
 
 Compiler record discovery stores field annotations as opaque NamedType values.
-The nested Value Map witness emits float for an int-or-str field, while Pydantic
+The nested field.type Map witness emits float for an int-or-str field, while Pydantic
 distributes to bytes-or-float. The
 [agreed correction](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#d5--union-valued-fields)
 requires bytes-or-float in both consumers, preserving ordinary memberwise Map
@@ -306,7 +311,9 @@ implementation changes.
 
 ### G6 — Unsupported structures
 
-Record-union operands and unions of structural capture patterns remain rejected.
+Record-union operands remain rejected. Structural capture alternatives evaluate
+complete outputs in independent binding contexts; their production contract is
+linked above.
 The [agreed record-union design](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#agreed-record-union-support)
 transforms each TypedDict alternative independently and preserves a union of
 complete output shapes, including field correlations. The
@@ -317,23 +324,18 @@ unambiguous. The
 evaluates each successful alternative with its own bindings and unions complete
 outputs, preserving correlations. A matched alternative whose output requires an
 unbound capture is an error. Initially, report it when evaluation needs that
-binding, without a mandatory separate definition-time analysis pass. Implementation and
-derisking remain pending for both forms of union support.
+binding, without a mandatory separate definition-time analysis pass. This capture
+behavior is implemented; record-union support remains pending.
 Ordinary classes and parameterized dicts remain outside the supported record families.
 
-The [preferred future field syntax](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#preferred-field-authoring--record-comprehensions)
+The [agreed field syntax](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#preferred-field-authoring--record-comprehensions)
 uses Record/Fields comprehensions inside a type_function, with a locally bound
-field exposing its name and type. Initial syntax and semantics are agreed;
-Record/Fields implementation is scheduled after basic type functions. A
-[bounded POC](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/record-comprehension-poc.md) demonstrates compiler adapter
-lowering, reusable runtime construction, record-union correlation, and ordinary
-checker output. Production template bindings, current-field references, union
-integration, and preservation rules need implementation. The approved cutover
-removes MapFields and ambient Key/Value authoring without compatibility shims or
-migration guides; the library is unreleased. The second decision batch specifies
-Field construction and initial TypedDict output while requiring room for future
-generated Protocols through explicit record-family adapters. Current authoring
-APIs have not changed.
+field exposing its name and type. Record/Fields construction, scoped references,
+whole-field preservation, and Drop are implemented. The public cutover removes
+MapFields and ambient Key/Value without compatibility shims. Field construction
+and immutable replacement arrive next; union-valued transforms and correlated
+record unions retain their own slices. Initial output is TypedDict; explicit
+record-family adapters preserve room for future generated Protocols.
 
 The [agreed no-match rule](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#agreed-partial-static-no-match-failure)
 fails a Map when a known subject member has no matching branch. Ordinary Never

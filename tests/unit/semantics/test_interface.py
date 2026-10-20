@@ -16,7 +16,6 @@ from typeforge.semantics import (
     TypeReference,
     TypeSymbol,
     TypeSystem,
-    TypeValue,
     evaluate,
     type_ref,
 )
@@ -86,13 +85,13 @@ def test_evaluate_is_the_single_semantic_interface() -> None:
 def test_evaluation_context_distinguishes_none_from_an_unbound_type() -> None:
     """Runtime adapters can bind None without using it as the unbound sentinel."""
     context = EvaluationContext[object](
-        value=ResolvedType(None),
+        fields=((TypeSymbol((__name__,), "field"), RecordField("value", None)),),
         captures=((TypeSymbol((__name__,), "Item"), ResolvedType(None)),),
         input_type=ResolvedType(None),
     )
 
-    assert_type(context.value, TypeValue[object] | None)
-    assert context.value == ResolvedType(None)
+    assert_type(context.fields[0][1].value, object)
+    assert context.fields[0][1].value is None
     assert context.captures[0][1] == ResolvedType(None)
     assert context.input_type == ResolvedType(None)
 

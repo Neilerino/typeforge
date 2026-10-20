@@ -47,13 +47,10 @@ class MarkerKind(Enum):
     MAP = "Map"
     CASE = "Case"
     DEFAULT = "Default"
-    MAP_FIELDS = "MapFields"
     FIELD = "Field"
     OPTIONAL_FIELD = "OptionalField"
     READONLY_FIELD = "ReadonlyField"
     DROP = "Drop"
-    KEY = "Key"
-    VALUE = "Value"
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +69,24 @@ class CaptureTypeExpression:
     span: SourceSpan
     name: str
     declaration: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class FieldReferenceTypeExpression:
+    source: str
+    span: SourceSpan
+    name: str
+    declaration: SourceSpan
+    attribute: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RecordTypeExpression:
+    source: str
+    span: SourceSpan
+    record: SourceTypeExpression
+    binding: FieldReferenceTypeExpression
+    transform: SourceTypeExpression
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +141,8 @@ class RawTypeExpression:
 type SourceTypeExpression = (
     NameTypeExpression
     | CaptureTypeExpression
+    | FieldReferenceTypeExpression
+    | RecordTypeExpression
     | AppliedTypeExpression
     | UnionTypeExpression
     | StarredTypeExpression
@@ -251,6 +268,13 @@ def contains_marker(
 ) -> bool:
 
     match expression:
+        case RecordTypeExpression(record=record, transform=transform):
+            return (
+                marker is None
+                or contains_marker(record, marker)
+                or contains_marker(transform, marker)
+            )
+
         case MarkerTypeExpression():
             return (
                 marker is None
@@ -280,6 +304,7 @@ def contains_marker(
         case (
             NameTypeExpression()
             | CaptureTypeExpression()
+            | FieldReferenceTypeExpression()
             | RuntimeInputTypeExpression()
             | RawTypeExpression()
         ):

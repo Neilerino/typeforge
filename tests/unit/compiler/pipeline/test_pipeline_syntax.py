@@ -56,30 +56,34 @@ def test_field_maps_can_drop_fields_and_change_modifiers(tmp_path: Path) -> None
     source = tmp_path / "records.py"
     source.write_text(
         (
-            "\n"
-            "from typing import Literal, TypedDict\n"
-            "from typeforge._markers import Equal\n"
-            "from typeforge import Drop, Key, Map,"
-            "MapFields, OptionalField, ReadonlyField, Value\n"
-            "\n"
-            "class Credentials(TypedDict):\n"
-            "    password: str\n"
-            "    token: str\n"
-            "    attempts: int\n"
-            "\n"
-            "type Public[T] = MapFields[\n"
-            "    T,\n"
-            "    Map[\n"
-            "        Key,\n"
-            '        Equal[Key, Literal["password"]] : Drop,\n'
-            '        Equal[Key, Literal["token"]] : '
-            "ReadonlyField[Key, Value],\n"
-            "        ... : OptionalField[Key, Value],\n"
-            "    ],\n"
-            "]\n"
-            "\n"
-            "def publicize[T](value: T) -> Public[T]:\n"
-            "    raise NotImplementedError\n"
+            """\
+from typing import Literal, TypedDict
+from typeforge._markers import Equal
+from typeforge import Drop, Map, OptionalField, ReadonlyField, Fields, Record
+
+
+class Credentials(TypedDict):
+    password: str
+    token: str
+    attempts: int
+
+
+type Public[T] = Record(
+    (
+        Map[
+            field.name,
+            Equal[field.name, Literal["password"]] : Drop,
+            Equal[field.name, Literal["token"]] : ReadonlyField[field.name, field.type],
+            ... : OptionalField[field.name, field.type],
+        ]
+        for field in Fields[T]
+    )
+)
+
+
+def publicize[T](value: T) -> Public[T]:
+    raise NotImplementedError
+"""
         ).lstrip(),
         encoding="utf-8",
     )
@@ -106,15 +110,16 @@ def test_documented_record_map_compiles_like_its_underlying_expression(
 ) -> None:
     source = tmp_path / "documented_records.py"
     source.write_text(
-        """
+        """\
+
 from typing import Annotated, TypedDict
-from typeforge import Doc, Field, Key, MapFields, Value
+from typeforge import Doc, Field, Fields, Record
 
 class User(TypedDict):
     name: str
 
 type Copy[T] = Annotated[
-    MapFields[T, Field[Key, Value]],
+    Record((Field[field.name, field.type] for field in Fields[T])),
     Doc("Copies every field without changing its type."),
 ]
 

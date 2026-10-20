@@ -1,16 +1,7 @@
 from typing import Literal, NotRequired, ReadOnly, Required
 from typing import TypedDict as TD
 
-from typeforge import (
-    Drop,
-    Field,
-    Key,
-    Map,
-    MapFields,
-    OptionalField,
-    ReadonlyField,
-    Value,
-)
+from typeforge import Drop, Field, Fields, Map, OptionalField, ReadonlyField, Record
 from typeforge._markers import All, Assignable, Equal, Not
 from typeforge._markers import Any as AnyCondition
 
@@ -21,22 +12,25 @@ type JsonValue[T] = Map[
     ...:T,
 ]
 
-type PublicRecord[T] = MapFields[
-    T,
+type PublicRecord[T] = Record(
     Map[
-        Key,
+        field.name,
         AnyCondition[
-            Equal[Key, Literal["password"]],
-            Not[Assignable[Value, object]],
+            Equal[field.name, Literal["password"]], Not[Assignable[field.type, object]]
         ] : Drop,
-        ... : Field[Key, JsonValue[Value]],
-    ],
-]
+        ... : Field[field.name, JsonValue[field.type]],
+    ]
+    for field in Fields[T]
+)
 
 type EveryValue[T] = All[Assignable[T, object], Not[Equal[T, None]]]
 
-type OptionalRecord[T] = MapFields[T, OptionalField[Key, Value]]
-type FrozenRecord[T] = MapFields[T, ReadonlyField[Key, Value]]
+type OptionalRecord[T] = Record(
+    OptionalField[field.name, field.type] for field in Fields[T]
+)
+type FrozenRecord[T] = Record(
+    ReadonlyField[field.name, field.type] for field in Fields[T]
+)
 
 
 class Payload(TD, total=False):

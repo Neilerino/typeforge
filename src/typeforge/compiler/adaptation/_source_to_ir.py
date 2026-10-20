@@ -22,7 +22,7 @@ from typeforge.compiler.adaptation._schema import adapt_schema_expression
 from typeforge.compiler.adaptation._schema_aliases import expand_schema_aliases
 from typeforge.compiler.record_materialization import (
     RecordMaterializationError,
-    is_map_fields_alias,
+    is_record_alias,
 )
 from typeforge.compiler.source import (
     AllMarker,
@@ -36,8 +36,6 @@ from typeforge.compiler.source import (
     EachMarker,
     EqualMarker,
     FieldMarker,
-    KeyMarker,
-    MapFieldsMarker,
     MapMarker,
     MarkerKind,
     MarkerNormalizationError,
@@ -52,7 +50,6 @@ from typeforge.compiler.source import (
     SourceTypeExpression,
     StarredTypeExpression,
     UnionTypeExpression,
-    ValueMarker,
     bind_map_selector,
     contains_marker,
     is_enriched,
@@ -106,9 +103,7 @@ def adapt_source_module(
 ) -> StubModule:
     # Record aliases retain their references until the materialization stage.
     type_context = SourceTypeContext(
-        aliases=tuple(
-            alias for alias in module.aliases if not is_map_fields_alias(alias)
-        ),
+        aliases=tuple(alias for alias in module.aliases if not is_record_alias(alias)),
         types=class_type_environment(module),
     )
     origins: list[GeneratedElementOrigin[SourceSpan]] = []
@@ -134,7 +129,11 @@ def adapt_source_module(
 
         origin_count_before_alias = len(origins)
         parameters = tuple(parameter.name for parameter in alias.type_parameters)
-        if alias.is_type_function:
+        value: StubTypeExpression
+        if is_record_alias(alias):
+            # Record templates are materialized through the family-aware stage.
+            value = TypeName("object")
+        elif alias.is_type_function:
             value = resolve_type_function_application(
                 alias.value,
                 alias.name,
@@ -587,9 +586,6 @@ def _adapt_alias_fallback(
                 type_context=type_context,
             )
 
-        case MapFieldsMarker():
-            return TypeName("object")
-
         case (
             AssignableMarker() | EqualMarker() | AllMarker() | AnyMarker() | NotMarker()
         ):
@@ -612,12 +608,6 @@ def _adapt_alias_fallback(
 
         case DropMarker():
             return TypeName("Never")
-
-        case KeyMarker():
-            return TypeName("str")
-
-        case ValueMarker():
-            return TypeName("object")
 
 
 def _adapt_function(

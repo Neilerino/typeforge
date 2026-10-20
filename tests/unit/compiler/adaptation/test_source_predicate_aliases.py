@@ -162,17 +162,33 @@ def test_alias_binding_works_with_field_subjects_without_executing_source(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "records.py"
-    path.write_text("""from typing import TypedDict, Literal
-from typeforge import Map, MapFields, Field, Key, Value
+    path.write_text("""\
+from typing import TypedDict, Literal
+from typeforge import Map, Field, Fields, Record
 from typeforge._markers import Equal
+
 type Name = Equal[Literal["value"]]
 type Integer = Equal[int]
+
+
 class Row(TypedDict):
     value: int
-type Selected[T] = MapFields[T, Map[
-    Key, Name: Field[Key, Map[Value, Integer: str, ...: bytes]],
-]]
+
+
+type Selected[T] = Record(
+    (
+        Map[
+            field.name,
+            Name : Field[field.name, Map[field.type, Integer:str, ...:bytes]],
+        ]
+        for field in Fields[T]
+    )
+)
+
+
 def transform(row: Row) -> Selected[Row]: ...
+
+
 _tripwire: int = 1 // 0
 """)
     assert "value: str" in generate_module(path, maximum_arity=2).unwrap().content

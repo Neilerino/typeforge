@@ -4,6 +4,7 @@ from pathlib import Path
 from typeforge.compiler.source._annotations import (
     parse_annotation,
     parse_type_parameter,
+    validate_construction_expression,
 )
 from typeforge.compiler.source._model import RawTypeExpression, TypeAliasDeclaration
 from typeforge.compiler.source._syntax import (
@@ -78,7 +79,7 @@ def _type_function_body(
 
 
 def _type_function_return(
-    path: Path, node: ast.FunctionDef | ast.AsyncFunctionDef
+    path: Path, node: ast.FunctionDef | ast.AsyncFunctionDef, bindings: ImportBindings
 ) -> ast.expr:
     body = _type_function_body(node)
     if not body or not isinstance(body[-1], ast.Return) or body[-1].value is None:
@@ -88,25 +89,7 @@ def _type_function_return(
         )
 
     returned = body[-1].value
-    for item in ast.walk(returned):
-        if isinstance(
-            item,
-            ast.Call
-            | ast.Lambda
-            | ast.ListComp
-            | ast.SetComp
-            | ast.DictComp
-            | ast.GeneratorExp
-            | ast.NamedExpr
-            | ast.IfExp
-            | ast.BoolOp
-            | ast.Compare,
-        ) or (isinstance(item, ast.BinOp) and not isinstance(item.op, ast.BitOr)):
-            raise AnnotationSyntaxError(
-                "unsupported type_function construction expression",
-                source_span(path, item),
-            )
-
+    validate_construction_expression(path, returned, bindings)
     return returned
 
 
@@ -118,7 +101,7 @@ def parse_type_function(
     bindings: ImportBindings,
 ) -> TypeAliasDeclaration:
     _validate_type_function_signature(path, node, scope)
-    returned = _type_function_return(path, node)
+    returned = _type_function_return(path, node, bindings)
     parameters = tuple(
         parse_type_parameter(source, parameter)
         for parameter in node.type_params

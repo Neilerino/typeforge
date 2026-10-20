@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal, TypedDict
 
-from typeforge import Field, Key, Map, MapFields, Value
+from typeforge import Field, Fields, Map, Record
 from typeforge._markers import Equal
 
 
@@ -36,13 +36,10 @@ class User(TypedDict):
     attempts: int
 
 
-type JsonSafe[T] = MapFields[
-    T,
-    Field[
-        Key,
-        Map[Value, datetime:str, ...:Value],
-    ],
-]
+type JsonSafe[T] = Record(
+    Field[field.name, Map[field.type, datetime:str, ... : field.type]]
+    for field in Fields[T]
+)
 
 
 def jsonify[T](value: T) -> JsonSafe[T]:

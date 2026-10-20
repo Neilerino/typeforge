@@ -47,12 +47,13 @@ def test_same_named_relationship_aliases_preserve_first_binding_projection() -> 
 
 
 def test_reusable_relationships_preserve_alias_names_and_schema_branches() -> None:
-    source = dedent("""        from typing import TypedDict
-        from typeforge import Field, Key, Map, MapFields, Value
+    source = dedent("""\
+        from typing import TypedDict
+        from typeforge import Field, Map, Fields, Record
         from typeforge.pydantic import Schema
         class Payload(TypedDict):
             value: int
-        type Copy[T] = MapFields[T, Field[Key, Value]]
+        type Copy[T] = Record((Field[field.name, field.type] for field in Fields[T]))
         type Wire[T] = Map[T, int : bytes, ... : str]
         type Named[T] = Map[T, int : Wire[T], ... : None]
         type Record[T] = Map[T, int : Copy[Payload], ... : None]
@@ -94,7 +95,7 @@ def test_reusable_relationships_preserve_alias_names_and_schema_branches() -> No
     document = transform_source(source, Path("relationships.py")).unwrap()
     expected = source
     for authored, projected in (
-        ("MapFields[T, Field[Key, Value]]", "object"),
+        ("Record((Field[field.name, field.type] for field in Fields[T]))", "object"),
         ("Schema[Map[T, int : bytes, ... : str]]", "bytes | str"),
         ("Map[T, int : bytes, ... : str]", "bytes | str"),
         ("Map[T, int : Wire[T], ... : None]", "Wire[T] | None"),
@@ -111,7 +112,7 @@ def test_reusable_relationships_preserve_alias_names_and_schema_branches() -> No
     (
         ("Each[T]", "T"),
         ("Collect[T]", "tuple[T, ...]"),
-        ("MapFields[T, Field[Key, Value]]", "object"),
+        ("Record((Field[field.name, field.type] for field in Fields[T]))", "object"),
         ("Schema[int]", "int"),
         ("list[Schema[int]]", "list[int]"),
         ("Map[T, int : bytes, ... : str]", "bytes | str"),
@@ -131,8 +132,8 @@ def test_alias_projection_uses_current_alias_origins_and_preserves_source_mappin
     authored_value: str, projected_value: str
 ) -> None:
     source = dedent(f"""\
-        from typeforge import Collect, Each, Field, Key
-        from typeforge import Map, MapFields, Value
+        from typeforge import Collect, Each, Field
+        from typeforge import Map, Fields, Record
         from typeforge.pydantic import Schema
 
         type Ordinary = str
@@ -274,19 +275,20 @@ def test_equal_method_overloads_keep_their_authored_insertions_and_mappings() ->
 def test_record_overloads_remain_excluded_from_overlay_insertion() -> None:
     source = dedent("""\
         from typing import TypedDict
-        from typeforge import Field, Key, MapFields, Value
+        from typeforge import Field, Fields, Record
 
         class User(TypedDict):
             name: str
 
-        type Copy[T] = MapFields[T, Field[Key, Value]]
+        type Copy[T] = Record((Field[field.name, field.type] for field in Fields[T]))
 
         def copy[T](value: T) -> Copy[T]: ...
         """)
     document = transform_source(source, Path("records.py"), maximum_arity=1).unwrap()
 
     assert document.generated_text == source.replace(
-        "type Copy[T] = MapFields[T, Field[Key, Value]]", "type Copy[T] = object"
+        "type Copy[T] = Record((Field[field.name, field.type] for field in Fields[T]))",
+        "type Copy[T] = object",
     )
 
 
@@ -413,12 +415,12 @@ def test_scoped_overlay_overloads_do_not_leak_into_published_module(
 def test_scoped_method_does_not_replace_a_same_named_record_consumer() -> None:
     source = dedent("""\
         from typing import TypedDict
-        from typeforge import Collect, Each, Field, Key, MapFields, Value
+        from typeforge import Collect, Each, Field, Fields, Record
 
         class User(TypedDict):
             name: str
 
-        type Copy[T] = MapFields[T, Field[Key, Value]]
+        type Copy[T] = Record((Field[field.name, field.type] for field in Fields[T]))
 
         def copy[T](value: T) -> Copy[T]: ...
 

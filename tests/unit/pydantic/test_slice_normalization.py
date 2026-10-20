@@ -12,7 +12,7 @@ from pydantic import (
     ValidationError,
 )
 from pydantic import Field as PydanticField
-from typeforge import Capture, Drop, Field, Key, Map, MapFields, OptionalField, Value
+from typeforge import Capture, Drop, Field, Fields, Map, OptionalField, Record
 from typeforge._markers import All, Assignable, Case, Default, Equal, Not
 from typeforge._markers import Map as CanonicalMap
 from typeforge.pydantic import Input, Schema
@@ -195,15 +195,15 @@ def test_record_fields_and_nested_outputs_use_unchanged_runtime_frontend() -> No
         password: str
         age: int
 
-    type Public[T] = MapFields[
-        T,
+    type Public[T] = Record(
         Map[
-            Key,
+            field.name,
             Literal["password"] : Drop,
-            Literal["name"] : OptionalField[Literal["display_name"], Value],
-            ... : Field[Key, Value],
-        ],
-    ]
+            Literal["name"] : OptionalField[Literal["display_name"], field.type],
+            ... : Field[field.name, field.type],
+        ]
+        for field in Fields[T]
+    )
 
     adapter = TypeAdapter(Schema[Public[User]])
     assert adapter.validate_python({"age": "3"}) == {"age": 3}

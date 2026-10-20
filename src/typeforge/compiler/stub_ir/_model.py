@@ -129,12 +129,6 @@ class FieldType:
 
 
 @dataclass(frozen=True, slots=True)
-class MapFieldsType:
-    record: StubTypeExpression
-    transform: StubTypeExpression
-
-
-@dataclass(frozen=True, slots=True)
 class RuntimeInputType:
     pass
 
@@ -153,7 +147,6 @@ type StubTypeExpression = (
     | MapType
     | CaptureType
     | FieldType
-    | MapFieldsType
     | RuntimeInputType
 )
 

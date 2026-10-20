@@ -93,16 +93,6 @@ class InputReference:
 
 
 @dataclass(frozen=True, slots=True)
-class KeyReference:
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class ValueReference:
-    pass
-
-
-@dataclass(frozen=True, slots=True)
 class ParameterizedTypeTemplate[T]:
     """A parameterized output type awaiting contextual substitution."""
 
@@ -179,13 +169,6 @@ class DropExpression:
 
 
 @dataclass(frozen=True, slots=True)
-class MapFieldsExpression[T]:
-    record: Expression[T]
-    transform: Expression[T]
-    output_name: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class ResolvedType[T]:
     """A backend-specific type resolved by semantic evaluation."""
 
@@ -205,6 +188,31 @@ class CaptureReference:
     """A declared token bound in patterns and read in type expressions."""
 
     symbol: TypeSymbol
+
+
+@dataclass(frozen=True, slots=True)
+class FieldReference:
+    """Read the complete field bound by a record comprehension."""
+
+    symbol: TypeSymbol
+
+
+@dataclass(frozen=True, slots=True)
+class FieldNameReference:
+    symbol: TypeSymbol
+
+
+@dataclass(frozen=True, slots=True)
+class FieldTypeReference:
+    symbol: TypeSymbol
+
+
+@dataclass(frozen=True, slots=True)
+class RecordExpression[T]:
+    record: Expression[T]
+    binding: TypeSymbol
+    transform: Expression[T]
+    output_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,9 +285,8 @@ class NoMatchDecision(StrEnum):
 class EvaluationContext[T]:
     """Immutable bindings and reachability for a nested evaluation."""
 
-    key: str | None = None
-    value: TypeValue[T] | None = None
     captures: CaptureBindings[T] = ()
+    fields: tuple[tuple[TypeSymbol, RecordField[T]], ...] = ()
     input_type: TypeValue[T] | None = None
     mode: EvaluationMode = EvaluationMode.DEFINITE
 
@@ -339,9 +346,11 @@ type Expression[T] = (
     | TypeValueReference[T]
     | UnionExpression[T]
     | InputReference
-    | KeyReference
-    | ValueReference
     | CaptureReference
+    | FieldReference
+    | FieldNameReference
+    | FieldTypeReference
+    | RecordExpression[T]
     | ParameterizedTypeTemplate[T]
     | FieldName
     | EqualExpression[T]
@@ -354,7 +363,6 @@ type Expression[T] = (
     | OptionalFieldExpression[T]
     | ReadonlyFieldExpression[T]
     | DropExpression
-    | MapFieldsExpression[T]
 )
 
 type BooleanExpression[T] = (
@@ -377,8 +385,8 @@ type TypePattern[T] = (
 type TypeTemplate[T] = (
     TypeReference[T]
     | TypeValueReference[T]
-    | ValueReference
     | CaptureReference
+    | FieldTypeReference
     | ParameterizedTypeTemplate[T]
     | UnionExpression[T]
 )

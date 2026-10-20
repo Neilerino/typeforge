@@ -38,11 +38,12 @@ from typeforge.overlay import transform_source
 from typeforge.pydantic import Schema
 from typeforge.pydantic._frontend import adapt_annotation
 
-IMPORTS = """from typing import Annotated, Any, Literal, Never, TypeVar, TypedDict
-from typeforge import Capture, Map, Value
+IMPORTS = """\
+from typing import Annotated, Any, Literal, Never, TypeVar, TypedDict
+from typeforge import Capture, Map
 from typeforge._markers import Equal, Assignable, All, Not
 from typeforge._markers import Case, Default, Map as CanonicalMap
-from typeforge import MapFields, Field, Key, Drop
+from typeforge import Field, Drop, Fields, Record
 from typeforge._markers import Any as AnyCondition
 from typeforge.pydantic import Schema, Input
 Item = Capture("Item")
@@ -536,13 +537,38 @@ def test_union_field_values_through_existing_materialization(
     sliced: bool,
 ) -> None:
     expression = (
-        'MapFields[T, Map[Key, Literal["value"]: Field[Key, '
-        "Map[Value, int: bytes, ...: float]], ...: Field[Key, Value]]]"
+        """\
+Record(
+    (
+        Map[
+            field.name,
+            Literal["value"] : Field[field.name, Map[field.type, int:bytes, ...:float]],
+            ... : Field[field.name, field.type],
+        ]
+        for field in Fields[T]
+    )
+)
+"""
         if sliced
         else (
-            'MapFields[T, CanonicalMap[Key, Case[Literal["value"], '
-            "Field[Key, CanonicalMap[Value, Case[int, bytes], "
-            "Default[float]]]], Default[Field[Key, Value]]]]"
+            """\
+Record(
+    (
+        CanonicalMap[
+            field.name,
+            Case[
+                Literal["value"],
+                Field[
+                    field.name,
+                    CanonicalMap[field.type, Case[int, bytes], Default[float]],
+                ],
+            ],
+            Default[Field[field.name, field.type]],
+        ]
+        for field in Fields[T]
+    )
+)
+"""
         )
     )
     path = tmp_path / "fields.py"
@@ -555,7 +581,9 @@ def test_union_field_values_through_existing_materialization(
     assert "value: float" in record
     assert 'label: Literal["a"] | Literal["b"]' in record
     annotation = runtime_expression(
-        expression.replace("[T,", "[Row,"), sliced=sliced, setup=RECORD_SETUP
+        expression.replace("Fields[T]", "Fields[Row]"),
+        sliced=sliced,
+        setup=RECORD_SETUP,
     )
     adapter = TypeAdapter(Schema[annotation])
     assert adapter.json_schema()["properties"]["value"]["anyOf"] == [
@@ -574,9 +602,23 @@ def test_record_unions_remain_unsupported(
     sliced: bool,
 ) -> None:
     expression = (
-        "MapFields[Row | Other, Map[Key, ...: Field[Key, Value]]]"
+        """\
+Record(
+    (
+        Map[field.name, ... : Field[field.name, field.type]]
+        for field in Fields[Row | Other]
+    )
+)
+"""
         if sliced
-        else "MapFields[Row | Other, CanonicalMap[Key, Default[Field[Key, Value]]]]"
+        else """\
+Record(
+    (
+        CanonicalMap[field.name, Default[Field[field.name, field.type]]]
+        for field in Fields[Row | Other]
+    )
+)
+"""
     )
     path = tmp_path / "unsupported.py"
     path.write_text(
