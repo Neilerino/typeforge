@@ -12,10 +12,48 @@ from typeforge.compiler.source._model import (
     RawTypeExpression,
     RecordTypeExpression,
     SchemaTypeExpression,
+    SourceModule,
     SourceTypeExpression,
     StarredTypeExpression,
     UnionTypeExpression,
 )
+
+
+def annotation_expressions(module: SourceModule) -> tuple[SourceTypeExpression, ...]:
+    """Collect annotation roots from every owned declaration position."""
+    return (
+        *(
+            annotation
+            for function in module.functions
+            for annotation in (
+                *(parameter.annotation for parameter in function.parameters),
+                function.returns,
+            )
+            if annotation is not None
+        ),
+        *(
+            field.annotation
+            for declaration in module.typed_dicts
+            for field in declaration.fields
+        ),
+        *(base for declaration in module.classes for base in declaration.bases),
+        *(
+            field.annotation
+            for declaration in module.classes
+            for field in declaration.fields
+        ),
+        *(
+            annotation
+            for declaration in module.classes
+            for method in declaration.methods
+            for annotation in (
+                *(parameter.annotation for parameter in method.parameters),
+                method.returns,
+            )
+            if annotation is not None
+        ),
+        *module.variable_annotations,
+    )
 
 
 def walk_type_expression(

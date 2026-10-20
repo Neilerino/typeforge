@@ -99,7 +99,7 @@ class _InputAnnotation:
 
 
 def _output_matches(output: s.EvaluationValue[RuntimeType], value: object) -> bool:
-    if isinstance(output, s.RecordShape):
+    if isinstance(output, s.RecordShape | s.RecordUnion):
         return isinstance(value, dict)
 
     if isinstance(output, s.ResolvedType):
