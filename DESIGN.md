@@ -36,7 +36,9 @@ failures. They are not a public compatibility path.
 `Map` is Typeforge's central input/output type machine. Its ordered `selector: output`
 branches accept compatible types, structural patterns, or exact `Is[Type]`
 selectors; the first matching branch selects the output. `...: output`
-handles the unmatched path and omission means `Never`.
+handles the unmatched path. With no fallback, a known uncovered subject fails the
+whole Map, including when it appears inside another union or type application.
+An explicitly selected `Never` retains ordinary Python union simplification.
 
 Scalar bare matching follows Python assignment compatibility, including class
 inheritance, bool/int, numeric widening, and Any. Compiler adaptation carries
@@ -45,6 +47,11 @@ local class ancestry and alias facts from the source snapshot to Schema lowering
 `Value`, and field transforms bind `Key` and `Value` inside `MapFields` until their
 replacement slices land. Equal/Assignable/All/Any/Not remain private semantic
 representations for existing internal consumers; they are not public authoring.
+
+Known union subjects select each member independently in branch order. Exact
+`Is` selectors always compare the original whole subject; preceding branches do
+not shrink it. Union equality ignores order and duplicates, including inside
+parameterized types. Comparison does not reorder emitted unions.
 
 Shared semantic evaluation distinguishes runtime `Input` from unresolved static
 type identity. A deferred Map preserves selection until input is available;
@@ -94,11 +101,12 @@ through semantic callbacks.
 Indeterminate branches, their reachable remainders, deferred output bounds, and
 conditions following an indeterminate short-circuit operand are speculative.
 That mode propagates through nested expressions even when their own subjects are
-concrete. Policy decides explicitly whether to reject such a path. Pydantic
-accepts speculative no-match bounds and rejects reached no-match paths; unrelated
-semantic errors still propagate. The existing `evaluate(expression, type_system)`
-entry point remains the default-policy convenience used by compiler consumers:
-exhausted selections produce Never and its failure type remains SemanticIssue.
+concrete. The shared default policy accepts speculative no-match bounds and
+rejects reached no-match paths. Compiler and Pydantic consumers use that policy;
+unrelated semantic errors still propagate. The convenience
+`evaluate(expression, type_system)` returns `SemanticIssue | MapNoMatch` failures.
+Compiler schema and record boundaries translate no-match facts into authored
+diagnostics once, rather than converting them to a selected Never type.
 
 Compiler semantic lowering keeps field-name expressions distinct from typing
 types and output templates. A string Literal can name a transformed field while

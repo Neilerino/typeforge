@@ -8,7 +8,7 @@ from pathlib import Path
 from textwrap import dedent
 
 from pytest import mark, param
-from returns.result import Success
+from returns.result import Failure, Success
 
 from typeforge.compiler.pipeline import generate_module
 
@@ -131,13 +131,13 @@ from typeforge.compiler.pipeline import generate_module
             id="deferred-explicit-never",
         ),
         param("Map[Input, int : str]", "str", id="deferred-omitted"),
-        param("Map[str, int : str]", "Never", id="no-match-omitted"),
+        param("Map[str, int : str]", None, id="no-match-omitted"),
         param(
             "Map[str, int : str, ... : Never]",
             "Never",
             id="no-match-explicit-never",
         ),
-        param("Map[int | bytes, int : str]", "str", id="union-no-match"),
+        param("Map[int | bytes, int : str]", None, id="union-no-match"),
         param(
             "Map[Input, int : Never, ... : Never]",
             "Never",
@@ -146,7 +146,7 @@ from typeforge.compiler.pipeline import generate_module
     ),
 )
 def test_schema_maps_preserve_type_outputs(
-    tmp_path: Path, annotation: str, expected: str
+    tmp_path: Path, annotation: str, expected: str | None
 ) -> None:
     path = tmp_path / "models.py"
     path.write_text(
@@ -160,6 +160,11 @@ def test_schema_maps_preserve_type_outputs(
     )
 
     generated = generate_module(path, maximum_arity=1)
+
+    if expected is None:
+        assert isinstance(generated, Failure)
+        assert "no case matched" in generated.failure().message
+        return
 
     assert isinstance(generated, Success)
     assert generated.unwrap().content == (
@@ -273,7 +278,7 @@ def test_schema_maps_preserve_type_outputs(
     ),
 )
 def test_generic_schema_maps_preserve_reachable_outputs(
-    tmp_path: Path, annotation: str, expected: str
+    tmp_path: Path, annotation: str, expected: str | None
 ) -> None:
     path = tmp_path / "models.py"
     path.write_text(
@@ -314,7 +319,7 @@ def test_generic_schema_maps_preserve_reachable_outputs(
         param(
             "type Wire[A] = Map[A, int : str]",
             "Wire[bytes]",
-            "Never",
+            None,
             id="alias-omitted",
         ),
         param(
@@ -357,7 +362,7 @@ type Outer[A] = Map[A, str : float, ... : complex]""",
     ),
 )
 def test_schema_relationship_aliases_preserve_type_outputs(
-    tmp_path: Path, aliases: str, annotation: str, expected: str
+    tmp_path: Path, aliases: str, annotation: str, expected: str | None
 ) -> None:
     path = tmp_path / "aliases.py"
     path.write_text(
@@ -371,6 +376,11 @@ def test_schema_relationship_aliases_preserve_type_outputs(
     )
 
     generated = generate_module(path, maximum_arity=1)
+
+    if expected is None:
+        assert isinstance(generated, Failure)
+        assert "no case matched" in generated.failure().message
+        return
 
     assert isinstance(generated, Success)
     content = generated.unwrap().content
@@ -411,7 +421,7 @@ def test_schema_relationship_aliases_preserve_type_outputs(
             id="literal-field-name-predicate",
         ),
         param(
-            "Field[Key, Map[Value, str : str]]",
+            "Field[Key, Map[Value, str : str, ... : Never]]",
             "original: tf_typing.Never",
             id="field-value-never",
         ),
@@ -422,7 +432,7 @@ def test_schema_field_transforms_preserve_typing_emission(
 ) -> None:
     path = tmp_path / "records.py"
     path.write_text(
-        "from typing import Literal, TypedDict\n"
+        "from typing import Literal, Never, TypedDict\n"
         "from typeforge import Field, Key, Map, MapFields, Value\n"
         "from typeforge._markers import Equal\n"
         "from typeforge.pydantic import Schema\n\n"
@@ -439,7 +449,7 @@ def test_schema_field_transforms_preserve_typing_emission(
     assert isinstance(generated, Success)
     assert generated.unwrap().content == dedent(f"""\
         import typing as tf_typing
-        from typing import Literal, TypedDict
+        from typing import Literal, Never, TypedDict
 
         class Record(tf_typing.TypedDict):
             original: int

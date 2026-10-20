@@ -127,7 +127,7 @@ def test_invalid_slice_syntax_returns_a_located_failure(
             "CanonicalMap[int, Case[int, str], Case[int, bytes]]",
             "str",
         ),
-        ("Map[str, int:bytes]", "CanonicalMap[str, Case[int, bytes]]", "Never"),
+        ("Map[str, int:bytes]", "CanonicalMap[str, Case[int, bytes]]", None),
         ("Map[int, int:Never]", "CanonicalMap[int, Case[int, Never]]", "Never"),
     ],
 )
@@ -135,7 +135,7 @@ def test_source_spelling_preserves_canonical_interface(
     tmp_path: Path,
     sliced: str,
     canonical: str,
-    expected: str,
+    expected: str | None,
 ) -> None:
     imports = """from typing import Literal, Never
 from typeforge import Map
@@ -147,10 +147,17 @@ from typeforge.pydantic import Schema
     outputs: list[str] = []
     for expression in (sliced, canonical):
         path.write_text(imports + f"class Payload:\n    value: Schema[{expression}]\n")
-        outputs.append(generate_module(path, maximum_arity=2).unwrap().content)
+        result = generate_module(path, maximum_arity=2)
+        if expected is None:
+            assert isinstance(result, Failure)
+            assert "no case matched" in result.failure().message
+            continue
 
-    assert outputs[0] == outputs[1]
-    assert f"value: {expected}" in outputs[0]
+        outputs.append(result.unwrap().content)
+
+    if expected is not None:
+        assert outputs[0] == outputs[1]
+        assert f"value: {expected}" in outputs[0]
 
 
 @pytest.mark.parametrize(

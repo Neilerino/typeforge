@@ -28,13 +28,13 @@ def test_policy_rejection_is_a_typed_failure_and_stops_later_evaluation() -> Non
     assert len(policy.outcomes) == 1
 
 
-def test_default_and_accepting_policies_preserve_never() -> None:
+def test_default_rejects_and_explicit_acceptance_preserves_never() -> None:
     expression = s.MapExpression(s.TypeReference("int"), ())
     policy = RecordingPolicy()
     expected = Success(s.ResolvedType("Never"))
 
-    assert s.evaluate(expression, NameTypeSystem()) == expected
-    assert s.Evaluator(NameTypeSystem()).evaluate(expression) == expected
+    assert isinstance(s.evaluate(expression, NameTypeSystem()), Failure)
+    assert isinstance(s.Evaluator(NameTypeSystem()).evaluate(expression), Failure)
     assert s.Evaluator(NameTypeSystem(), policy=policy).evaluate(expression) == expected
     assert policy.outcomes[0].subject == s.ResolvedType("int")
     assert policy.outcomes[0].context.mode is s.EvaluationMode.DEFINITE

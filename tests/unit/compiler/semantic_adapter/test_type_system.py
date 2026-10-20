@@ -16,6 +16,7 @@ from typeforge.semantics import (
     KeyReference,
     MapExpression,
     MapFieldsExpression,
+    MapNoMatch,
     ParameterizedTypeShape,
     RecordFamily,
     RecordField,
@@ -124,7 +125,7 @@ def test_parameterized_types_follow_the_schema_object_supertype_rule() -> None:
     assert COMPILER_TYPE_SYSTEM.assignable(value, OBJECT) == Success(True)
 
 
-def test_map_defaults_to_never() -> None:
+def test_map_rejects_a_known_uncovered_subject() -> None:
     expression = MapExpression(
         subject=type_reference(BYTES),
         cases=(
@@ -135,9 +136,10 @@ def test_map_defaults_to_never() -> None:
         ),
     )
 
-    assert evaluate(expression, COMPILER_TYPE_SYSTEM) == Success(
-        ResolvedType(value=NEVER)
-    )
+    result = evaluate(expression, COMPILER_TYPE_SYSTEM)
+    assert isinstance(result, Failure)
+    assert isinstance(result.failure(), MapNoMatch)
+    assert result.failure().subject == ResolvedType(BYTES)
 
 
 def test_map_fields_rejects_non_record_input() -> None:

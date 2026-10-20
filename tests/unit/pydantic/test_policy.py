@@ -5,7 +5,6 @@ from tests.unit.semantics.test_migration_spec import NameTypeSystem
 from typeforge import semantics as s
 from typeforge.pydantic._policy import (
     InputTestKind,
-    PydanticEvaluationPolicy,
     generic_fallback,
     input_test_issue,
     no_match_issue,
@@ -54,7 +53,7 @@ def test_policy_accepts_speculative_no_match_but_rejects_the_selected_path() -> 
         s.InputReference(),
         (s.CaseExpression(s.ExactTypePattern("int"), unmatched),),
     )
-    evaluator = s.Evaluator(NameTypeSystem(), policy=PydanticEvaluationPolicy())
+    evaluator = s.Evaluator(NameTypeSystem())
 
     deferred = evaluator.evaluate(expression).unwrap()
     assert isinstance(deferred, s.DeferredMap)
@@ -74,9 +73,7 @@ def test_speculative_policy_does_not_suppress_unrelated_semantic_failures() -> N
         s.InputReference(),
         (s.CaseExpression(s.ExactTypePattern("int"), s.KeyReference()),),
     )
-    result = s.Evaluator(NameTypeSystem(), policy=PydanticEvaluationPolicy()).evaluate(
-        expression
-    )
+    result = s.Evaluator(NameTypeSystem()).evaluate(expression)
 
     assert isinstance(result, Failure)
     assert isinstance(result.failure(), s.UnboundKeySemanticError)

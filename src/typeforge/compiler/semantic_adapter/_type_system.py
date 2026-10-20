@@ -25,7 +25,7 @@ class CompilerTypeSystem:
     """Interpret semantic operations over compiler-owned static types."""
 
     def equal(self, left: StaticType, right: StaticType) -> Result[bool, SemanticIssue]:
-        return Success(left == right)
+        return Success(_equal(left, right))
 
     def assignable(
         self, source: StaticType, target: StaticType
@@ -74,6 +74,30 @@ class CompilerTypeSystem:
         self, shape: ParameterizedTypeShape[StaticType]
     ) -> Result[StaticType, SemanticIssue]:
         return Success(ParameterizedType(shape.origin, shape.arguments))
+
+
+def _equal(left: StaticType, right: StaticType) -> bool:
+    match left, right:
+        case UnionType(left_members), UnionType(right_members):
+            return all(
+                any(_equal(member, candidate) for candidate in right_members)
+                for member in left_members
+            ) and all(
+                any(_equal(member, candidate) for candidate in left_members)
+                for member in right_members
+            )
+        case ParameterizedType(left_origin, left_args), ParameterizedType(
+            right_origin, right_args
+        ):
+            return (
+                _equal(left_origin, right_origin)
+                and len(left_args) == len(right_args)
+                and all(
+                    _equal(a, b) for a, b in zip(left_args, right_args, strict=True)
+                )
+            )
+        case _:
+            return left == right
 
 
 def _assignable(source: StaticType, target: StaticType) -> bool:

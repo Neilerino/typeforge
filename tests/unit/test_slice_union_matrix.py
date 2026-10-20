@@ -53,7 +53,7 @@ class UnionCase:
     name: str
     sliced: str
     canonical: str
-    static_output: str
+    static_output: str | None
     runtime_output: str
     setup: str = ""
     runtime_error: str | None = None
@@ -88,7 +88,7 @@ CASES = (
         "U04-unmatched-member",
         "Map[int | str, int: bytes]",
         "CanonicalMap[int | str, Case[int, bytes]]",
-        "bytes",
+        None,
         "bytes",
         runtime_error="map_no_match",
     ),
@@ -120,7 +120,7 @@ CASES = (
             "CanonicalMap[int | str, Case[Equal[int | str, str | "
             "int], bytes], Default[float]]"
         ),
-        "float",
+        "bytes",
         "bytes",
     ),
     UnionCase(
@@ -238,7 +238,7 @@ CASES = (
         "U23-no-match-under-output-union",
         "Map[int, str: bytes] | float",
         "CanonicalMap[int, Case[str, bytes]] | float",
-        "float",
+        None,
         "float",
         runtime_error="map_no_match",
     ),
@@ -327,11 +327,18 @@ def test_union_static_schema_output(case: UnionCase, tmp_path: Path) -> None:
             IMPORTS + case.setup + "\nclass Payload:\n"
             f"    value: Schema[{expression}]\n"
         )
-        content = generate_module(path, maximum_arity=2).unwrap().content
+        result = generate_module(path, maximum_arity=2)
+        if case.static_output is None:
+            assert isinstance(result, Failure)
+            assert "no case matched" in result.failure().message
+            continue
+
+        content = result.unwrap().content
         assert f"    value: {case.static_output}\n" in content, content
         outputs.append(content)
 
-    assert outputs[0] == outputs[1]
+    if case.static_output is not None:
+        assert outputs[0] == outputs[1]
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)

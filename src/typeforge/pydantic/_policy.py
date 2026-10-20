@@ -3,7 +3,6 @@
 from enum import StrEnum
 
 from typeforge.pydantic._errors import MapNoMatchIssue, SchemaIssue
-from typeforge.semantics import EvaluationMode, MapNoMatch, NoMatchDecision
 
 
 class InputTestKind(StrEnum):
@@ -37,17 +36,6 @@ def input_test_issue(kind: InputTestKind, expression: object) -> SchemaIssue | N
             message = "unsupported Input case test"
 
     return SchemaIssue("unsupported_runtime_pattern", "planning", expression, message)
-
-
-class PydanticEvaluationPolicy[T]:
-    """Reject reached no-match paths, while allowing possible-output exploration."""
-
-    def no_match(self, outcome: MapNoMatch[T]) -> NoMatchDecision:
-        return (
-            NoMatchDecision.REJECT
-            if outcome.context.mode is EvaluationMode.DEFINITE
-            else NoMatchDecision.ACCEPT
-        )
 
 
 def generic_fallback[T](

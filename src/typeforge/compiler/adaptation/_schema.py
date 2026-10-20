@@ -41,6 +41,7 @@ from typeforge.semantics import (
     ExpectedRecordSemanticError,
     ExpectedTypeSemanticError,
     IndeterminateType,
+    MapNoMatch,
     ResolvedType,
     SemanticIssue,
     TypeSymbol,
@@ -50,8 +51,11 @@ from typeforge.semantics import (
 from typeforge.utils.error_handling import safe_result
 
 _SCHEMA_ERRORS: tuple[
-    type[AdaptationError | SemanticLoweringError | SemanticIssue], ...
-] = (AdaptationError, SemanticLoweringError, SemanticIssue)
+    type[
+        AdaptationError | SemanticLoweringError | SemanticIssue | MapNoMatch[StaticType]
+    ],
+    ...,
+] = (AdaptationError, SemanticLoweringError, SemanticIssue, MapNoMatch)
 
 
 def adapt_schema_expression(
@@ -97,7 +101,10 @@ def adapt_schema_expression(
 
 
 def _schema_adaptation_error(
-    error: AdaptationError | SemanticLoweringError | SemanticIssue,
+    error: AdaptationError
+    | SemanticLoweringError
+    | SemanticIssue
+    | MapNoMatch[StaticType],
     expression: SchemaTypeExpression,
     declaration: str,
 ) -> AdaptationError:
@@ -107,6 +114,14 @@ def _schema_adaptation_error(
     if isinstance(error, ExpectedRecordSemanticError):
         return AdaptationError(
             declaration, expression.source, "MapFields requires a supported record type"
+        )
+
+    if isinstance(error, MapNoMatch):
+        return AdaptationError(
+            declaration,
+            expression.source,
+            "Map cannot determine an output type: "
+            "no case matched and no default was provided",
         )
 
     return AdaptationError(declaration, expression.source, error.message)

@@ -128,8 +128,22 @@ class Payload:
 `Is` takes one type argument and binds to its consuming Map. The compiler obtains
 local inheritance facts from declarations without importing application code.
 The former public predicate helpers (`Equal`, `Assignable`, `All`, `Any`, and
-`Not`) have been removed. Generic compatibility, union equivalence, and aliases
+`Not`) have been removed. Generic compatibility and transparent runtime aliases
 are being implemented in the following slices; see the recorded decisions.
+
+For known union subjects, bare branches select each member in order. `Is` tests
+the complete original subject, comparing unions without regard to member order:
+
+```python
+class UnionPayload:
+    distributed: Schema[Map[int | str, int: bytes, str: float]]  # bytes | float
+    exact: Schema[Map[int | str, Is[str | int]: bytes, ...: float]]  # bytes
+```
+
+A known member without a matching branch or fallback fails the whole Map.
+For example, `Schema[Map[int | str, int: bytes]]` fails compilation and runtime
+schema construction, including when nested in an outer union. Selecting an
+explicit `Never` remains distinct and uses ordinary Python union simplification.
 
 Typeforge overlays project inline Maps in parameters, returns, fields, variable
 annotations, and nested alias values to ordinary checker types. Generated overloads
@@ -147,15 +161,15 @@ Relationship aliases themselves publish as `object`. Capture precision is limite
 by the configured maximum arity; calls beyond it use the existing aggregate bound.
 
 Callable overloads follow checker subtype matching, so exact selectors cannot
-exclude subtypes such as `bool` from `int`. Union selectors, reordered union
-equality, and selection involving `Any` do not have a portable cross-consumer
-guarantee. See the [callable support limits](CONTEXT.md#callable-support)
+exclude subtypes such as `bool` from `int`. Callable union selectors and selection
+involving `Any` do not yet have a portable cross-consumer guarantee.
+See the [callable support limits](CONTEXT.md#callable-support)
 before relying on these forms to reproduce `Schema` selection.
 
 Slice branches are the public authoring syntax. `Case` and `Default` are no
 longer exported. Internal branch data remains unchanged.
 See the [authoring contract](CONTEXT.md#map-authoring)
-and [union limitations](CONTEXT.md#union-support-and-open-decisions).
+and [union limitations](CONTEXT.md#union-support-and-agreed-future-contracts).
 
 ```python
 from typeforge import Map
