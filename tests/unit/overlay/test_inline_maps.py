@@ -222,7 +222,7 @@ class Encoder:
     ]]:
         return value
 encoder = Encoder()
-assert_type(encoder.encode(1), str | None)
+assert_type(encoder.encode(1), str | bytes | None)
 assert_type(encoder.nested(["x"]), list[str | bytes])
 payload: Map[int, int: str, ...: bytes] = "x"
 """

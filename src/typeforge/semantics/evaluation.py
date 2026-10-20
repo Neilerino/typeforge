@@ -77,6 +77,7 @@ from typeforge.semantics.protocols import (
     EvaluationPolicy,
     InputObserver,
     TypeSystem,
+    UnresolvedCaptureBindings,
 )
 from typeforge.semantics.type_evaluation import (
     assignable_types,
@@ -123,11 +124,13 @@ class Evaluator[T]:
         policy: EvaluationPolicy[T] | None = None,
         context: EvaluationContext[T] | None = None,
         deferred_types: DeferredTypes[T] | None = None,
+        capture_bounds: UnresolvedCaptureBindings[T] | None = None,
     ) -> None:
         self.type_system = type_system
         self._policy: EvaluationPolicy[T] = policy or _DefaultPolicy()
         self._context: EvaluationContext[T] = context or EvaluationContext()
         self._deferred_types = deferred_types
+        self._capture_bounds = capture_bounds
 
     @property
     def context(self) -> EvaluationContext[T]:
@@ -140,6 +143,7 @@ class Evaluator[T]:
             policy=self._policy,
             context=context,
             deferred_types=self._deferred_types,
+            capture_bounds=self._capture_bounds,
         )
 
     def select_deferred_map(
@@ -642,6 +646,7 @@ class Evaluator[T]:
                         subject,
                         self.type_system,
                         self.context.captures,
+                        capture_bounds=self._capture_bounds,
                     )
                     matched = pattern_match.matched
                     contexts: list[EvaluationContext[T]] = []

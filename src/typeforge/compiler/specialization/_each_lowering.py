@@ -5,6 +5,7 @@ from itertools import product
 
 from returns.result import Failure, Result, Success
 
+from typeforge.compiler.specialization._captures import capture_tokens, replace_captures
 from typeforge.compiler.specialization._expressions import (
     collect_variable_names,
     fresh_type_parameter_names,
@@ -19,7 +20,6 @@ from typeforge.compiler.specialization._models import (
 )
 from typeforge.compiler.specialization._predicates import map_specializations
 from typeforge.compiler.stub_ir import (
-    CaptureType,
     CollectType,
     EachType,
     FixedTuple,
@@ -39,43 +39,7 @@ from typeforge.compiler.stub_ir import (
     UnpackedType,
     is_predicate,
     rewrite_type_children,
-    walk_type,
 )
-
-
-def _capture_tokens(expression: StubTypeExpression) -> frozenset[CaptureType]:
-    return frozenset(
-        item for item in walk_type(expression) if isinstance(item, CaptureType)
-    )
-
-
-def _replace_capture(
-    expression: StubTypeExpression,
-    bindings: dict[CaptureType, TypeVariable],
-    on_rewrite: TypeRewriteObserver | None = None,
-) -> StubTypeExpression:
-    result = _replace_capture_expression(expression, bindings, on_rewrite)
-    if on_rewrite is not None:
-        on_rewrite(expression, result)
-
-    return result
-
-
-def _replace_capture_expression(
-    expression: StubTypeExpression,
-    bindings: dict[CaptureType, TypeVariable],
-    on_rewrite: TypeRewriteObserver | None = None,
-) -> StubTypeExpression:
-    if isinstance(expression, CaptureType):
-        return bindings.get(expression, expression)
-
-    if isinstance(expression, TypeApplication | FixedTuple | UnionExpression):
-        return rewrite_type_children(
-            expression,
-            lambda child: _replace_capture(child, bindings, on_rewrite=on_rewrite),
-        )
-
-    return expression
 
 
 def lower_each_function(
@@ -134,7 +98,7 @@ def lower_each_function(
         )
 
     if structural_map is not None and any(
-        not is_predicate(case.test) and len(_capture_tokens(case.test)) > 1
+        not is_predicate(case.test) and len(capture_tokens(case.test)) > 1
         for case in structural_map.cases
     ):
         return Failure(
@@ -314,11 +278,11 @@ def _structural_map_choices(
         if is_predicate(case.test):
             continue
 
-        bindings = {token: generated_type for token in _capture_tokens(case.test)}
+        bindings = {token: generated_type for token in capture_tokens(case.test)}
         cases.append(
             _StructuralMapChoice(
-                _replace_capture(case.test, bindings, on_rewrite=on_rewrite),
-                _replace_capture(case.output_type, bindings, on_rewrite=on_rewrite),
+                replace_captures(case.test, bindings, on_rewrite=on_rewrite),
+                replace_captures(case.output_type, bindings, on_rewrite=on_rewrite),
                 False,
             )
         )
