@@ -59,6 +59,7 @@ from typeforge.compiler.stub_ir import (
     TypeVariable,
     UnionExpression,
     UnpackedType,
+    walk_type,
 )
 
 
@@ -284,7 +285,7 @@ def _(
             type_context=type_context,
         )
 
-    return TypeApplication(
+    application = TypeApplication(
         adapt_type_expression(
             expression.constructor,
             declaration,
@@ -300,6 +301,24 @@ def _(
             type_context=type_context,
         ),
     )
+    if (
+        isinstance(expression.constructor, NameTypeExpression)
+        and expression.constructor.source in type_context.record_aliases
+        and origins is not None
+        and not any(
+            isinstance(item, TypeVariable)
+            for argument in application.arguments
+            for item in walk_type(argument)
+        )
+        and not (
+            len(application.arguments) == 1
+            and isinstance(application.arguments[0], TypeName)
+            and application.arguments[0].name in type_context.record_types
+        )
+    ):
+        origins.append(GeneratedElementOrigin(expression.span, application))
+
+    return application
 
 
 @adapt_type_expression.register

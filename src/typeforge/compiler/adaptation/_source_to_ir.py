@@ -47,6 +47,7 @@ from typeforge.compiler.source import (
     SourceTypeExpression,
     StarredTypeExpression,
     UnionTypeExpression,
+    annotation_expressions,
     bind_map_selector,
     contains_marker,
     is_enriched,
@@ -103,6 +104,10 @@ def adapt_source_module(
     type_context = SourceTypeContext(
         aliases=tuple(alias for alias in module.aliases if not is_record_alias(alias)),
         types=class_type_environment(module),
+        record_aliases=frozenset(
+            alias.name for alias in module.aliases if is_record_alias(alias)
+        ),
+        record_types=frozenset(item.name for item in module.typed_dicts),
     )
     origins: list[GeneratedElementOrigin[SourceSpan]] = []
     semantic_aliases = _collect_semantic_relationship_aliases(
@@ -690,39 +695,7 @@ def _annotation_boundaries(
     module: SourceModule,
 ) -> tuple[SchemaTypeExpression | MarkerTypeExpression, ...]:
     alias_spans = {alias.span for alias in module.aliases}
-    expressions = (
-        *(
-            annotation
-            for function in module.functions
-            for annotation in (
-                *(parameter.annotation for parameter in function.parameters),
-                function.returns,
-            )
-            if annotation is not None
-        ),
-        *(
-            field.annotation
-            for declaration in module.typed_dicts
-            for field in declaration.fields
-        ),
-        *(base for declaration in module.classes for base in declaration.bases),
-        *(
-            field.annotation
-            for declaration in module.classes
-            for field in declaration.fields
-        ),
-        *(
-            annotation
-            for declaration in module.classes
-            for method in declaration.methods
-            for annotation in (
-                *(parameter.annotation for parameter in method.parameters),
-                method.returns,
-            )
-            if annotation is not None
-        ),
-        *module.variable_annotations,
-    )
+    expressions = annotation_expressions(module)
     boundaries: dict[SourceSpan, SchemaTypeExpression | MarkerTypeExpression] = {}
     for expression in expressions:
         for boundary in _outer_annotation_boundaries(expression):

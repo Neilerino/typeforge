@@ -321,13 +321,13 @@ G6 retains the separate record-union scope.
 
 ### G6 — Unsupported structures
 
-Record-union operands remain rejected. Structural capture alternatives evaluate
+Known TypedDict union operands transform independently and retain complete output
+shapes. See [the record-union contract](tests/unit/test_record_union_contract.py)
+when changing original generic arguments, alias composition, unsupported-member
+failures, metadata, naming, or checker projection. Structural capture alternatives evaluate
 complete outputs in independent binding contexts; their production contract is
 linked above.
-The [agreed record-union design](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#agreed-record-union-support)
-transforms each TypedDict alternative independently and preserves a union of
-complete output shapes, including field correlations. The
-[agreed capture-pattern design](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#agreed-unambiguous-capture-pattern-union)
+The [agreed capture-pattern design](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#agreed-unambiguous-capture-pattern-union)
 supports alternative patterns such as list[Item]-or-set[Item] when captures are
 unambiguous. The
 [agreed overlapping-capture rule](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#agreed-conflicting-captures-across-alternatives)
@@ -335,7 +335,7 @@ evaluates each successful alternative with its own bindings and unions complete
 outputs, preserving correlations. A matched alternative whose output requires an
 unbound capture is an error. Initially, report it when evaluation needs that
 binding, without a mandatory separate definition-time analysis pass. This capture
-behavior is implemented; record-union support remains pending.
+behavior and concrete record-union support are implemented.
 Ordinary classes and parameterized dicts remain outside the supported record families.
 
 The [agreed field syntax](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#preferred-field-authoring--record-comprehensions)
@@ -343,8 +343,8 @@ uses Record/Fields comprehensions inside a type_function, with a locally bound
 field exposing its name and type. Record/Fields construction, scoped references,
 whole-field preservation, and Drop are implemented. The public cutover removes
 MapFields and ambient Key/Value without compatibility shims. Field construction,
-immutable replacement, and union-valued transforms are implemented; correlated
-record unions retain their own slice. Initial output is TypedDict; explicit
+immutable replacement, union-valued transforms, and correlated record unions are
+implemented. Initial output is TypedDict; explicit
 record-family adapters preserve room for future generated Protocols.
 
 The [agreed no-match rule](https://github.com/Neilerino/typeforge/blob/neil/typeforge-api-review-artifacts/docs/ideas/map-selection-decisions.md#agreed-partial-static-no-match-failure)

@@ -138,6 +138,13 @@ derived records and a rewrite observer. Its declaration and type operations reus
 the shared stub-IR tree rewriter; recursive declaration methods retain their
 configuration without forwarding observer arguments. Adaptation owns authored
 origin tracking and supplies the observer when constructing the rewriter.
+Concrete record applications retain expression origins before materialization.
+Adaptation expands each application through the existing source alias owner and
+evaluates its complete argument with visible record facts. Equal outputs reuse
+the same alias/source specialization; changed outputs get deterministic names
+that avoid authored declarations. The rewriter consumes these application
+replacements alongside ordinary scalar replacements. Unresolved callable type
+parameters retain their existing finite specialization path.
 
 The runtime frontend carries an explicit selector subject through predicate
 aliases, compound conditions, and Annotated wrappers. Nested Maps establish a
@@ -387,6 +394,17 @@ Record construction clears its operand's whole-record metadata; explicit outer
 Annotated supplies metadata for the new result.
 Duplicate names and outputs other than a field or Drop are typed failures.
 Ambient Key/Value and MapFields authoring are removed.
+
+Known record-union operands transform each TypedDict alternative independently.
+Shared RecordUnion data retains complete output shapes; corresponding fields are
+never merged into unrelated unions. Field contexts change for each alternative,
+while generic arguments and enclosing capture bindings keep their original
+values. Reflection or transformation failure in any alternative fails the whole
+application. Never cannot turn into an empty record. Composition consumes complete
+record alternatives, and construction clears both member and whole-union metadata.
+Explicit outer Annotated applies metadata to the resulting union once.
+Runtime emission uses Pydantic's native union schemas; concrete compiler
+applications emit unions of generated TypedDict declarations.
 
 TypedDict reflection, compiler discovery, and synthesized output remain with the
 existing family adapters. RecordShape retains its family identity rather than

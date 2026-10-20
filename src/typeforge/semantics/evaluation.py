@@ -60,6 +60,7 @@ from typeforge.semantics.domain.models import (
     RecordExpression,
     RecordField,
     RecordShape,
+    RecordUnion,
     ResolvedType,
     TypePattern,
     TypeReference,
@@ -262,11 +263,30 @@ class Evaluator[T]:
     @_dispatch.register(RecordExpression)
     def _record(self, expression: RecordExpression[T]) -> EvaluationValue[T]:
         operand = self._evaluate(expression.record)
-        record = (
-            operand
-            if isinstance(operand, RecordShape)
-            else self.type_system.record(expect_type(operand).value).unwrap()
+        records = tuple(
+            self._transform_record(record, expression)
+            for record in self._record_operands(operand)
         )
+        return records[0] if len(records) == 1 else RecordUnion(records)
+
+    def _record_operands(
+        self, operand: EvaluationValue[T]
+    ) -> tuple[RecordShape[T], ...]:
+        if isinstance(operand, RecordShape):
+            return (operand,)
+
+        if isinstance(operand, RecordUnion):
+            return operand.members
+
+        value = expect_type(operand).value
+        members = self.type_system.union_members(value).unwrap()
+        return tuple(
+            self.type_system.record(member).unwrap() for member in members or (value,)
+        )
+
+    def _transform_record(
+        self, record: RecordShape[T], expression: RecordExpression[T]
+    ) -> RecordShape[T]:
         fields: list[RecordField[T]] = []
         field_names: set[str] = set()
         for source_field in record.fields:
@@ -324,7 +344,7 @@ class Evaluator[T]:
     @_dispatch.register(AnnotatedExpression)
     def _annotated(self, expression: AnnotatedExpression[T]) -> EvaluationValue[T]:
         value = self._evaluate(expression.value)
-        if isinstance(value, RecordShape):
+        if isinstance(value, RecordShape | RecordUnion):
             return replace(value, metadata=(*value.metadata, *expression.metadata))
 
         annotated = expect_type_value(

@@ -16,6 +16,7 @@ from typeforge.compiler.stub_ir import (
     TypeRewriteObserver,
     VariableDeclaration,
     rewrite_type,
+    union_types,
 )
 
 
@@ -27,12 +28,18 @@ class RecordAliasRewriter:
         derived: tuple[DerivedRecord, ...],
         *,
         on_rewrite: TypeRewriteObserver | None = None,
+        applications: tuple[tuple[StubTypeExpression, StubTypeExpression], ...] = (),
     ) -> None:
+        groups: dict[tuple[str, str], list[StubTypeExpression]] = {}
+        for item in derived:
+            key = (item.alias, item.input_name)
+            groups.setdefault(key, []).append(TypeName(item.shape.name or "object"))
+
         self._replacements = {
-            (item.alias, item.input_name): item.shape.name or "object"
-            for item in derived
+            key: union_types(tuple(members)) for key, members in groups.items()
         }
         self._on_rewrite = on_rewrite
+        self._applications = dict(applications)
 
     def rewrite_declaration(self, declaration: Declaration) -> Declaration:
         match declaration:
@@ -60,11 +67,15 @@ class RecordAliasRewriter:
     def _replace_alias(
         self, expression: StubTypeExpression
     ) -> StubTypeExpression | None:
+        application = self._applications.get(expression)
+        if application is not None:
+            return replace(application)
+
         match expression:
             case TypeApplication(TypeName(alias), (TypeName(input_name),)):
-                name = self._replacements.get((alias, input_name))
+                replacement = self._replacements.get((alias, input_name))
                 # Each occurrence retains its own identity for authored origins.
-                return TypeName(name) if name is not None else None
+                return replace(replacement) if replacement is not None else None
 
             case _:
                 return None

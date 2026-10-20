@@ -169,7 +169,7 @@ def test_invalid_slice_field_transforms_fail_at_both_boundaries(
         _runtime_adapter(source)
 
 
-@pytest.mark.parametrize("record", ["Row | Base", "dict[str, int]", "Plain"])
+@pytest.mark.parametrize("record", ["dict[str, int]", "Plain"])
 def test_slice_transforms_do_not_broaden_supported_record_families(
     tmp_path: Path, record: str
 ) -> None:
