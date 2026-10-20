@@ -362,6 +362,14 @@ An int field is removed; a str field retains its name and modifiers. A local
 alias such as `type Visible = Public[T]` can also supply `Fields[Visible]`.
 Local aliases stay private to the template and do not become public stub names.
 
+Bare matching also distributes over a field's union type. In this example,
+an `int | str` field is removed entirely because one member selects Drop.
+Using `Is[int]: Drop` keeps that union field, since Is compares its whole type.
+`Map[field.type, int: bytes, str: float]` instead produces `bytes | float`.
+Every reached member must succeed: a Drop cannot hide an uncovered member or an
+unbound capture. A possible Drop from unresolved selection reports a diagnostic
+until speculative field layouts have a supported representation.
+
 Runtime construction can use additional Python statements when they produce a
 valid template. It rejects invalid returned structures and foreign unbound
 parameters; symbolic parameter and Map truthiness is invalid. Use Map for
@@ -498,9 +506,11 @@ metadata; `field.replace(type=list[field.type])` keeps that metadata on each ele
 Pydantic retains field constraints. A new Record starts without its operand's
 whole-record metadata; use an explicit outer Annotated to attach it.
 Generated TypedDicts use the compiler's
-existing base-type projection for Annotated fields. Nested Maps over union-valued
-fields still differ between compiler materialization and runtime evaluation;
-see the [field support limits](CONTEXT.md#field-support).
+existing base-type projection for Annotated fields. Nested Maps distribute over
+known union-valued fields in both compiler materialization and runtime evaluation.
+Ordinary field aliases expand when selection needs their type facts; unchanged
+fields can retain recursive aliases delegated to their consumer.
+See the [field support limits](CONTEXT.md#field-support).
 
 ### Generic model fields
 

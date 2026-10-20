@@ -1,6 +1,10 @@
 """Authored Python source parsing and data."""
 
 from typeforge.compiler.source._exports import static_export_names
+from typeforge.compiler.source._expression_operations import (
+    opaque_enriched_annotations,
+    walk_type_expression,
+)
 from typeforge.compiler.source._markers import (
     MARKER_SIGNATURES,
     AllMarker,
@@ -122,8 +126,10 @@ __all__ = [
     "enriched_functions",
     "is_enriched",
     "normalize_marker",
+    "opaque_enriched_annotations",
     "parse_module",
     "parse_source",
     "schema_inner_expression",
     "static_export_names",
+    "walk_type_expression",
 ]

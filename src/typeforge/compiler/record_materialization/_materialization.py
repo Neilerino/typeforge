@@ -11,7 +11,7 @@ from typeforge.compiler.record_materialization._models import (
 )
 from typeforge.compiler.semantic_adapter import (
     COMPILER_TYPE_SYSTEM,
-    NamedType,
+    SemanticEnvironment,
     SemanticLoweringError,
     StaticType,
     lower_semantic_expression,
@@ -23,6 +23,7 @@ from typeforge.compiler.source import (
     RecordTypeExpression,
     SourceModule,
     SourceTypeExpression,
+    opaque_enriched_annotations,
     schema_inner_expression,
 )
 from typeforge.compiler.source import (
@@ -45,26 +46,34 @@ from typeforge.compiler.stub_ir import (
     substitute_type,
 )
 from typeforge.semantics import (
+    EvaluationValue,
+    Expression,
     MapNoMatch,
     RecordExpression,
     RecordFamily,
     RecordField,
     RecordShape,
+    ResolvedType,
     evaluate,
 )
+from typeforge.utils.error_handling import safe_result
 
 
-@safe(exceptions=(RecordMaterializationError,))
+@safe_result(errors=(RecordMaterializationError,))
 def materialize_record_transforms(
     module: SourceModule,
     stub: StubModule,
     on_rewrite: TypeRewriteObserver | None = None,
+    *,
+    environment: SemanticEnvironment = (),
 ) -> RecordMaterialization:
     if not module.typed_dicts:
         return RecordMaterialization((), (), ())
 
-    source_shapes = build_record_shapes(module.typed_dicts)
-    derived = _derive_record_shapes(module.aliases, source_shapes)
+    source_shapes = build_record_shapes(
+        module.typed_dicts, environment=environment
+    ).unwrap()
+    derived = _derive_record_shapes(module.aliases, source_shapes, environment)
     replacements: list[tuple[str, OverloadDeclaration]] = []
     source_functions = {
         function.name: function
@@ -168,8 +177,11 @@ def _typed_dict_field_type(field: RecordField[StaticType]) -> StubTypeExpression
     return annotation
 
 
+@safe(exceptions=(RecordMaterializationError,))
 def build_record_shapes(
     declarations: tuple[SourceTypedDict, ...],
+    *,
+    environment: SemanticEnvironment = (),
 ) -> tuple[RecordShape[StaticType], ...]:
     shapes: list[RecordShape[StaticType]] = []
     by_name: dict[tuple[str, ...], RecordShape[StaticType]] = {}
@@ -187,7 +199,9 @@ def build_record_shapes(
         own_fields = tuple(
             RecordField[StaticType](
                 name=field.name,
-                value=NamedType(field.annotation.source),
+                value=_record_field_type(
+                    declaration.name, field.annotation, environment
+                ),
                 required=field.required,
                 readonly=field.readonly,
             )
@@ -204,17 +218,61 @@ def build_record_shapes(
     return tuple(shapes)
 
 
+def _record_field_type(
+    declaration: str,
+    annotation: SourceTypeExpression,
+    environment: SemanticEnvironment,
+) -> StaticType:
+    try:
+        expression = lower_semantic_expression(
+            opaque_enriched_annotations(annotation), environment
+        )
+    except SemanticLoweringError as error:
+        raise RecordMaterializationError(
+            declaration, annotation.source, error.message
+        ) from error
+
+    value = _evaluate_record_expression(declaration, annotation, expression)
+    if not isinstance(value, ResolvedType):
+        raise RecordMaterializationError(
+            declaration, annotation.source, "record fields must evaluate to types"
+        )
+
+    return value.value
+
+
+def _evaluate_record_expression(
+    declaration: str,
+    authored: SourceTypeExpression,
+    expression: Expression[StaticType],
+) -> EvaluationValue[StaticType]:
+    result = evaluate(expression, COMPILER_TYPE_SYSTEM)
+    if isinstance(result, Failure):
+        issue = result.failure()
+        message = (
+            "Map cannot transform a field: no case matched and no default was provided"
+            if isinstance(issue, MapNoMatch)
+            else issue.message
+        )
+        raise RecordMaterializationError(declaration, authored.source, message)
+
+    return result.unwrap()
+
+
 @safe(exceptions=(RecordMaterializationError,))
 def derive_record_shapes(
     aliases: tuple[SourceTypeAlias, ...],
     source_shapes: tuple[RecordShape[StaticType], ...],
+    *,
+    environment: SemanticEnvironment = (),
 ) -> tuple[DerivedRecord, ...]:
-    return _derive_record_shapes(aliases, source_shapes)
+    return _derive_record_shapes(aliases, source_shapes, environment)
 
 
 def _derive_record_shapes(
     aliases: tuple[SourceTypeAlias, ...],
     source_shapes: tuple[RecordShape[StaticType], ...],
+    environment: SemanticEnvironment,
 ) -> tuple[DerivedRecord, ...]:
     derived: list[DerivedRecord] = []
     for alias in aliases:
@@ -234,7 +292,7 @@ def _derive_record_shapes(
             output_name = f"{alias.name}_{source_shape.name}"
             try:
                 semantic_expression = lower_semantic_expression(
-                    value, ((parameter, source_shape),), output_name
+                    value, (*environment, (parameter, source_shape)), output_name
                 )
             except SemanticLoweringError as error:
                 raise RecordMaterializationError(
@@ -248,24 +306,9 @@ def _derive_record_shapes(
                     "alias must evaluate to Record",
                 )
 
-            evaluated_result = evaluate(semantic_expression, COMPILER_TYPE_SYSTEM)
-            if isinstance(evaluated_result, Failure):
-                issue = evaluated_result.failure()
-                if isinstance(issue, MapNoMatch):
-                    message = (
-                        "Map cannot transform a field: no case matched and no default "
-                        "was provided"
-                    )
-                else:
-                    message = issue.message
-
-                raise RecordMaterializationError(
-                    alias.name,
-                    alias.value.source,
-                    message,
-                )
-
-            evaluated = evaluated_result.unwrap()
+            evaluated = _evaluate_record_expression(
+                alias.name, alias.value, semantic_expression
+            )
             if not isinstance(evaluated, RecordShape):
                 raise RecordMaterializationError(
                     alias.name,

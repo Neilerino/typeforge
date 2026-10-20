@@ -75,7 +75,7 @@ type Copy = Record(Field(name=field.name, type=field.type) for field in Fields[P
 
     result = derive_record_shapes(
         source.aliases,
-        build_record_shapes(source.typed_dicts),
+        build_record_shapes(source.typed_dicts).unwrap(),
     )
 
     assert isinstance(result, Failure)

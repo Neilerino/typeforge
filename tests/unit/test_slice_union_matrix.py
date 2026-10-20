@@ -577,7 +577,7 @@ def test_union_field_values_through_existing_materialization(
     )
     content = generate_module(path, maximum_arity=2).unwrap().content
     record = content.split("class Mapped_Row", 1)[1].split("\n\n", 1)[0]
-    assert "value: float" in record
+    assert "value: bytes | float" in record
     assert 'label: Literal["a"] | Literal["b"]' in record
     annotation = runtime_expression(
         expression.replace("Fields[T]", "Fields[Row]"),

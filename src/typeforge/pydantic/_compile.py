@@ -14,10 +14,11 @@ from typeforge.pydantic._errors import (
 )
 from typeforge.pydantic._evaluation import evaluation_issue, schema_output
 from typeforge.pydantic._frontend import (
+    ANNOTATION_TYPE_SYSTEM,
     AdaptedAnnotation,
     adapt_annotation,
 )
-from typeforge.pydantic._type_system import RUNTIME_TYPE_SYSTEM, RuntimeType
+from typeforge.pydantic._type_system import RuntimeType
 
 
 def compile_annotation(
@@ -50,7 +51,7 @@ def _evaluate_annotation(
 ) -> Result[s.EvaluationValue[RuntimeType], SchemaIssue]:
     return (
         s.Evaluator(
-            RUNTIME_TYPE_SYSTEM,
+            ANNOTATION_TYPE_SYSTEM,
             deferred_types=DeferredAnnotations(adapted, source),
         )
         .evaluate(adapted.expression)
