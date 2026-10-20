@@ -26,6 +26,7 @@ from typeforge.semantics.domain.exceptions import (
 )
 from typeforge.semantics.domain.models import (
     AllExpression,
+    AlternativeTypePattern,
     AnnotatedExpression,
     AnyExpression,
     AssignableExpression,
@@ -498,16 +499,14 @@ class Evaluator[T]:
             return self._no_match(selection)
 
         if selection.condition is True:
-            return self.with_context(selection.context)._evaluate(selection.output)
+            return self._evaluate_selection_output(selection)
 
         assert isinstance(selection.condition, IndeterminateCondition)
         assert selection.case_index is not None
         speculative = self.with_context(
             replace(self.context, mode=EvaluationMode.SPECULATIVE)
         )
-        selected = self.with_context(
-            replace(selection.context, mode=EvaluationMode.SPECULATIVE)
-        )._evaluate(selection.output)
+        selected = self._evaluate_selection_output(selection, speculative=True)
         expect_possible_type(
             selected, "indeterminate Map outputs must evaluate to types"
         )
@@ -515,6 +514,29 @@ class Evaluator[T]:
             subject, expression, start_case=selection.case_index + 1
         )
         return indeterminate_type((selected, remaining), self.type_system)
+
+    def _evaluate_selection_output(
+        self, selection: MapSelection[T], *, speculative: bool = False
+    ) -> EvaluationValue[T]:
+        contexts = selection.output_contexts or (selection.context,)
+        if speculative:
+            contexts = tuple(
+                replace(context, mode=EvaluationMode.SPECULATIVE)
+                for context in contexts
+            )
+
+        outputs = tuple(
+            self.with_context(context)._evaluate(selection.output)
+            for context in contexts
+        )
+        if len(outputs) == 1:
+            return outputs[0]
+
+        return union_type(
+            outputs,
+            self.type_system,
+            "alternative Map outputs must evaluate to types",
+        )
 
     def _select_map_member(
         self,
@@ -526,6 +548,7 @@ class Evaluator[T]:
     ) -> MapSelection[T] | MapNoMatch[T]:
         for index, case in enumerate(expression.cases[start_case:], start=start_case):
             output_context = self.context
+            output_contexts: tuple[EvaluationContext[T], ...] = ()
             if observer is not None:
                 matched = self._observe_test(case.test, observer)
 
@@ -543,10 +566,22 @@ class Evaluator[T]:
                         self.context.captures,
                     )
                     matched = pattern_match.matched
-                    output_context = replace(
-                        self.context,
-                        captures=pattern_match.captures,
-                    )
+                    contexts: list[EvaluationContext[T]] = []
+                    for alternative in pattern_match.alternatives:
+                        mode = self.context.mode
+                        if isinstance(alternative.condition, IndeterminateCondition):
+                            mode = EvaluationMode.SPECULATIVE
+
+                        contexts.append(
+                            replace(
+                                self.context, captures=alternative.captures, mode=mode
+                            )
+                        )
+
+                    if contexts:
+                        output_context = contexts[0]
+                        if len(contexts) > 1:
+                            output_contexts = tuple(contexts)
                 else:
                     matched = False
 
@@ -555,7 +590,13 @@ class Evaluator[T]:
                 matched = map_values_match(subject, test, self.type_system)
 
             if matched is True or isinstance(matched, IndeterminateCondition):
-                return MapSelection(case.output, output_context, index, matched)
+                return MapSelection(
+                    case.output,
+                    output_context,
+                    index,
+                    matched,
+                    output_contexts=output_contexts,
+                )
 
         if expression.default is not None:
             return MapSelection(expression.default, self.context, None)
@@ -569,7 +610,10 @@ class Evaluator[T]:
             return expect_condition(self._evaluate(test))
 
         match test:
-            case UnionExpression(members=members):
+            case (
+                UnionExpression(members=members)
+                | AlternativeTypePattern(members=members)
+            ):
                 return disjunction(
                     self._observe_test(member, observer) for member in members
                 )
